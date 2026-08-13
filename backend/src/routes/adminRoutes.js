@@ -1,14 +1,16 @@
 const express = require('express');
 const auth = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/permissions');
-const { ADMIN_ROLES, PERMISSIONS } = require('../constants/rbac');
+const { ADMIN_ROLES, PERMISSIONS, ROLES } = require('../constants/rbac');
 const adminController = require('../controllers/adminController');
 
 const router = express.Router();
+const directorOnly = auth([ROLES.DIRECTOR]);
 
 router.use(auth(ADMIN_ROLES));
 
 router.get('/dashboard', requirePermission(PERMISSIONS.ADMIN_DASHBOARD_READ), adminController.dashboard);
+router.get('/director/dashboard', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.dashboard);
 router.get('/usuarios/resumen', requirePermission(PERMISSIONS.ADMIN_USUARIOS_RESUMEN_READ), adminController.resumenUsuarios);
 router.post('/usuarios', requirePermission(PERMISSIONS.ADMIN_USUARIOS_CREATE), adminController.crearUsuario);
 router.patch('/usuarios/:id_usuario/cuenta', requirePermission(PERMISSIONS.ADMIN_CUENTAS_UPDATE), adminController.actualizarCuentaUsuario);
@@ -23,16 +25,16 @@ router.get('/reportes/financieros', requirePermission(PERMISSIONS.ADMIN_REPORTES
 router.get('/respaldo', requirePermission(PERMISSIONS.ADMIN_RESPALDO_READ), adminController.respaldoMetadatos);
 
 router.get('/folios/politica', requirePermission(PERMISSIONS.ADMIN_FOLIOS_USUARIOS_READ), adminController.politicaFoliosPorRol);
-router.post('/folios/preasignacion', requirePermission(PERMISSIONS.ADMIN_FOLIOS_USUARIOS_READ), adminController.preasignarFolioPorRol);
+router.post('/folios/preasignacion', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_FOLIOS_MANAGE), adminController.preasignarFolioPorRol);
 
-router.patch('/usuarios/:id_usuario/folio', requirePermission(PERMISSIONS.DIRECTOR_FOLIOS_MANAGE), adminController.actualizarFolioUsuario);
-router.patch('/pagos/:id_pago/folio', requirePermission(PERMISSIONS.DIRECTOR_FOLIOS_MANAGE), adminController.actualizarFolioPago);
+router.patch('/usuarios/:id_usuario/folio', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_FOLIOS_MANAGE), adminController.actualizarFolioUsuario);
+router.patch('/pagos/:id_pago/folio', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_FOLIOS_MANAGE), adminController.actualizarFolioPago);
 
 router.patch('/pagos/:id/validar', requirePermission(PERMISSIONS.ADMIN_PAGOS_VALIDAR), adminController.validarPago);
-router.patch('/pagos/:id_pago/estatus-director', requirePermission(PERMISSIONS.DIRECTOR_FINANCIAL_OVERRIDE), adminController.overrideEstatusFinanciero);
+router.patch('/pagos/:id_pago/estatus-director', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_FINANCIAL_OVERRIDE), adminController.overrideEstatusFinanciero);
 
-router.post('/director/calificaciones-extemporaneas/autorizaciones', requirePermission(PERMISSIONS.DIRECTOR_CALIFICACIONES_EXTEMPORANEAS_AUTHORIZE), adminController.autorizarCalificacionExtemporanea);
-router.patch('/director/horarios/:id_horario/aula', requirePermission(PERMISSIONS.DIRECTOR_AULAS_ASSIGN), adminController.asignarAulaHorario);
+router.post('/director/calificaciones-extemporaneas/autorizaciones', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_CALIFICACIONES_EXTEMPORANEAS_AUTHORIZE), adminController.autorizarCalificacionExtemporanea);
+router.patch('/director/horarios/:id_horario/aula', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_AULAS_ASSIGN), adminController.asignarAulaHorario);
 
 router.get('/alumno-grupos', requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_READ), adminController.listarAsignacionesAlumnoGrupo);
 router.post('/alumno-grupos', requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_CREATE), adminController.asignarAlumnoAGrupo);

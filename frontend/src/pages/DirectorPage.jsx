@@ -21,7 +21,7 @@ export default function DirectorPage() {
   async function cargarDashboard() {
     setLoading(true);
     try {
-      const response = await api.get('/admin/dashboard');
+      const response = await api.get('/admin/director/dashboard');
       setDashboard(response.data);
     } catch (requestError) {
       setMessage({ type: 'error', text: requestError?.response?.data?.message || 'No se pudo cargar el resumen ejecutivo.' });
