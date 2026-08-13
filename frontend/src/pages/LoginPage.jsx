@@ -146,10 +146,12 @@ export default function LoginPage() {
               onChange={(event) => setCorreo(event.target.value)}
               onBlur={() => marcarCampo('correo')}
               placeholder="ejemplo@unicep.edu.mx"
+              autoComplete="username"
               required
+              aria-describedby="login-correo-help"
               aria-invalid={touched.correo && errores.correo ? 'true' : 'false'}
             />
-            <span className={`field-help ${touched.correo && errores.correo ? 'field-help-error' : ''}`}>
+            <span id="login-correo-help" className={`field-help ${touched.correo && errores.correo ? 'field-help-error' : ''}`}>
               {touched.correo && errores.correo ? errores.correo : 'Usa el correo con el que activaste tu cuenta.'}
             </span>
           </label>
@@ -166,6 +168,8 @@ export default function LoginPage() {
                 onBlur={() => marcarCampo('password')}
                 required
                 placeholder="Escribe tu contraseña"
+                autoComplete="current-password"
+                aria-describedby="login-password-help"
                 aria-invalid={touched.password && errores.password ? 'true' : 'false'}
               />
               <button
@@ -178,12 +182,12 @@ export default function LoginPage() {
                 <EyeIcon visible={mostrarPassword} />
               </button>
             </div>
-            <span className={`field-help ${touched.password && errores.password ? 'field-help-error' : ''}`}>
+            <span id="login-password-help" className={`field-help ${touched.password && errores.password ? 'field-help-error' : ''}`}>
               {touched.password && errores.password ? errores.password : 'Debe coincidir con la contraseña registrada en tu cuenta.'}
             </span>
           </label>
 
-          {error ? <p className="error-box">{error}</p> : null}
+          {error ? <p className="error-box" role="alert" aria-live="polite">{error}</p> : null}
 
           <button type="submit" className="btn-primary auth-submit" disabled={loading || !formularioValido}>
             {loading ? 'Validando acceso...' : 'Entrar a mi cuenta'}
