@@ -376,12 +376,17 @@ export default function HomePage() {
                 <p>{viewerError}</p>
               </div>
             ) : (
-              <iframe
+              <object
                 key={selectedOffer.file}
+                data={selectedOfferPdfUrl}
+                type="application/pdf"
                 title={`Oferta PDF ${selectedOffer.label}`}
-                src={selectedOfferPdfUrl}
                 className="oferta-iframe"
-              />
+              >
+                <a href={selectedOfferPdfUrl} target="_blank" rel="noreferrer">
+                  Abrir el PDF en una pestaña nueva
+                </a>
+              </object>
             )}
           </section>
         </div>
