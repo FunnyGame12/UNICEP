@@ -159,7 +159,10 @@ export default function HomePage() {
 
     return window.matchMedia('(max-width: 760px)').matches;
   });
-  const buildPdfUrl = (file) => encodeURI(`/pdf/${file}`);
+  const buildPdfUrl = (file) => {
+    const path = encodeURI(`/pdf/${file}`);
+    return typeof window === 'undefined' ? path : new URL(path, window.location.origin).href;
+  };
 
   const handleOfferSelect = (oferta) => {
     setViewerError('');
