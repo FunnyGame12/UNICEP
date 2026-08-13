@@ -38,13 +38,15 @@ export default function RegistroFolioPage() {
   }
 
   return (
-    <section className="card auth-card">
-      <h2>Crear cuenta con folio</h2>
-      <p>
-        Si control escolar ya te asigno un folio, completa tu registro aqui para activar tu cuenta.
-      </p>
+    <section className="auth-shell">
+      <article className="auth-card">
+        <p className="auth-eyebrow">Activación institucional</p>
+        <h2>Crear cuenta con folio</h2>
+        <p className="auth-intro">
+          Si control escolar ya te asignó un folio, completa tu registro aquí para activar tu cuenta.
+        </p>
 
-      <form className="form-grid" onSubmit={handleSubmit}>
+        <form className="form-grid" onSubmit={handleSubmit}>
         <label>
           Folio asignado
           <input
@@ -84,17 +86,18 @@ export default function RegistroFolioPage() {
           />
         </label>
 
-        {error ? <p className="error-box">{error}</p> : null}
-        {message ? <p className="ok-box">{message}</p> : null}
+          {error ? <p className="error-box">{error}</p> : null}
+          {message ? <p className="ok-box">{message}</p> : null}
 
-        <button type="submit" className="btn-primary" disabled={loading}>
-          {loading ? 'Activando...' : 'Activar cuenta'}
-        </button>
-      </form>
+          <button type="submit" className="btn-primary" disabled={loading}>
+            {loading ? 'Activando...' : 'Activar cuenta'}
+          </button>
+        </form>
 
-      <p>
-        Ya tienes cuenta activa? <Link to="/login">Ir a iniciar sesion</Link>
-      </p>
+        <p>
+          ¿Ya tienes cuenta activa? <Link to="/login">Ir a iniciar sesión</Link>
+        </p>
+      </article>
     </section>
   );
 }
