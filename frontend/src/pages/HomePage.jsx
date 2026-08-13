@@ -199,6 +199,9 @@ export default function HomePage() {
   }, []);
 
   const selectedOfferPdfUrl = buildPdfUrl(selectedOffer.file);
+  const openSelectedPdf = () => {
+    window.location.assign(selectedOfferPdfUrl);
+  };
 
   return (
     <main className="hero-page">
@@ -350,13 +353,13 @@ export default function HomePage() {
                   En celular te mostramos el documento en pantalla completa para mejor lectura.
                 </p>
                 <div className="oferta-mobile-actions">
-                  <a
-                    href={selectedOfferPdfUrl}
-                    target="_self"
+                  <button
+                    type="button"
+                    onClick={openSelectedPdf}
                     className="btn btn-primary oferta-mobile-btn"
                   >
                     Abrir PDF
-                  </a>
+                  </button>
                   <a
                     href={selectedOfferPdfUrl}
                     target="_blank"
