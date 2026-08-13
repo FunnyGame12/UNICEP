@@ -164,6 +164,7 @@ export default function HomePage() {
     const path = encodeURI(`/pdf/${file}`);
     return typeof window === 'undefined' ? path : new URL(path, window.location.origin).href;
   };
+  const selectedOfferPdfUrl = buildPdfUrl(selectedOffer.file);
 
   const handleOfferSelect = (oferta) => {
     setViewerError('');
@@ -233,7 +234,6 @@ export default function HomePage() {
     return () => mediaQuery.removeListener(syncMobileMode);
   }, []);
 
-  const selectedOfferPdfUrl = buildPdfUrl(selectedOffer.file);
   const openSelectedPdf = () => {
     window.location.assign(selectedOfferPdfUrl);
   };
