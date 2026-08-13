@@ -37,6 +37,12 @@ function App() {
               {isMenuOpen ? 'Cerrar' : 'Menú'}
             </button>
 
+            {!isAuthenticated ? (
+              <Link to="/login" className="compact-login-short">
+                Iniciar sesión
+              </Link>
+            ) : null}
+
             <nav
               id="site-navigation"
               className={`topbar-nav ${isMenuOpen ? 'is-open' : ''}`}
