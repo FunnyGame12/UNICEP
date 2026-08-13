@@ -98,14 +98,14 @@ const planteles = [
     nivel: 'Educación Superior',
     direccion: 'Calle 90 #477, cerca de la Avenida Itzaes, Mérida, Yucatán, México.',
     referencia: 'Acceso por Avenida Itzaes; rodeado de circuitos viales principales de la ciudad.',
-    mapaUrl: 'https://www.google.com/maps/search/?api=1&query=Calle+90+%23477+Mérida+Yucatán',
+    mapaUrl: 'https://maps.app.goo.gl/S78CMrSBSggHoZhC8',
   },
   {
     titulo: 'Plantel Preparatoria',
     nivel: 'Educación Media Superior',
     direccion: 'Calle 60 #729 por calle 91, Colonia Centro, Mérida, Yucatán, México.',
     referencia: 'Ubicado en el centro histórico, a pocos pasos de Plaza Grande y principales servicios.',
-    mapaUrl: 'https://www.google.com/maps/search/?api=1&query=Calle+60+%23729+Colonia+Centro+Mérida+Yucatán',
+    mapaUrl: 'https://maps.app.goo.gl/S78CMrSBSggHoZhC8',
   },
 ];
 
@@ -566,7 +566,7 @@ export default function HomePage() {
             <h3>Redes sociales</h3>
             <div className="contact-social-list">
               <a
-                href="https://www.facebook.com/search/top/?q=Unicep%20M%C3%A9rida"
+                href="https://www.facebook.com/Unicepenlacepuntoevolutivo?locale=es_LA"
                 target="_blank"
                 rel="noreferrer"
                 className="contact-social-link"
@@ -574,7 +574,7 @@ export default function HomePage() {
                 Unicep Mérida (Facebook)
               </a>
               <a
-                href="https://www.instagram.com/unicep_punto_evolutivo/"
+                href="https://www.instagram.com/unicep_merida_punto_evolutivo/"
                 target="_blank"
                 rel="noreferrer"
                 className="contact-social-link"
