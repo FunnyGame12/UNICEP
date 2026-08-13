@@ -12,6 +12,7 @@ function formatDate(value, withTime = false) {
 function CustomDropdown({ label, value, options, onChange, placeholder }) {
   const dropdownRef = useRef(null);
   const [open, setOpen] = useState(false);
+  const fieldId = `docente-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
   useEffect(() => {
     function handleOutsideClick(event) {
@@ -32,6 +33,8 @@ function CustomDropdown({ label, value, options, onChange, placeholder }) {
       <div className="teacher-custom-select" ref={dropdownRef}>
         <button
           type="button"
+          id={fieldId}
+          name={fieldId}
           className={`teacher-custom-select-trigger ${open ? 'open' : ''}`}
           onClick={() => setOpen((current) => !current)}
           aria-haspopup="listbox"
