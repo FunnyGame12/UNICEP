@@ -655,6 +655,17 @@ main {
   font-size: 0.8rem;
 }
 
+.director-folio-filter-row {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  gap: 0.6rem;
+}
+
+.director-folio-filter-row input,
+.director-folio-filter-row select {
+  min-height: 2.8rem;
+}
+
 .director-folio-table-scroll {
   overflow-x: auto;
   border: 1px solid rgba(148, 163, 184, 0.24);
@@ -680,6 +691,10 @@ main {
 
 @media (max-width: 720px) {
   .director-folio-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .director-folio-filter-row {
     grid-template-columns: 1fr;
   }
 }

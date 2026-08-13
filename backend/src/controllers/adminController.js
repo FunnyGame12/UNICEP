@@ -228,24 +228,45 @@ async function buscarUsuariosDirector(req, res) {
   return res.json({ items: usuarios });
 }
 
-async function listarFoliosDirector(_req, res) {
-  const usuarios = await Usuario.findAll({
-    where: {
-      folio_matricula: {
-        [Op.ne]: null,
-      },
+async function listarFoliosDirector(req, res) {
+  const roleQuery = normalizeRole(req.query.rol);
+  const normalizedRoleFilter = roleQuery ? normalizeRoleForTable(roleQuery) : '';
+  const nameQuery = String(req.query.q || '').trim();
+
+  const where = {
+    folio_matricula: {
+      [Op.ne]: null,
     },
-    attributes: ['id_usuario', 'nombre_completo', 'correo', 'rol', 'folio_matricula', 'fecha_creacion'],
+  };
+  if (normalizedRoleFilter) {
+    where.rol = normalizedRoleFilter;
+  }
+  if (nameQuery) {
+    where.nombre_completo = { [Op.like]: `%${nameQuery}%` };
+  }
+
+  const folios = await Usuario.findAll({
+    where,
+    attributes: [
+      'id_usuario',
+      'nombre_completo',
+      'correo',
+      'rol',
+      'folio_matricula',
+      'fecha_creacion',
+      'cuenta_activada',
+    ],
     order: [['fecha_creacion', 'ASC'], ['id_usuario', 'ASC']],
   });
 
-  const rows = usuarios
+  const rows = folios
     .map((item) => {
       const roleKey = normalizeRoleForTable(item.rol);
+      const pendingEmail = !item.cuenta_activada || String(item.correo || '').toLowerCase().endsWith('@unicep.local');
       return {
-        id_usuario: item.id_usuario,
-        nombre_completo: item.nombre_completo,
-        correo: item.correo,
+        id_folio_preasignado: item.id_usuario,
+        nombre_destinatario: item.nombre_completo,
+        correo: pendingEmail ? null : item.correo,
         rol: roleKey,
         folio_matricula: item.folio_matricula,
         fecha_creacion: item.fecha_creacion,
@@ -258,7 +279,7 @@ async function listarFoliosDirector(_req, res) {
       const dateA = new Date(a.fecha_creacion || 0).getTime();
       const dateB = new Date(b.fecha_creacion || 0).getTime();
       if (dateA !== dateB) return dateA - dateB;
-      return Number(a.id_usuario) - Number(b.id_usuario);
+      return Number(a.id_folio_preasignado) - Number(b.id_folio_preasignado);
     });
 
   return res.json({
@@ -565,8 +586,14 @@ async function politicaFoliosPorRol(_req, res) {
 async function preasignarFolioPorRol(req, res) {
   const rolInput = normalizeRole(req.body.rol);
   const rol = canonicalFolioRole(rolInput);
+  const nombreDestinatario = String(req.body.nombre_destinatario || '').trim();
+
   if (!rol) {
     return res.status(400).json({ message: 'rol es obligatorio.' });
+  }
+
+  if (!nombreDestinatario) {
+    return res.status(400).json({ message: 'nombre_destinatario es obligatorio.' });
   }
 
   if (!MANAGED_FOLIO_ROLES.has(rol)) {
@@ -575,8 +602,58 @@ async function preasignarFolioPorRol(req, res) {
     });
   }
 
-  const folio = await nextFolioForRole(rol);
-  return res.json({ rol, folio });
+  const folioInput = String(req.body.folio || '').trim().toUpperCase();
+  const folio = folioInput || await nextFolioForRole(rol);
+  const expectedPrefix = `${getRolePrefix(rol)}-`;
+
+  if (!folio.startsWith(expectedPrefix)) {
+    return res.status(400).json({
+      message: `El folio para rol ${rol} debe iniciar con ${expectedPrefix}.`,
+    });
+  }
+
+  const existsInUsuarios = await Usuario.findOne({
+    where: { folio_matricula: folio },
+    attributes: ['id_usuario'],
+  });
+  if (existsInUsuarios) {
+    return res.status(409).json({ message: 'El folio ya existe en usuarios.' });
+  }
+
+  const password_hash = await bcrypt.hash(crypto.randomUUID(), 10);
+  const registro = await Usuario.create({
+    folio_matricula: folio,
+    nombre_completo: nombreDestinatario,
+    correo: `pending+${folio.toLowerCase()}@unicep.local`,
+    password_hash,
+    cuenta_activada: false,
+    rol,
+    foto_url: null,
+    fecha_creacion: new Date(),
+  });
+
+  await registrarEventoAuditoria({
+    idUsuario: req.user.id_usuario,
+    rolActor: req.user.rol,
+    accion: 'preasignar_folio_por_rol',
+    modulo: 'director',
+    entidad: 'usuarios',
+    idEntidad: registro.id_usuario,
+    detalle: {
+      rol,
+      folio,
+      nombre_destinatario: nombreDestinatario,
+    },
+  });
+
+  return res.status(201).json({
+    id_usuario: registro.id_usuario,
+    nombre_destinatario: registro.nombre_completo,
+    rol: registro.rol,
+    folio: registro.folio_matricula,
+    correo: null,
+    fecha_creacion: registro.fecha_creacion,
+  });
 }
 
 async function actualizarFolioUsuario(req, res) {

@@ -28,7 +28,8 @@ const extraordinariaSchema = z.object({
 });
 
 const folioUsuarioSchema = z.object({
-  id_usuario: z.string().min(1, 'Selecciona un usuario.'),
+  nombre_destinatario: z.string().trim().min(3, 'Escribe el nombre del destinatario.'),
+  rol: z.enum(['control_escolar', 'coordinacion', 'docente', 'alumno']),
   folio_matricula: z.string().optional(),
 });
 
@@ -45,7 +46,7 @@ const aulaSchema = z.object({
 
 const financieroDefaults = { id_pago: '', estatus: 'pendiente', monto: '', motivo: '' };
 const extraordinariaDefaults = { id_docente: '', id_materia: '', fecha_limite_autorizacion: '', motivo: '' };
-const folioUsuarioDefaults = { id_usuario: '', folio_matricula: '' };
+const folioUsuarioDefaults = { nombre_destinatario: '', rol: '', folio_matricula: '' };
 const folioPagoDefaults = { id_pago: '', folio_interno: '' };
 const aulaDefaults = { id_horario: '', aula: '', motivo: '' };
 
@@ -145,6 +146,32 @@ function classifyEmailDomain(correo = '') {
   return 'otro';
 }
 
+const FOLIO_ROLE_OPTIONS = [
+  { value: 'control_escolar', label: 'Control Escolar' },
+  { value: 'coordinacion', label: 'Coordinación Académica' },
+  { value: 'docente', label: 'Maestro / Docente' },
+  { value: 'alumno', label: 'Alumno' },
+];
+
+const ROLE_PREFIX = {
+  control_escolar: 'CTL',
+  coordinacion: 'COO',
+  docente: 'DOC',
+  alumno: 'ALU',
+};
+
+function randomFolioToken(length = 6) {
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  return Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+}
+
+function buildRoleFolio(rol) {
+  const prefix = ROLE_PREFIX[String(rol || '').trim().toLowerCase()];
+  if (!prefix) return '';
+  const yy = String(new Date().getFullYear()).slice(-2);
+  return `${prefix}-${yy}-${randomFolioToken(6)}`;
+}
+
 function roleLabel(rol = '') {
   const normalized = String(rol || '').trim().toLowerCase();
   if (normalized === 'director') return 'Director';
@@ -165,24 +192,22 @@ export default function DirectorPage() {
   const [confirmData, setConfirmData] = useState(null);
   const [activeKpi, setActiveKpi] = useState('');
   const [lastSyncAt, setLastSyncAt] = useState('');
-  const [selectedFolioUser, setSelectedFolioUser] = useState(null);
   const [folioRows, setFolioRows] = useState([]);
   const [folioRowsLoading, setFolioRowsLoading] = useState(false);
+  const [folioRoleFilter, setFolioRoleFilter] = useState('');
+  const [folioNameFilter, setFolioNameFilter] = useState('');
 
-  const [usuarios, setUsuarios] = useState([]);
   const [pagos, setPagos] = useState([]);
   const [docentes, setDocentes] = useState([]);
   const [materias, setMaterias] = useState([]);
   const [horarios, setHorarios] = useState([]);
   const [auditFeed, setAuditFeed] = useState([]);
 
-  const [usuarioSearch, setUsuarioSearch] = useState('');
   const [pagoSearch, setPagoSearch] = useState('');
   const [docenteSearch, setDocenteSearch] = useState('');
   const [materiaSearch, setMateriaSearch] = useState('');
   const [horarioSearch, setHorarioSearch] = useState('');
 
-  const [usuariosLoading, setUsuariosLoading] = useState(false);
   const [pagosLoading, setPagosLoading] = useState(false);
   const [docentesLoading, setDocentesLoading] = useState(false);
   const [materiasLoading, setMateriasLoading] = useState(false);
@@ -249,28 +274,8 @@ export default function DirectorPage() {
 
   useEffect(() => {
     let active = true;
-    setUsuariosLoading(true);
-    api.get('/admin/director/usuarios', { params: { q: usuarioSearch } })
-      .then((response) => {
-        if (!active) return;
-        setUsuarios(response.data.items || []);
-      })
-      .catch(() => {
-        if (!active) return;
-        setUsuarios([]);
-      })
-      .finally(() => {
-        if (active) setUsuariosLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [usuarioSearch]);
-
-  useEffect(() => {
-    let active = true;
     setFolioRowsLoading(true);
-    api.get('/admin/director/folios')
+    api.get('/admin/director/folios', { params: { rol: folioRoleFilter || undefined, q: folioNameFilter || undefined } })
       .then((response) => {
         if (!active) return;
         setFolioRows(response?.data?.items || []);
@@ -285,7 +290,7 @@ export default function DirectorPage() {
     return () => {
       active = false;
     };
-  }, [lastSyncAt]);
+  }, [lastSyncAt, folioRoleFilter, folioNameFilter]);
 
   useEffect(() => {
     let active = true;
@@ -378,7 +383,6 @@ export default function DirectorPage() {
         trend: 'Matrícula activa en operación',
         status: 'ok',
         target: 'director-folios',
-        onSelect: () => setUsuarioSearch(''),
       },
       {
         key: 'materias',
@@ -443,30 +447,23 @@ export default function DirectorPage() {
   }
 
   const selectedPagoFinanciero = pagos.find((item) => String(item.id) === String(financieroValues.id_pago));
-  const selectedFolioRole = String(selectedFolioUser?.rol || '').trim().toLowerCase();
-  const selectedFolioEmailType = classifyEmailDomain(selectedFolioUser?.correo || '');
+  const selectedFolioRole = String(folioUsuarioValues.rol || '').trim().toLowerCase();
 
   async function generarFolioAleatorioUsuario() {
-    if (!folioUsuarioValues.id_usuario) {
-      pushToast('error', 'Selecciona un usuario antes de generar su folio.');
+    if (!selectedFolioRole) {
+      pushToast('error', 'Selecciona un rol para generar el folio.');
       return;
     }
 
     setFolioAutoLoading(true);
     try {
-      const response = await api.get(`/admin/generate-folio/${folioUsuarioValues.id_usuario}`);
-      const folioGenerado = response?.data?.folio || '';
+      const folioGenerado = buildRoleFolio(selectedFolioRole);
       if (!folioGenerado) {
         pushToast('error', 'No se pudo generar un folio válido.');
         return;
       }
 
       folioUsuarioForm.setValue('folio_matricula', folioGenerado, { shouldDirty: true, shouldValidate: true });
-      setSelectedFolioUser((current) => ({
-        ...(current || {}),
-        rol: response?.data?.rol || current?.rol,
-        correo: response?.data?.correo || current?.correo,
-      }));
       pushToast('ok', `Folio sugerido generado: ${folioGenerado}`);
     } catch (requestError) {
       pushToast('error', requestError?.response?.data?.message || 'No se pudo generar el folio aleatorio.');
@@ -525,26 +522,27 @@ export default function DirectorPage() {
       <div className="director-action-grid">
         <section id="director-folios" className="director-section director-action-card">
           <h3>Gestión de folios por tipos de usuario</h3>
-          <p>Asigna o reasigna folios y consulta la bitácora de folios por rol.</p>
-          <form className="form-grid" onSubmit={folioUsuarioForm.handleSubmit((values) => ejecutar(() => api.patch(`/admin/usuarios/${values.id_usuario}/folio`, { folio_matricula: values.folio_matricula || undefined }), 'Folio de usuario actualizado.', () => {
+          <p>Registra folios preasignados por tipo de usuario y consulta su estado de registro.</p>
+          <form className="form-grid" onSubmit={folioUsuarioForm.handleSubmit((values) => ejecutar(() => api.post('/admin/folios/preasignacion', {
+            nombre_destinatario: values.nombre_destinatario,
+            rol: values.rol,
+            folio: values.folio_matricula || undefined,
+          }), 'Folio preasignado registrado.', () => {
             folioUsuarioForm.reset(folioUsuarioDefaults);
-            setSelectedFolioUser(null);
+            setLastSyncAt(new Date().toISOString());
           }))}>
-            <SearchableSelect id="director-folio-usuario-id" label="Usuario" placeholder="Escribe nombre, correo o matrícula" value={folioUsuarioValues.id_usuario} onChange={(id_usuario) => {
-              folioUsuarioForm.setValue('id_usuario', id_usuario, { shouldDirty: true, shouldValidate: true });
-              const found = usuarios.find((item) => String(item.id_usuario) === String(id_usuario)) || null;
-              setSelectedFolioUser(found);
-            }} onSearch={setUsuarioSearch} loading={usuariosLoading} items={usuarios.map((item) => ({ ...item, id: item.id_usuario }))} renderValue={(item) => `${item.nombre_completo} (ID: ${item.id_usuario} / Matrícula: ${item.folio_matricula || 'N/A'})`} renderItem={(item) => <><strong>{item.nombre_completo}</strong><small>ID: {item.id_usuario} / Matrícula: {item.folio_matricula || 'N/A'}</small></>} />
-            {folioUsuarioForm.formState.errors.id_usuario ? <small className="director-field-error">{folioUsuarioForm.formState.errors.id_usuario.message}</small> : null}
-            {selectedFolioUser ? (
-              <div className="director-folio-user-meta">
-                <span className="director-folio-pill">Rol: {selectedFolioRole || 'sin rol'}</span>
-                <span className={`director-folio-pill director-folio-pill-${selectedFolioEmailType}`}>{selectedFolioUser.correo || 'Sin correo'}</span>
-              </div>
-            ) : null}
+            <input id="director-folio-nombre-destinatario" placeholder="Nombre del destinatario" {...folioUsuarioForm.register('nombre_destinatario')} />
+            {folioUsuarioForm.formState.errors.nombre_destinatario ? <small className="director-field-error">{folioUsuarioForm.formState.errors.nombre_destinatario.message}</small> : null}
+            <select id="director-folio-rol" {...folioUsuarioForm.register('rol')}>
+              <option value="">Rol asignado</option>
+              {FOLIO_ROLE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            {folioUsuarioForm.formState.errors.rol ? <small className="director-field-error">Selecciona el rol asignado.</small> : null}
             <div className="director-folio-input-row">
               <input id="director-folio-usuario" placeholder="Folio nuevo (opcional)" {...folioUsuarioForm.register('folio_matricula')} />
-              <button className="btn-secondary" type="button" onClick={generarFolioAleatorioUsuario} disabled={folioAutoLoading || actionLoading || !folioUsuarioValues.id_usuario}>
+              <button className="btn-secondary" type="button" onClick={generarFolioAleatorioUsuario} disabled={folioAutoLoading || actionLoading || !selectedFolioRole}>
                 {folioAutoLoading ? 'Generando...' : '⚡ Generar Aleatorio'}
               </button>
             </div>
@@ -553,6 +551,19 @@ export default function DirectorPage() {
           <div className="director-folio-table-wrap dark-table">
             <h4>Tabla de folios (solo vista)</h4>
             <p className="director-folio-table-caption">Clasificada por rol y ordenada por fecha de creación.</p>
+            <div className="director-folio-filter-row">
+              <select value={folioRoleFilter} onChange={(event) => setFolioRoleFilter(event.target.value)}>
+                <option value="">Todos los roles</option>
+                {FOLIO_ROLE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <input
+                value={folioNameFilter}
+                onChange={(event) => setFolioNameFilter(event.target.value)}
+                placeholder="Buscar por nombre"
+              />
+            </div>
             {folioRowsLoading ? <p className="director-audit-empty">Cargando folios...</p> : null}
             {!folioRowsLoading && folioRows.length === 0 ? <p className="director-audit-empty">No hay folios registrados.</p> : null}
             {!folioRowsLoading && folioRows.length > 0 ? (
@@ -564,16 +575,18 @@ export default function DirectorPage() {
                       <th>Folio</th>
                       <th>Nombre</th>
                       <th>Correo</th>
+                      <th>Estado</th>
                       <th>Creado</th>
                     </tr>
                   </thead>
                   <tbody>
                     {folioRows.map((row) => (
-                      <tr key={`${row.id_usuario}-${row.folio_matricula}`}>
+                      <tr key={`${row.id_folio_preasignado}-${row.folio_matricula}`}>
                         <td><span className="director-folio-role-chip">{roleLabel(row.rol)}</span></td>
                         <td>{row.folio_matricula || 'N/A'}</td>
-                        <td>{row.nombre_completo || 'N/A'}</td>
-                        <td>{row.correo || 'N/A'}</td>
+                        <td>{row.nombre_destinatario || 'N/A'}</td>
+                        <td>{row.correo || 'Pendiente de registro'}</td>
+                        <td>{row.correo ? 'Registrado' : 'Pendiente de registro'}</td>
                         <td>{row.fecha_creacion ? new Date(row.fecha_creacion).toLocaleString('es-MX') : 'N/A'}</td>
                       </tr>
                     ))}
