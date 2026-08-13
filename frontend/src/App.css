@@ -329,6 +329,40 @@ main {
   display: grid;
   gap: 1.25rem;
   padding-bottom: 3rem;
+  scroll-behavior: smooth;
+}
+
+.director-quick-nav {
+  position: sticky;
+  top: 0.75rem;
+  z-index: 10;
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(6, 12, 31, 0.88);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(14px);
+  scrollbar-width: thin;
+}
+
+.director-quick-nav a {
+  flex: 0 0 auto;
+  padding: 0.55rem 0.8rem;
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.director-quick-nav a:hover,
+.director-quick-nav a:focus-visible {
+  color: var(--text);
+  background: rgba(79, 140, 255, 0.18);
 }
 
 .director-hero,
@@ -360,6 +394,7 @@ main {
 
 .director-section {
   padding: 1.35rem;
+  scroll-margin-top: 5rem;
 }
 
 .director-section h3 {
@@ -405,6 +440,23 @@ main {
 
 .director-action-card .form-grid {
   margin-top: 0.25rem;
+}
+
+.director-action-card input,
+.director-action-card select,
+.director-action-card textarea {
+  min-height: 3rem;
+}
+
+.director-action-card textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.director-action-card button:disabled,
+.director-hero button:disabled {
+  cursor: wait;
+  opacity: 0.62;
 }
 
 .director-critical-card {
@@ -1750,6 +1802,11 @@ main {
   .director-section {
     padding: 1rem;
     border-radius: 18px;
+  }
+
+  .director-quick-nav {
+    top: 0.45rem;
+    margin-inline: -0.15rem;
   }
 
   .topbar nav,
