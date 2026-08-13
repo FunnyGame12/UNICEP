@@ -317,6 +317,7 @@ export default function DirectorPage() {
   const [selectedDate, setSelectedDate] = useState();
   const [selectedTime, setSelectedTime] = useState('12:00');
   const [alumnosOverride, setAlumnosOverride] = useState([]);
+  const [selectedAlumnoOverrideName, setSelectedAlumnoOverrideName] = useState('');
 
   const financieroForm = useForm({
     resolver: zodResolver(financieroSchema),
@@ -439,6 +440,7 @@ export default function DirectorPage() {
     const idAlumno = Number(financieroValues.id_alumno || 0);
     if (!idAlumno) {
       setPagosAlumnoOverride([]);
+      setPagosLoading(false);
       return;
     }
 
@@ -460,6 +462,12 @@ export default function DirectorPage() {
     return () => {
       active = false;
     };
+  }, [financieroValues.id_alumno]);
+
+  useEffect(() => {
+    if (!financieroValues.id_alumno) {
+      setSelectedAlumnoOverrideName('');
+    }
   }, [financieroValues.id_alumno]);
 
   useEffect(() => {
@@ -617,6 +625,15 @@ export default function DirectorPage() {
   }
 
   const selectedPagoFinanciero = pagosAlumnoOverride.find((item) => String(item.id_pago) === String(financieroValues.id_pago));
+  const alumnoSeleccionadoValido = Boolean(financieroValues.id_alumno);
+  const folioSelectorDisabled = !alumnoSeleccionadoValido || pagosLoading || pagosAlumnoOverride.length === 0;
+  const folioPlaceholder = !alumnoSeleccionadoValido
+    ? 'Primero selecciona un alumno'
+    : pagosLoading
+      ? 'Cargando folios del alumno...'
+      : pagosAlumnoOverride.length === 0
+        ? 'Este alumno no tiene folios o adeudos pendientes'
+        : `Selecciona un folio/adeudo de ${selectedAlumnoOverrideName || 'este alumno'}`;
   const selectedFolioRole = String(folioUsuarioValues.rol || '').trim().toLowerCase();
   const conceptYearPrefix = String(new Date().getFullYear()).slice(-2);
 
@@ -989,13 +1006,15 @@ export default function DirectorPage() {
                 }, () => ejecutar(() => api.patch(`/admin/pagos/${values.id_pago}/estatus-director`, { estatus: values.estatus, motivo: values.motivo || undefined }), 'Cambio financiero autorizado y auditado.', () => financieroForm.reset(financieroDefaults)));
             })}>
                 <SearchableSelect id="director-financial-alumno" label="Nombre completo del alumno" placeholder="Escribe nombre completo del alumno" value={financieroValues.id_alumno} onChange={(id_alumno) => {
+                  const alumnoSeleccionado = alumnosOverride.find((item) => String(item.id_usuario) === String(id_alumno));
                   financieroForm.setValue('id_alumno', id_alumno, { shouldDirty: true, shouldValidate: true });
                   financieroForm.setValue('id_pago', '', { shouldDirty: true, shouldValidate: true });
+                  setSelectedAlumnoOverrideName(alumnoSeleccionado?.nombre_completo || '');
                 }} onSearch={setAlumnoOverrideSearch} loading={alumnosOverrideLoading} items={alumnosOverride.map((item) => ({ ...item, id: item.id_usuario }))} renderValue={(item) => `${item.nombre_completo} (ID: ${item.id_usuario})`} renderItem={(item) => <><strong>{item.nombre_completo}</strong><small>ID: {item.id_usuario} / {item.folio_matricula || 'Sin matrícula'}</small></>} />
                 {financieroForm.formState.errors.id_alumno ? <small className="director-field-error">{financieroForm.formState.errors.id_alumno.message}</small> : null}
                 <label htmlFor="director-financial-id">Folio de pago</label>
-                <select id="director-financial-id" value={financieroValues.id_pago} onChange={(event) => financieroForm.setValue('id_pago', event.target.value, { shouldDirty: true, shouldValidate: true })}>
-                  <option value="">Selecciona un folio/adeudo</option>
+                <select id="director-financial-id" value={financieroValues.id_pago} disabled={folioSelectorDisabled} onChange={(event) => financieroForm.setValue('id_pago', event.target.value, { shouldDirty: true, shouldValidate: true })}>
+                  <option value="">{folioPlaceholder}</option>
                   {pagosAlumnoOverride.map((item) => (
                     <option key={item.id_pago} value={String(item.id_pago)}>{`${item.concepto} - ${item.folio_interno || `PAGO-${item.id_pago}`}`}</option>
                   ))}
