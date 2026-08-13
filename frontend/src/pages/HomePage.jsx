@@ -152,6 +152,7 @@ export default function HomePage() {
   const [selectedOffer, setSelectedOffer] = useState(ofertas[0]);
   const [selectedCampusByArea, setSelectedCampusByArea] = useState(initialCampusSelection);
   const [viewerError, setViewerError] = useState('');
+  const [pdfBlobUrl, setPdfBlobUrl] = useState('');
   const [isMobilePdfMode, setIsMobilePdfMode] = useState(() => {
     if (typeof window === 'undefined') {
       return false;
@@ -168,6 +169,40 @@ export default function HomePage() {
     setViewerError('');
     setSelectedOffer(oferta);
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = '';
+
+    if (isMobilePdfMode) {
+      setPdfBlobUrl('');
+      return undefined;
+    }
+
+    setViewerError('');
+    fetch(selectedOfferPdfUrl)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`No se pudo cargar el PDF (${response.status})`);
+        }
+        return response.blob();
+      })
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPdfBlobUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setViewerError('No se pudo cargar el documento. Intenta seleccionar de nuevo.');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [isMobilePdfMode, selectedOfferPdfUrl]);
 
   const handleCampusImageSelect = (areaId, image) => {
     setSelectedCampusByArea((current) => ({
@@ -375,18 +410,17 @@ export default function HomePage() {
               <div className="feature-card" role="alert">
                 <p>{viewerError}</p>
               </div>
+            ) : !pdfBlobUrl ? (
+              <div className="feature-card" role="status">
+                <p>Cargando documento...</p>
+              </div>
             ) : (
-              <object
+              <iframe
                 key={selectedOffer.file}
-                data={selectedOfferPdfUrl}
-                type="application/pdf"
                 title={`Oferta PDF ${selectedOffer.label}`}
+                src={pdfBlobUrl}
                 className="oferta-iframe"
-              >
-                <a href={selectedOfferPdfUrl} target="_blank" rel="noreferrer">
-                  Abrir el PDF en una pestaña nueva
-                </a>
-              </object>
+              />
             )}
           </section>
         </div>
