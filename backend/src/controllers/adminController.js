@@ -57,8 +57,6 @@ const CONCEPTO_CLASIFICACION = new Set(['base', 'subrama']);
 const CONCEPTO_NATURALEZA = new Set(['descuento', 'penalizacion']);
 const CONCEPTO_MODO = new Set(['monto_fijo', 'porcentaje']);
 
-let conceptoPagoSchemaReadyPromise;
-
 function normalizeRole(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -92,90 +90,6 @@ function parseNullableNumber(value) {
   if (value === '' || value === undefined || value === null) return null;
   const parsed = Number(value);
   return Number.isNaN(parsed) ? Number.NaN : parsed;
-}
-
-async function ensureConceptoPagoSchema() {
-  if (conceptoPagoSchemaReadyPromise) {
-    return conceptoPagoSchemaReadyPromise;
-  }
-
-  conceptoPagoSchemaReadyPromise = (async () => {
-    const qi = sequelize.getQueryInterface();
-    const tableName = 'conceptos_pago';
-    const desc = await qi.describeTable(tableName);
-
-    if (!desc.clasificacion) {
-      await qi.addColumn(tableName, 'clasificacion', {
-        type: Sequelize.ENUM('base', 'subrama'),
-        allowNull: false,
-        defaultValue: 'base',
-      });
-    }
-
-    if (!desc.precio_base_inicial) {
-      await qi.addColumn(tableName, 'precio_base_inicial', {
-        type: Sequelize.DECIMAL(12, 2),
-        allowNull: true,
-      });
-    }
-
-    if (!desc.id_concepto_padre) {
-      await qi.addColumn(tableName, 'id_concepto_padre', {
-        type: Sequelize.INTEGER,
-        allowNull: true,
-        references: {
-          model: 'conceptos_pago',
-          key: 'id_concepto_pago',
-        },
-        onUpdate: 'CASCADE',
-        onDelete: 'CASCADE',
-      });
-    }
-
-    if (!desc.naturaleza_ajuste) {
-      await qi.addColumn(tableName, 'naturaleza_ajuste', {
-        type: Sequelize.ENUM('descuento', 'penalizacion'),
-        allowNull: true,
-      });
-    }
-
-    if (!desc.modo_aplicacion) {
-      await qi.addColumn(tableName, 'modo_aplicacion', {
-        type: Sequelize.ENUM('monto_fijo', 'porcentaje'),
-        allowNull: true,
-      });
-    }
-
-    if (!desc.valor_ajuste) {
-      await qi.addColumn(tableName, 'valor_ajuste', {
-        type: Sequelize.DECIMAL(12, 2),
-        allowNull: true,
-      });
-    }
-
-    if (!desc.folio_interno) {
-      await qi.addColumn(tableName, 'folio_interno', {
-        type: Sequelize.STRING(80),
-        allowNull: true,
-      });
-      await sequelize.query('UPDATE conceptos_pago SET folio_interno = UPPER(clave) WHERE folio_interno IS NULL OR folio_interno = \''\'');
-      await qi.changeColumn(tableName, 'folio_interno', {
-        type: Sequelize.STRING(80),
-        allowNull: false,
-      });
-    }
-
-    const indexes = await qi.showIndex(tableName);
-    const hasUniqueFolioIndex = indexes.some((idx) => idx.name === 'conceptos_pago_folio_interno_unique');
-    if (!hasUniqueFolioIndex) {
-      await qi.addIndex(tableName, ['folio_interno'], {
-        unique: true,
-        name: 'conceptos_pago_folio_interno_unique',
-      });
-    }
-  })();
-
-  return conceptoPagoSchemaReadyPromise;
 }
 
 function validateConceptoPayload(payload, { isEdit = false } = {}) {
@@ -262,8 +176,6 @@ function mapConceptoRow(row) {
 }
 
 async function listConceptosPagoCatalog(req, res) {
-  await ensureConceptoPagoSchema();
-
   const searchQuery = normalizeText(req.query.q).toLowerCase();
   const sort = normalizeClasificacion(req.query.sort) === 'za' ? 'za' : 'az';
 
@@ -311,8 +223,6 @@ async function listConceptosPagoCatalog(req, res) {
 }
 
 async function createConceptoPagoCatalog(req, res) {
-  await ensureConceptoPagoSchema();
-
   const validation = validateConceptoPayload(req.body, { isEdit: false });
   if (validation.error) {
     return res.status(400).json({ message: validation.error });
@@ -384,8 +294,6 @@ async function createConceptoPagoCatalog(req, res) {
 }
 
 async function updateConceptoPagoCatalog(req, res) {
-  await ensureConceptoPagoSchema();
-
   const idConcepto = Number(req.params.id_concepto_pago);
   if (!Number.isInteger(idConcepto)) {
     return res.status(400).json({ message: 'id_concepto_pago invalido.' });
@@ -461,8 +369,6 @@ async function updateConceptoPagoCatalog(req, res) {
 }
 
 async function deleteConceptoPagoCatalog(req, res) {
-  await ensureConceptoPagoSchema();
-
   const idConcepto = Number(req.params.id_concepto_pago);
   if (!Number.isInteger(idConcepto)) {
     return res.status(400).json({ message: 'id_concepto_pago invalido.' });
