@@ -256,6 +256,33 @@ main {
   text-decoration: underline;
 }
 
+.auth-recovery-toggle {
+  display: block;
+  margin: 1.25rem auto 0;
+  border: 0;
+  background: transparent;
+  color: #9fc1ff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.auth-recovery-toggle:hover,
+.auth-recovery-toggle:focus-visible {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.auth-recovery-form {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .auth-eyebrow {
   margin: 0 0 0.8rem;
   color: var(--brand);

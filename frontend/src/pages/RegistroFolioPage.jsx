@@ -8,25 +8,31 @@ export default function RegistroFolioPage() {
   const [folio, setFolio] = useState('');
   const [correo, setCorreo] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmarPassword, setConfirmarPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [touched, setTouched] = useState({ folio: false, correo: false, password: false });
+  const [touched, setTouched] = useState({ folio: false, correo: false, password: false, confirmarPassword: false });
+
+  const correoValido = /^[^\s@]+@(gmail\.com|unicepmerida\.com)$/i.test(correo.trim());
 
   const errores = {
     folio: !folio.trim() ? 'Ingresa el folio que te proporcionó control escolar.' : '',
     correo: !correo.trim()
       ? 'Ingresa un correo para activar tu cuenta.'
-      : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo.trim())
-        ? 'Escribe un correo válido.'
+      : !correoValido
+        ? 'Usa un correo @gmail.com o @unicepmerida.com.'
         : '',
     password: !password
       ? 'Crea una contraseña para continuar.'
       : password.length < 8
         ? 'Usa al menos 8 caracteres.'
         : '',
+    confirmarPassword: confirmarPassword !== password
+      ? 'Las contraseñas no coinciden.'
+      : '',
   };
-  const formularioValido = !errores.folio && !errores.correo && !errores.password;
+  const formularioValido = !errores.folio && !errores.correo && !errores.password && !errores.confirmarPassword && Boolean(confirmarPassword);
 
   function marcarCampo(campo) {
     setTouched((actual) => ({ ...actual, [campo]: true }));
@@ -34,7 +40,7 @@ export default function RegistroFolioPage() {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setTouched({ folio: true, correo: true, password: true });
+    setTouched({ folio: true, correo: true, password: true, confirmarPassword: true });
     if (!formularioValido) {
       setError('Revisa los campos marcados antes de continuar.');
       return;
@@ -129,6 +135,26 @@ export default function RegistroFolioPage() {
           />
           <span id="registro-password-help" className={`field-help ${touched.password && errores.password ? 'field-help-error' : ''}`}>
             {touched.password && errores.password ? errores.password : 'Mínimo 8 caracteres.'}
+          </span>
+        </label>
+
+        <label className={`field-group ${touched.confirmarPassword && errores.confirmarPassword ? 'field-group-error' : touched.confirmarPassword ? 'field-group-success' : ''}`}>
+          Repetir contraseña
+          <input
+            id="registro-confirmar-password"
+            name="confirmar_password"
+            type="password"
+            value={confirmarPassword}
+            onChange={(event) => setConfirmarPassword(event.target.value)}
+            onBlur={() => marcarCampo('confirmarPassword')}
+            placeholder="Repite tu contraseña"
+            autoComplete="new-password"
+            aria-describedby="registro-confirmar-password-help"
+            aria-invalid={touched.confirmarPassword && errores.confirmarPassword ? 'true' : 'false'}
+            required
+          />
+          <span id="registro-confirmar-password-help" className={`field-help ${touched.confirmarPassword && errores.confirmarPassword ? 'field-help-error' : ''}`}>
+            {touched.confirmarPassword && errores.confirmarPassword ? errores.confirmarPassword : 'Debe coincidir con la contraseña anterior.'}
           </span>
         </label>
 

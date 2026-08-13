@@ -74,6 +74,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [touched, setTouched] = useState({ correo: false, password: false });
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryError, setRecoveryError] = useState('');
+  const [recoveryMessage, setRecoveryMessage] = useState('');
 
   const correoLimpio = correo.trim();
   const errores = {
@@ -123,6 +128,36 @@ export default function LoginPage() {
       setError(requestError?.response?.data?.message || 'No se pudo iniciar sesión.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRecoverySubmit(event) {
+    event.preventDefault();
+    const email = recoveryEmail.trim().toLowerCase();
+    if (!correoValido(email)) {
+      setRecoveryError('Escribe un correo válido para solicitar la recuperación.');
+      return;
+    }
+
+    setRecoveryError('');
+    setRecoveryMessage('');
+    setRecoveryLoading(true);
+
+    try {
+      const response = await fetch('/api/v1/auth/recuperar-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ correo: email }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || 'No se pudo solicitar la recuperación.');
+      }
+      setRecoveryMessage(data.message || 'Si el correo existe, recibirás instrucciones para recuperar tu contraseña.');
+    } catch (requestError) {
+      setRecoveryError(requestError.message || 'No se pudo solicitar la recuperación.');
+    } finally {
+      setRecoveryLoading(false);
     }
   }
 
@@ -198,6 +233,41 @@ export default function LoginPage() {
           ¿Te asignaron folio y todavía no activas tu cuenta?{' '}
           <Link to="/registro-folio">Actívala aquí</Link>.
         </p>
+
+        <button
+          type="button"
+          className="auth-recovery-toggle"
+          onClick={() => {
+            setRecoveryOpen((open) => !open);
+            setRecoveryError('');
+            setRecoveryMessage('');
+          }}
+        >
+          {recoveryOpen ? 'Ocultar recuperación' : '¿Olvidaste tu contraseña?'}
+        </button>
+
+        {recoveryOpen ? (
+          <form className="auth-recovery-form" onSubmit={handleRecoverySubmit}>
+            <label className="field-group" htmlFor="recovery-email">
+              Correo de tu cuenta
+              <input
+                id="recovery-email"
+                name="recovery_email"
+                type="email"
+                value={recoveryEmail}
+                onChange={(event) => setRecoveryEmail(event.target.value)}
+                placeholder="nombre@gmail.com"
+                autoComplete="email"
+                required
+              />
+            </label>
+            {recoveryError ? <p className="error-box" role="alert">{recoveryError}</p> : null}
+            {recoveryMessage ? <p className="ok-box" role="status">{recoveryMessage}</p> : null}
+            <button type="submit" className="btn-secondary" disabled={recoveryLoading}>
+              {recoveryLoading ? 'Enviando instrucciones...' : 'Enviar instrucciones'}
+            </button>
+          </form>
+        ) : null}
       </article>
     </section>
   );
