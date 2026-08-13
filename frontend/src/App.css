@@ -648,11 +648,29 @@ main {
   color: #e5e7eb;
 }
 
+.director-calendar .rdp-root,
+.director-calendar .rdp-months,
+.director-calendar .rdp-month,
+.director-calendar .rdp-weeks,
+.director-calendar .rdp-week,
+.director-calendar .rdp-weekdays,
+.director-calendar .rdp-month_grid,
+.director-calendar .rdp-day {
+  background: #0f172a;
+}
+
 .director-calendar .rdp-month_caption,
 .director-calendar .rdp-weekday,
 .director-calendar .rdp-button_previous,
 .director-calendar .rdp-button_next {
   color: #cbd5e1;
+}
+
+.director-calendar .rdp-nav button,
+.director-calendar .rdp-button_previous,
+.director-calendar .rdp-button_next,
+.director-calendar .rdp-day_button {
+  background: transparent;
 }
 
 .director-calendar .rdp-button:hover:not([disabled]),
