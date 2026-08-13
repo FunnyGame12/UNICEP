@@ -32,6 +32,14 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.BOOLEAN,
         allowNull: false,
       },
+      id_rol: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      id_subrol: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       rol: {
         type: DataTypes.ENUM('alumno', 'docente', 'administrativo'),
         allowNull: false,
@@ -68,6 +76,18 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'id_usuario',
       sourceKey: 'id_usuario',
       as: 'eventos_auditoria',
+    });
+
+    Usuario.belongsTo(models.Rol, {
+      foreignKey: 'id_rol',
+      targetKey: 'id_rol',
+      as: 'rol_configurado',
+    });
+
+    Usuario.belongsTo(models.Subrol, {
+      foreignKey: 'id_subrol',
+      targetKey: 'id_subrol',
+      as: 'subrol_configurado',
     });
   };
 
