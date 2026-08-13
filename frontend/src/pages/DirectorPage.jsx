@@ -528,7 +528,7 @@ export default function DirectorPage() {
                     }}
                   />
                   <input
-                      className="director-time-input"
+                      className="director-time-input ui-time-input"
                     type="time"
                     value={selectedTime}
                     onChange={(event) => {
@@ -539,7 +539,7 @@ export default function DirectorPage() {
                       }
                     }}
                   />
-                    <small className="director-time-hint">Pulsa el icono del reloj para abrir el selector de hora.</small>
+                    <small className="director-time-hint ui-hint">Pulsa el icono del reloj para abrir el selector de hora.</small>
                 </div>
               ) : null}
             </div>
