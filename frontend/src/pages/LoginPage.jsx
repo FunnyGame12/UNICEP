@@ -248,7 +248,11 @@ export default function LoginPage() {
 
         {recoveryOpen ? (
           <form className="auth-recovery-form" onSubmit={handleRecoverySubmit}>
-            <label className="field-group" htmlFor="recovery-email">
+            <div className="auth-recovery-heading">
+              <strong>Recupera tu acceso</strong>
+              <span>Te enviaremos las instrucciones al correo registrado.</span>
+            </div>
+            <label className="field-group auth-recovery-field" htmlFor="recovery-email">
               Correo de tu cuenta
               <input
                 id="recovery-email"
@@ -261,9 +265,9 @@ export default function LoginPage() {
                 required
               />
             </label>
-            {recoveryError ? <p className="error-box" role="alert">{recoveryError}</p> : null}
-            {recoveryMessage ? <p className="ok-box" role="status">{recoveryMessage}</p> : null}
-            <button type="submit" className="btn-secondary" disabled={recoveryLoading}>
+            {recoveryError ? <p className="error-box auth-recovery-feedback" role="alert">{recoveryError}</p> : null}
+            {recoveryMessage ? <p className="ok-box auth-recovery-feedback" role="status">{recoveryMessage}</p> : null}
+            <button type="submit" className="btn-secondary auth-recovery-submit" disabled={recoveryLoading}>
               {recoveryLoading ? 'Enviando instrucciones...' : 'Enviar instrucciones'}
             </button>
           </form>

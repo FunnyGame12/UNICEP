@@ -283,6 +283,48 @@ main {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.auth-recovery-heading {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.auth-recovery-heading strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.auth-recovery-heading span {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.auth-recovery-field {
+  gap: 0.45rem;
+  color: var(--muted-strong);
+  font-weight: 600;
+}
+
+.auth-recovery-field input {
+  min-height: 3rem;
+  border-color: rgba(159, 193, 255, 0.28);
+  background: rgba(5, 9, 31, 0.45);
+}
+
+.auth-recovery-field input:focus {
+  border-color: rgba(159, 193, 255, 0.72);
+  box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.14);
+}
+
+.auth-recovery-submit {
+  width: 100%;
+  min-height: 3rem;
+}
+
+.auth-recovery-feedback {
+  margin: 0;
+}
+
 .auth-eyebrow {
   margin: 0 0 0.8rem;
   color: var(--brand);
