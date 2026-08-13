@@ -38,15 +38,15 @@ export default function RegistroFolioPage() {
   }
 
   return (
-    <section className="auth-shell">
-      <article className="auth-card">
+    <section className="auth-shell registration-shell">
+      <article className="auth-card registration-card">
         <p className="auth-eyebrow">Activación institucional</p>
         <h2>Crear cuenta con folio</h2>
         <p className="auth-intro">
           Si control escolar ya te asignó un folio, completa tu registro aquí para activar tu cuenta.
         </p>
 
-        <form className="form-grid" onSubmit={handleSubmit}>
+        <form className="form-grid registration-form" onSubmit={handleSubmit}>
         <label>
           Folio asignado
           <input
@@ -94,7 +94,7 @@ export default function RegistroFolioPage() {
           </button>
         </form>
 
-        <p>
+        <p className="registration-login-prompt">
           ¿Ya tienes cuenta activa? <Link to="/login">Ir a iniciar sesión</Link>
         </p>
       </article>
