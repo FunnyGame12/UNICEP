@@ -1503,11 +1503,6 @@ main {
     padding: 0.95rem;
   }
 
-  .topbar > .mobile-menu-toggle {
-    flex: 0 0 auto;
-    order: -1;
-  }
-
   .topbar h1 {
     min-width: 0;
     overflow: hidden;
