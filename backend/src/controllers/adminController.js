@@ -41,6 +41,15 @@ const ROLE_ALIASES = {
 };
 
 const MANAGED_FOLIO_ROLES = new Set(Object.keys(SECURE_FOLIO_PREFIX_BY_ROLE));
+const FOLIO_TABLE_ROLE_ORDER = {
+  director: 1,
+  control_escolar: 2,
+  coordinacion: 3,
+  docente: 4,
+  alumno: 5,
+  administrativo: 6,
+  otro: 99,
+};
 
 const VALID_FINANCIAL_STATUS = new Set(['pagado', 'pendiente', 'vencido']);
 
@@ -51,6 +60,14 @@ function normalizeRole(value) {
 function canonicalFolioRole(value) {
   const normalized = normalizeRole(value);
   return ROLE_ALIASES[normalized] || null;
+}
+
+function normalizeRoleForTable(value) {
+  const canonical = canonicalFolioRole(value);
+  if (canonical) return canonical;
+  const normalized = normalizeRole(value);
+  if (normalized === 'administrativo') return 'administrativo';
+  return normalized || 'otro';
 }
 
 function getRolePrefix(role) {
@@ -209,6 +226,45 @@ async function buscarUsuariosDirector(req, res) {
   });
 
   return res.json({ items: usuarios });
+}
+
+async function listarFoliosDirector(_req, res) {
+  const usuarios = await Usuario.findAll({
+    where: {
+      folio_matricula: {
+        [Op.ne]: null,
+      },
+    },
+    attributes: ['id_usuario', 'nombre_completo', 'correo', 'rol', 'folio_matricula', 'fecha_creacion'],
+    order: [['fecha_creacion', 'ASC'], ['id_usuario', 'ASC']],
+  });
+
+  const rows = usuarios
+    .map((item) => {
+      const roleKey = normalizeRoleForTable(item.rol);
+      return {
+        id_usuario: item.id_usuario,
+        nombre_completo: item.nombre_completo,
+        correo: item.correo,
+        rol: roleKey,
+        folio_matricula: item.folio_matricula,
+        fecha_creacion: item.fecha_creacion,
+      };
+    })
+    .sort((a, b) => {
+      const orderA = FOLIO_TABLE_ROLE_ORDER[a.rol] || FOLIO_TABLE_ROLE_ORDER.otro;
+      const orderB = FOLIO_TABLE_ROLE_ORDER[b.rol] || FOLIO_TABLE_ROLE_ORDER.otro;
+      if (orderA !== orderB) return orderA - orderB;
+      const dateA = new Date(a.fecha_creacion || 0).getTime();
+      const dateB = new Date(b.fecha_creacion || 0).getTime();
+      if (dateA !== dateB) return dateA - dateB;
+      return Number(a.id_usuario) - Number(b.id_usuario);
+    });
+
+  return res.json({
+    items: rows,
+    role_order: Object.keys(FOLIO_TABLE_ROLE_ORDER),
+  });
 }
 
 async function buscarPagosDirector(req, res) {
@@ -1324,6 +1380,7 @@ module.exports = {
   resumenUsuarios,
   crearUsuario,
   actualizarCuentaUsuario,
+  listarFoliosDirector,
   crearMateria,
   asignarDocenteAGrupo,
   listarTramites,

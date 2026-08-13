@@ -13,6 +13,7 @@ router.get('/dashboard', requirePermission(PERMISSIONS.ADMIN_DASHBOARD_READ), ad
 router.get('/director/dashboard', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.dashboard);
 router.get('/usuarios/resumen', requirePermission(PERMISSIONS.ADMIN_USUARIOS_RESUMEN_READ), adminController.resumenUsuarios);
 router.get('/director/usuarios', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.buscarUsuariosDirector);
+router.get('/director/folios', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.listarFoliosDirector);
 router.get('/director/pagos', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.buscarPagosDirector);
 router.get('/director/docentes', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.buscarDocentesDirector);
 router.get('/director/materias', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.buscarMateriasDirector);

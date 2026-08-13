@@ -145,6 +145,17 @@ function classifyEmailDomain(correo = '') {
   return 'otro';
 }
 
+function roleLabel(rol = '') {
+  const normalized = String(rol || '').trim().toLowerCase();
+  if (normalized === 'director') return 'Director';
+  if (normalized === 'control_escolar') return 'Control Escolar';
+  if (normalized === 'coordinacion') return 'Coordinación';
+  if (normalized === 'docente') return 'Docente';
+  if (normalized === 'alumno') return 'Alumno';
+  if (normalized === 'administrativo') return 'Administrativo';
+  return normalized || 'Sin rol';
+}
+
 export default function DirectorPage() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -155,6 +166,8 @@ export default function DirectorPage() {
   const [activeKpi, setActiveKpi] = useState('');
   const [lastSyncAt, setLastSyncAt] = useState('');
   const [selectedFolioUser, setSelectedFolioUser] = useState(null);
+  const [folioRows, setFolioRows] = useState([]);
+  const [folioRowsLoading, setFolioRowsLoading] = useState(false);
 
   const [usuarios, setUsuarios] = useState([]);
   const [pagos, setPagos] = useState([]);
@@ -253,6 +266,26 @@ export default function DirectorPage() {
       active = false;
     };
   }, [usuarioSearch]);
+
+  useEffect(() => {
+    let active = true;
+    setFolioRowsLoading(true);
+    api.get('/admin/director/folios')
+      .then((response) => {
+        if (!active) return;
+        setFolioRows(response?.data?.items || []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setFolioRows([]);
+      })
+      .finally(() => {
+        if (active) setFolioRowsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [lastSyncAt]);
 
   useEffect(() => {
     let active = true;
@@ -491,8 +524,8 @@ export default function DirectorPage() {
 
       <div className="director-action-grid">
         <section id="director-folios" className="director-section director-action-card">
-          <h3>Gestión de folios de usuario</h3>
-          <p>Asigna o reasigna el folio de una cuenta.</p>
+          <h3>Gestión de folios por tipos de usuario</h3>
+          <p>Asigna o reasigna folios y consulta la bitácora de folios por rol.</p>
           <form className="form-grid" onSubmit={folioUsuarioForm.handleSubmit((values) => ejecutar(() => api.patch(`/admin/usuarios/${values.id_usuario}/folio`, { folio_matricula: values.folio_matricula || undefined }), 'Folio de usuario actualizado.', () => {
             folioUsuarioForm.reset(folioUsuarioDefaults);
             setSelectedFolioUser(null);
@@ -517,6 +550,38 @@ export default function DirectorPage() {
             </div>
             <button className="btn-primary" type="submit" disabled={actionLoading}>{actionLoading ? 'Guardando...' : 'Guardar folio'}</button>
           </form>
+          <div className="director-folio-table-wrap dark-table">
+            <h4>Tabla de folios (solo vista)</h4>
+            <p className="director-folio-table-caption">Clasificada por rol y ordenada por fecha de creación.</p>
+            {folioRowsLoading ? <p className="director-audit-empty">Cargando folios...</p> : null}
+            {!folioRowsLoading && folioRows.length === 0 ? <p className="director-audit-empty">No hay folios registrados.</p> : null}
+            {!folioRowsLoading && folioRows.length > 0 ? (
+              <div className="director-folio-table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Rol</th>
+                      <th>Folio</th>
+                      <th>Nombre</th>
+                      <th>Correo</th>
+                      <th>Creado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {folioRows.map((row) => (
+                      <tr key={`${row.id_usuario}-${row.folio_matricula}`}>
+                        <td><span className="director-folio-role-chip">{roleLabel(row.rol)}</span></td>
+                        <td>{row.folio_matricula || 'N/A'}</td>
+                        <td>{row.nombre_completo || 'N/A'}</td>
+                        <td>{row.correo || 'N/A'}</td>
+                        <td>{row.fecha_creacion ? new Date(row.fecha_creacion).toLocaleString('es-MX') : 'N/A'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </div>
         </section>
 
         <section className="director-section director-action-card">

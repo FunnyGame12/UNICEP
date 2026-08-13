@@ -638,6 +638,46 @@ main {
   white-space: nowrap;
 }
 
+.director-folio-table-wrap {
+  margin-top: 0.8rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.director-folio-table-wrap h4 {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
+.director-folio-table-caption {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.director-folio-table-scroll {
+  overflow-x: auto;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+}
+
+.director-folio-table-scroll table {
+  min-width: 760px;
+}
+
+.director-folio-role-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.7rem;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  background: rgba(59, 130, 246, 0.12);
+  color: #dbeafe;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
 @media (max-width: 720px) {
   .director-folio-input-row {
     grid-template-columns: 1fr;
