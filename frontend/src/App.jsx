@@ -22,21 +22,22 @@ function App() {
   return (
     <div className="layout">
       <header className={`topbar ${hideNav ? 'topbar-login' : ''}`}>
+        {!hideNav ? (
+          <button
+            type="button"
+            className="mobile-menu-toggle"
+            aria-expanded={isMenuOpen}
+            aria-controls="site-navigation"
+            onClick={() => setIsMenuOpen((open) => !open)}
+          >
+            {isMenuOpen ? 'Cerrar' : 'Menú'}
+          </button>
+        ) : null}
         <h1>
           <Link to="/">UNICEP Merida</Link>
         </h1>
         {!hideNav ? (
           <div className="topbar-nav-wrapper">
-            <button
-              type="button"
-              className="mobile-menu-toggle"
-              aria-expanded={isMenuOpen}
-              aria-controls="site-navigation"
-              onClick={() => setIsMenuOpen((open) => !open)}
-            >
-              {isMenuOpen ? 'Cerrar' : 'Menú'}
-            </button>
-
             {!isAuthenticated ? (
               <Link to="/login" className="compact-login-short">
                 Iniciar sesión
