@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import AlumnoPage from './pages/AlumnoPage';
 import DocentePage from './pages/DocentePage';
 import AdminPage from './pages/AdminPage';
+import DirectorPage from './pages/DirectorPage';
 import LoginPage from './pages/LoginPage';
 import RegistroFolioPage from './pages/RegistroFolioPage';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -17,6 +18,14 @@ const router = createBrowserRouter([
       { path: 'inicio', element: <HomePage /> },
       { path: 'login', element: <LoginPage /> },
       { path: 'registro-folio', element: <RegistroFolioPage /> },
+      {
+        path: 'director',
+        element: (
+          <ProtectedRoute roles={['director']}>
+            <DirectorPage />
+          </ProtectedRoute>
+        ),
+      },
       {
         path: 'alumno',
         element: (
@@ -36,7 +45,7 @@ const router = createBrowserRouter([
       {
         path: 'administrativo',
         element: (
-          <ProtectedRoute roles={['director', 'control_escolar', 'coordinacion_academica', 'soporte_ti']}>
+          <ProtectedRoute roles={['control_escolar', 'coordinacion_academica']}>
             <AdminPage />
           </ProtectedRoute>
         ),

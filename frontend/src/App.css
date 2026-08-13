@@ -325,6 +325,107 @@ main {
   margin: 0;
 }
 
+.director-page {
+  display: grid;
+  gap: 1.25rem;
+  padding-bottom: 3rem;
+}
+
+.director-hero,
+.director-section {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: 0 22px 60px rgba(6, 10, 26, 0.16);
+}
+
+.director-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.75rem;
+  background: linear-gradient(135deg, rgba(20, 55, 120, 0.82), rgba(255, 255, 255, 0.06));
+}
+
+.director-hero h2 {
+  margin: 0.25rem 0 0.6rem;
+}
+
+.director-hero p:last-child,
+.director-section > p,
+.director-action-card > p {
+  color: var(--muted);
+}
+
+.director-section {
+  padding: 1.35rem;
+}
+
+.director-section h3 {
+  margin: 0 0 0.45rem;
+}
+
+.director-metric-grid,
+.director-action-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.director-metric-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.director-metric {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem;
+  border-radius: 18px;
+  background: rgba(8, 16, 43, 0.58);
+}
+
+.director-metric span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.director-metric strong {
+  font-size: 1.8rem;
+}
+
+.director-action-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.director-action-card {
+  display: grid;
+  align-content: start;
+  gap: 0.7rem;
+}
+
+.director-action-card .form-grid {
+  margin-top: 0.25rem;
+}
+
+.director-critical-card {
+  border-color: rgba(251, 191, 36, 0.36);
+  background: linear-gradient(145deg, rgba(120, 73, 15, 0.2), rgba(255, 255, 255, 0.055));
+}
+
+.director-audit-card {
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.director-audit-badge {
+  width: fit-content;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  color: #b8f7dc;
+  background: rgba(52, 211, 153, 0.12);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
 .auth-eyebrow {
   margin: 0 0 0.8rem;
   color: var(--brand);
@@ -1629,6 +1730,26 @@ main {
 
   .topbar h1 {
     font-size: 1.05rem;
+  }
+
+  .director-hero {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 1.25rem;
+  }
+
+  .director-hero .btn-secondary {
+    width: 100%;
+  }
+
+  .director-metric-grid,
+  .director-action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .director-section {
+    padding: 1rem;
+    border-radius: 18px;
   }
 
   .topbar nav,

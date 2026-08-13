@@ -118,7 +118,7 @@ export default function LoginPage() {
       });
 
       if (['director', 'control_escolar', 'coordinacion_academica', 'soporte_ti'].includes(auth.user?.rol)) {
-        navigate('/administrativo', { replace: true });
+        navigate(auth.user?.rol === 'director' ? '/director' : '/administrativo', { replace: true });
       } else if (auth.user?.rol === 'maestro') {
         navigate('/docente', { replace: true });
       } else {
