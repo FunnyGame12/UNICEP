@@ -574,6 +574,7 @@ export default function DirectorPage() {
 
   const selectedPagoFinanciero = pagos.find((item) => String(item.id) === String(financieroValues.id_pago));
   const selectedFolioRole = String(folioUsuarioValues.rol || '').trim().toLowerCase();
+  const conceptYearPrefix = String(new Date().getFullYear()).slice(-2);
 
   async function generarFolioAleatorioUsuario() {
     if (!selectedFolioRole) {
@@ -808,16 +809,19 @@ export default function DirectorPage() {
                 >Subrama (Ajuste)</button>
               </div>
 
+              <label htmlFor="director-concepto-nombre">Nombre del concepto</label>
               <input id="director-concepto-nombre" placeholder="Nombre del concepto" {...folioPagoForm.register('nombre')} />
               {folioPagoForm.formState.errors.nombre ? <small className="director-field-error">{folioPagoForm.formState.errors.nombre.message}</small> : null}
 
               {folioPagoValues.clasificacion === 'base' ? (
                 <>
+                  <label htmlFor="director-concepto-precio-base">Monto / Precio Base ($ MXN)</label>
                   <input id="director-concepto-precio-base" type="number" min="0" step="0.01" placeholder="Precio base inicial" {...folioPagoForm.register('precio_base_inicial')} />
                   {folioPagoForm.formState.errors.precio_base_inicial ? <small className="director-field-error">{folioPagoForm.formState.errors.precio_base_inicial.message}</small> : null}
                 </>
               ) : (
                 <>
+                  <label htmlFor="director-concepto-padre">Concepto origen (base)</label>
                   <select id="director-concepto-padre" {...folioPagoForm.register('id_concepto_padre')}>
                     <option value="">Concepto padre (base)</option>
                     {conceptosBaseActivos.map((base) => (
@@ -826,22 +830,28 @@ export default function DirectorPage() {
                   </select>
                   {folioPagoForm.formState.errors.id_concepto_padre ? <small className="director-field-error">{folioPagoForm.formState.errors.id_concepto_padre.message}</small> : null}
 
+                  <label htmlFor="director-concepto-naturaleza">Naturaleza del ajuste</label>
                   <select id="director-concepto-naturaleza" {...folioPagoForm.register('naturaleza_ajuste')}>
                     <option value="descuento">Descuento</option>
                     <option value="penalizacion">Penalización / Recargo</option>
                   </select>
                   {folioPagoForm.formState.errors.naturaleza_ajuste ? <small className="director-field-error">{folioPagoForm.formState.errors.naturaleza_ajuste.message}</small> : null}
 
+                  <label htmlFor="director-concepto-modo">Modo de aplicación</label>
                   <select id="director-concepto-modo" {...folioPagoForm.register('modo_aplicacion')}>
                     <option value="monto_fijo">Monto fijo</option>
                     <option value="porcentaje">Porcentaje</option>
                   </select>
                   {folioPagoForm.formState.errors.modo_aplicacion ? <small className="director-field-error">{folioPagoForm.formState.errors.modo_aplicacion.message}</small> : null}
 
+                  <label htmlFor="director-concepto-valor-ajuste">Monto / Precio Base ($ MXN)</label>
                   <input id="director-concepto-valor-ajuste" type="number" min="0.01" step="0.01" placeholder="Valor del ajuste" {...folioPagoForm.register('valor_ajuste')} />
                   {folioPagoForm.formState.errors.valor_ajuste ? <small className="director-field-error">{folioPagoForm.formState.errors.valor_ajuste.message}</small> : null}
                 </>
               )}
+
+              <label htmlFor="director-concepto-year-prefix">Año / Prefijo</label>
+              <input id="director-concepto-year-prefix" value={conceptYearPrefix} readOnly />
 
               <div className="director-folio-input-row">
                 <input id="director-folio-interno-concepto" placeholder="Folio interno (único e inmutable)" {...folioPagoForm.register('folio_interno')} disabled={Boolean(editingConceptoId)} />

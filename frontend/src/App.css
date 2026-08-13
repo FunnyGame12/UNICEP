@@ -634,7 +634,8 @@ main {
 }
 
 .director-folio-input-row .btn-secondary {
-  min-height: 3rem;
+  min-height: 42px;
+  height: 42px;
   white-space: nowrap;
 }
 
@@ -651,7 +652,7 @@ main {
 
 .director-conceptos-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  grid-template-columns: 1fr;
   gap: 0.9rem;
   align-items: start;
 }
@@ -732,16 +733,67 @@ main {
 .director-folio-filter-row input,
 .director-folio-filter-row select {
   min-height: 2.8rem;
+  background: #1f2937;
+  color: #f9fafb;
+  border: 1px solid #374151;
+}
+
+.director-conceptos-layout .form-grid input,
+.director-conceptos-layout .form-grid select,
+.director-conceptos-layout .form-grid textarea,
+.director-conceptos-layout .director-folio-input-row input,
+.director-conceptos-layout .director-folio-filter-row input,
+.director-conceptos-layout .director-folio-filter-row select,
+.director-folio-filter-row input,
+.director-folio-filter-row select {
+  background: #1f2937;
+  color: #f9fafb;
+  border: 1px solid #374151;
+}
+
+.director-conceptos-layout .form-grid input::placeholder,
+.director-conceptos-layout .director-folio-filter-row input::placeholder,
+.director-folio-filter-row input::placeholder {
+  color: #9ca3af;
 }
 
 .director-folio-table-scroll {
   overflow-x: auto;
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  border: 1px solid #374151;
   border-radius: 14px;
+  background: #1f2937;
 }
 
 .director-folio-table-scroll table {
-  min-width: 760px;
+  min-width: 0;
+  width: 100%;
+  table-layout: auto;
+  border-collapse: collapse;
+}
+
+.director-folio-table-scroll th {
+  color: #9ca3af;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: #374151;
+  font-weight: 700;
+}
+
+.director-folio-table-scroll td {
+  color: #f9fafb;
+  border-color: #374151;
+}
+
+.director-folio-table-scroll th,
+.director-folio-table-scroll td {
+  padding: 0.72rem 0.75rem;
+}
+
+.director-folio-table-scroll tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.director-conceptos-layout .director-folio-table-scroll {
+  overflow-x: hidden;
 }
 
 .director-folio-role-chip {
