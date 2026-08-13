@@ -626,10 +626,12 @@ main {
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
 }
 
-.director-calendar input[type='time'] {
+.director-calendar input[type='time'],
+.director-time-input {
   width: 100%;
   margin-top: 0.6rem;
   padding: 0.7rem 0.8rem;
+  padding-right: 2.8rem;
   border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   background: #111c33;
@@ -639,14 +641,35 @@ main {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.director-calendar input[type='time']:focus-visible {
+.director-calendar input[type='time']:focus-visible,
+.director-time-input:focus-visible {
   outline: 2px solid rgba(96, 165, 250, 0.34);
   border-color: rgba(96, 165, 250, 0.5);
 }
 
-.director-calendar input[type='time']::-webkit-calendar-picker-indicator {
-  filter: invert(0.9) sepia(0.05) saturate(0.5) hue-rotate(180deg) brightness(0.95);
+.director-calendar input[type='time']::-webkit-calendar-picker-indicator,
+.director-time-input::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  width: 1.1rem;
+  height: 1.1rem;
+  padding: 0.2rem;
+  border-radius: 8px;
+  border: 1px solid rgba(139, 187, 255, 0.52);
+  background: linear-gradient(145deg, rgba(90, 149, 255, 0.34), rgba(63, 120, 255, 0.22));
+  box-shadow: 0 0 0 3px rgba(63, 120, 255, 0.16);
+  filter: invert(0.95) sepia(0.08) saturate(0.55) hue-rotate(180deg) brightness(1);
   cursor: pointer;
+}
+
+.director-calendar input[type='time']::-webkit-calendar-picker-indicator:hover,
+.director-time-input::-webkit-calendar-picker-indicator:hover {
+  box-shadow: 0 0 0 4px rgba(63, 120, 255, 0.24);
+}
+
+.director-time-hint {
+  margin-top: 0.4rem;
+  color: #bfdbfe;
+  font-size: 0.76rem;
 }
 
 .director-calendar .rdp-root {
