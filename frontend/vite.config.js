@@ -20,10 +20,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: null,
       devOptions: {
         enabled: false,
       },
-      includeAssets: ['vite.svg'],
+      includeAssets: ['favicon.svg'],
       manifest: {
         name: 'UNICEP Ecosistema Digital',
         short_name: 'UNICEP',
@@ -34,13 +35,13 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/vite.svg',
-            sizes: '192x192',
+            src: '/favicon.svg',
+            sizes: '48x46',
             type: 'image/svg+xml',
           },
           {
-            src: '/vite.svg',
-            sizes: '512x512',
+            src: '/favicon.svg',
+            sizes: '48x46',
             type: 'image/svg+xml',
           },
         ],
