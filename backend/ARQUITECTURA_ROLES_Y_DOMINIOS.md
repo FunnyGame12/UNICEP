@@ -44,6 +44,9 @@ Alinear el backend con la documentacion funcional para que los roles base, subro
 - Acciones criticas generan evento de auditoria (`auditoria_eventos`).
 - Control Escolar controla altas, bajas y cambios de asignacion alumno-grupo con trazabilidad.
 - Director puede autorizar excepciones extemporaneas de calificacion.
+- Maestros y alumnos tienen filtrado obligatorio por contexto: cada query debe usar el ID del usuario autenticado y el alcance de sus entidades.
+- Soporte TI puede mantener infraestructura y bases de datos, pero no puede operar transacciones financieras desde la interfaz ni mediante endpoints de negocio.
+- El permiso de modificacion de calificaciones del maestro se bloquea al cerrar el periodo ordinario y solo se habilita con una excepcion vigente emitida por Director.
 
 ## Interdependencias del modelo
 - Usuario es raiz de identidad para alumno/docente.
@@ -56,3 +59,5 @@ Alinear el backend con la documentacion funcional para que los roles base, subro
 - Completar middleware de scope por entidad para reutilizar validaciones en controladores.
 - Exponer consulta paginada y filtrada de `auditoria_eventos` para direccion y control escolar.
 - Agregar trazabilidad de IP y user-agent en auditoria para capa de cumplimiento.
+- Implementar pruebas de aislamiento entre usuarios del mismo rol y pruebas de bloqueo financiero para Soporte TI.
+- Implementar tokens de excepcion de calificacion con alcance, expiracion, revocacion y auditoria completa.

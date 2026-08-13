@@ -442,6 +442,30 @@ Cada solicitud protegida valida:
 - Logs de auditoria para cambios criticos
 - CORS restringido por origen confiable
 
+### 6.4 Filtrado por contexto (scope data)
+- Toda consulta de maestros y alumnos debe condicionarse obligatoriamente al usuario autenticado.
+- El backend debe obtener el identificador desde el token/sesion (`session.user_id` o equivalente), nunca desde un valor enviado por el cliente.
+- Las consultas de maestros deben aplicar el alcance del docente, por ejemplo `WHERE docente_id = session.user_id`, y validar tambien la pertenencia de la materia, grupo o entrega.
+- Las consultas de alumnos deben aplicar el alcance individual, por ejemplo `WHERE alumno_id = session.user_id`, para tareas, entregas, calificaciones, pagos, tramites, plan y evidencias.
+- Un usuario no puede consultar, modificar ni inferir registros de otro usuario del mismo rol cambiando parametros, IDs o rutas.
+- Las pruebas de autorizacion deben cubrir al menos dos usuarios distintos del mismo rol y comprobar respuestas `403` o resultados vacios segun la politica del endpoint.
+
+### 6.5 Segregacion financiera para Soporte TI
+- Soporte TI puede acceder a bases de datos, respaldos y herramientas de mantenimiento tecnico bajo auditoria.
+- Las interfaces graficas de transacciones economicas deben permanecer bloqueadas para `soporte_ti`.
+- El bloqueo aplica a pagos, becas, condonaciones, cambios de estatus financiero, desbloqueos manuales y cualquier operacion que modifique saldos o referencias.
+- El backend debe rechazar tambien estas operaciones aunque el usuario intente invocarlas directamente, incluso si tiene acceso tecnico a infraestructura.
+- Todo acceso de mantenimiento de Soporte TI debe registrar actor, modulo, accion, entidad, fecha, IP y resultado en `auditoria_eventos`.
+
+### 6.6 Control temporal de calificaciones y excepciones
+- El maestro conserva permiso de modificacion (`U`) sobre calificaciones unicamente dentro del periodo ordinario de evaluacion.
+- El backend debe comprobar el periodo academico y la ventana de evaluacion en cada alta o modificacion; no debe confiar en que la interfaz oculte el boton.
+- Una vez cerrado el periodo ordinario, toda modificacion debe rechazarse por defecto.
+- La edicion extemporanea requiere una autorizacion vigente otorgada exclusivamente por el Director, asociada al docente, materia, alumno o entrega, periodo, motivo y fecha de expiracion.
+- La autorizacion debe utilizar un token o estado de excepcion no reutilizable y quedar registrada en `auditoria_eventos`.
+- El maestro debe presentar la autorizacion al registrar el cambio; el backend debe validar su vigencia, alcance y que no haya sido revocada.
+- Cada cambio extemporaneo debe conservar valor anterior, valor nuevo, actor, autorizador, motivo, timestamp e identificadores de la entidad afectada.
+
 ---
 
 ## 7. Integraciones Externas
