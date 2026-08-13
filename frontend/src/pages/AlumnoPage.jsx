@@ -487,6 +487,8 @@ export default function AlumnoPage() {
                     <label>
                       URL de entrega
                       <input
+                        id={`entrega-url-${item.id_tarea}`}
+                        name={`entrega_url_${item.id_tarea}`}
                         type="url"
                         value={entregaLinks[item.id_tarea] ?? item.entrega?.archivo_entrega_url ?? ''}
                         onChange={(event) => setEntregaLinks((actual) => ({ ...actual, [item.id_tarea]: event.target.value }))}
@@ -748,15 +750,15 @@ export default function AlumnoPage() {
         <form className="form-grid admin-form-grid" onSubmit={handleCrearTramite}>
           <h4>Nuevo trámite</h4>
           <label>Tipo
-            <select value={tramiteForm.tipo} onChange={(event) => setTramiteForm((current) => ({ ...current, tipo: event.target.value }))}>
+            <select id="tramite-tipo" name="tipo" value={tramiteForm.tipo} onChange={(event) => setTramiteForm((current) => ({ ...current, tipo: event.target.value }))}>
               {Object.entries(tramiteLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
           <label className="admin-form-wide">Descripción
-            <input value={tramiteForm.descripcion} onChange={(event) => setTramiteForm((current) => ({ ...current, descripcion: event.target.value }))} placeholder="Explica el trámite o la solicitud que deseas registrar" />
+            <input id="tramite-descripcion" name="descripcion" value={tramiteForm.descripcion} onChange={(event) => setTramiteForm((current) => ({ ...current, descripcion: event.target.value }))} placeholder="Explica el trámite o la solicitud que deseas registrar" />
           </label>
           <label className="admin-form-wide">Adjunto o referencia
-            <input value={tramiteForm.adjunto_url} onChange={(event) => setTramiteForm((current) => ({ ...current, adjunto_url: event.target.value }))} placeholder="https://... (opcional)" />
+            <input id="tramite-adjunto-url" name="adjunto_url" value={tramiteForm.adjunto_url} onChange={(event) => setTramiteForm((current) => ({ ...current, adjunto_url: event.target.value }))} placeholder="https://... (opcional)" />
           </label>
           <button type="submit" className="btn-primary admin-btn admin-btn-save">Enviar trámite</button>
         </form>

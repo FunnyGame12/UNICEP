@@ -48,6 +48,8 @@ export default function RegistroFolioPage() {
         <label>
           Folio asignado
           <input
+            id="registro-folio"
+            name="folio"
             type="text"
             value={folio}
             onChange={(event) => setFolio(event.target.value)}
@@ -59,6 +61,8 @@ export default function RegistroFolioPage() {
         <label>
           Correo institucional o personal
           <input
+            id="registro-correo"
+            name="correo"
             type="email"
             value={correo}
             onChange={(event) => setCorreo(event.target.value)}
@@ -70,6 +74,8 @@ export default function RegistroFolioPage() {
         <label>
           Password
           <input
+            id="registro-password"
+            name="password"
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}

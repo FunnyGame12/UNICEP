@@ -342,8 +342,8 @@ export default function DocentePage() {
       <section id="docente-anuncios" className="card-panel teacher-section">
         <div className="section-heading"><h3>Publicar anuncios</h3><p>Genera avisos rápidos para tus grupos o para una materia específica.</p></div>
         <form className="form-grid teacher-form" onSubmit={handleCreateAnuncio}>
-          <label>Título<input type="text" value={anuncioForm.titulo} onChange={(event) => setAnuncioForm((prev) => ({ ...prev, titulo: event.target.value }))} required /></label>
-          <label>Descripción<textarea value={anuncioForm.descripcion} onChange={(event) => setAnuncioForm((prev) => ({ ...prev, descripcion: event.target.value }))} rows="4" required /></label>
+          <label>Título<input id="anuncio-titulo" name="titulo" type="text" value={anuncioForm.titulo} onChange={(event) => setAnuncioForm((prev) => ({ ...prev, titulo: event.target.value }))} required /></label>
+          <label>Descripción<textarea id="anuncio-descripcion" name="descripcion" value={anuncioForm.descripcion} onChange={(event) => setAnuncioForm((prev) => ({ ...prev, descripcion: event.target.value }))} rows="4" required /></label>
           <CustomDropdown
             label="Dirigidos a la materia..."
             value={anuncioForm.id_materia}
@@ -374,10 +374,10 @@ export default function DocentePage() {
             onChange={(nextValue) => setTareaForm((prev) => ({ ...prev, id_materia: nextValue }))}
             placeholder="Selecciona una materia"
           />
-          <label>Título<input type="text" value={tareaForm.titulo} onChange={(event) => setTareaForm((prev) => ({ ...prev, titulo: event.target.value }))} required /></label>
-          <label>Descripción<textarea rows="4" value={tareaForm.descripcion} onChange={(event) => setTareaForm((prev) => ({ ...prev, descripcion: event.target.value }))} required /></label>
-          <label className="teacher-datetime-field">Fecha y hora límite<input className="teacher-datetime-input" type="datetime-local" value={tareaForm.fecha_limite} onChange={(event) => setTareaForm((prev) => ({ ...prev, fecha_limite: event.target.value }))} required /></label>
-          <label>Archivo adjunto opcional<input type="url" value={tareaForm.archivo_adjunto_url} onChange={(event) => setTareaForm((prev) => ({ ...prev, archivo_adjunto_url: event.target.value }))} placeholder="https://..." /></label>
+          <label>Título<input id="tarea-titulo" name="titulo" type="text" value={tareaForm.titulo} onChange={(event) => setTareaForm((prev) => ({ ...prev, titulo: event.target.value }))} required /></label>
+          <label>Descripción<textarea id="tarea-descripcion" name="descripcion" rows="4" value={tareaForm.descripcion} onChange={(event) => setTareaForm((prev) => ({ ...prev, descripcion: event.target.value }))} required /></label>
+          <label className="teacher-datetime-field">Fecha y hora límite<input id="tarea-fecha-limite" name="fecha_limite" className="teacher-datetime-input" type="datetime-local" value={tareaForm.fecha_limite} onChange={(event) => setTareaForm((prev) => ({ ...prev, fecha_limite: event.target.value }))} required /></label>
+          <label>Archivo adjunto opcional<input id="tarea-archivo-url" name="archivo_adjunto_url" type="url" value={tareaForm.archivo_adjunto_url} onChange={(event) => setTareaForm((prev) => ({ ...prev, archivo_adjunto_url: event.target.value }))} placeholder="https://..." /></label>
           <button type="submit" className="btn-primary mini-action-button teacher-action-button">Crear tarea</button>
         </form>
         <div className="teacher-card-grid">
@@ -405,8 +405,8 @@ export default function DocentePage() {
               <span>Entrega: {formatDate(item.fecha_entrega, true)}</span>
               <a href={item.archivo_entrega_url} target="_blank" rel="noreferrer">Abrir evidencia</a>
               <div className="teacher-grade-grid">
-                <input type="number" min="0" max="10" step="0.1" placeholder="Calificación" value={grading[item.id_entrega]?.calificacion || ''} onChange={(event) => setGrading((prev) => ({ ...prev, [item.id_entrega]: { ...prev[item.id_entrega], calificacion: event.target.value } }))} />
-                <textarea rows="3" placeholder="Retroalimentación" value={grading[item.id_entrega]?.retroalimentacion || ''} onChange={(event) => setGrading((prev) => ({ ...prev, [item.id_entrega]: { ...prev[item.id_entrega], retroalimentacion: event.target.value } }))} />
+                <input id={`calificacion-${item.id_entrega}`} name={`calificacion_${item.id_entrega}`} type="number" min="0" max="10" step="0.1" placeholder="Calificación" value={grading[item.id_entrega]?.calificacion || ''} onChange={(event) => setGrading((prev) => ({ ...prev, [item.id_entrega]: { ...prev[item.id_entrega], calificacion: event.target.value } }))} />
+                <textarea id={`retroalimentacion-${item.id_entrega}`} name={`retroalimentacion_${item.id_entrega}`} rows="3" placeholder="Retroalimentación" value={grading[item.id_entrega]?.retroalimentacion || ''} onChange={(event) => setGrading((prev) => ({ ...prev, [item.id_entrega]: { ...prev[item.id_entrega], retroalimentacion: event.target.value } }))} />
                 <button type="button" className="btn-secondary alumno-inline-button teacher-secondary-action" onClick={() => handleCalificar(item.id_entrega)}>Guardar calificación</button>
               </div>
             </article>
@@ -424,8 +424,8 @@ export default function DocentePage() {
             onChange={(nextValue) => setAsistenciaForm((prev) => ({ ...prev, id_materia: nextValue }))}
             placeholder="Selecciona una materia"
           />
-          <label>ID alumno (opcional)<input type="number" min="1" value={asistenciaForm.id_alumno} onChange={(event) => setAsistenciaForm((prev) => ({ ...prev, id_alumno: event.target.value }))} /></label>
-          <label className="teacher-datetime-field">Fecha clase<input className="teacher-datetime-input" type="datetime-local" value={asistenciaForm.fecha_clase} onChange={(event) => setAsistenciaForm((prev) => ({ ...prev, fecha_clase: event.target.value }))} /></label>
+          <label>ID alumno (opcional)<input id="asistencia-id-alumno" name="id_alumno" type="number" min="1" value={asistenciaForm.id_alumno} onChange={(event) => setAsistenciaForm((prev) => ({ ...prev, id_alumno: event.target.value }))} /></label>
+          <label className="teacher-datetime-field">Fecha clase<input id="asistencia-fecha-clase" name="fecha_clase" className="teacher-datetime-input" type="datetime-local" value={asistenciaForm.fecha_clase} onChange={(event) => setAsistenciaForm((prev) => ({ ...prev, fecha_clase: event.target.value }))} /></label>
           <CustomDropdown
             label="Asistencia"
             value={asistenciaForm.estatus_asistencia}
@@ -440,7 +440,7 @@ export default function DocentePage() {
             onChange={(nextValue) => setAsistenciaForm((prev) => ({ ...prev, aprovechamiento: nextValue }))}
             placeholder="Selecciona nivel"
           />
-          <label>Observaciones<textarea rows="3" value={asistenciaForm.observaciones} onChange={(event) => setAsistenciaForm((prev) => ({ ...prev, observaciones: event.target.value }))} /></label>
+          <label>Observaciones<textarea id="asistencia-observaciones" name="observaciones" rows="3" value={asistenciaForm.observaciones} onChange={(event) => setAsistenciaForm((prev) => ({ ...prev, observaciones: event.target.value }))} /></label>
           <button type="submit" className="btn-primary mini-action-button teacher-action-button">Registrar control diario</button>
         </form>
 
@@ -505,7 +505,7 @@ export default function DocentePage() {
             onChange={(nextValue) => setMaterialForm((prev) => ({ ...prev, id_materia: nextValue }))}
             placeholder="Selecciona una materia"
           />
-          <label>Tema o semana<input type="text" value={materialForm.tema_semana} onChange={(event) => setMaterialForm((prev) => ({ ...prev, tema_semana: event.target.value }))} required /></label>
+          <label>Tema o semana<input id="material-tema" name="tema_semana" type="text" value={materialForm.tema_semana} onChange={(event) => setMaterialForm((prev) => ({ ...prev, tema_semana: event.target.value }))} required /></label>
           <CustomDropdown
             label="Tipo de recurso"
             value={materialForm.tipo_archivo}
@@ -513,7 +513,7 @@ export default function DocentePage() {
             onChange={(nextValue) => setMaterialForm((prev) => ({ ...prev, tipo_archivo: nextValue }))}
             placeholder="Selecciona un tipo de recurso"
           />
-          <label>URL del recurso<input type="url" value={materialForm.archivo_url} onChange={(event) => setMaterialForm((prev) => ({ ...prev, archivo_url: event.target.value }))} required /></label>
+          <label>URL del recurso<input id="material-url" name="archivo_url" type="url" value={materialForm.archivo_url} onChange={(event) => setMaterialForm((prev) => ({ ...prev, archivo_url: event.target.value }))} required /></label>
           <button type="submit" className="btn-primary mini-action-button teacher-action-button">Publicar material</button>
         </form>
         <div className="teacher-card-grid">
@@ -573,10 +573,10 @@ export default function DocentePage() {
       <section id="docente-salas" className="card-panel teacher-section">
         <div className="section-heading"><h3>Clases en vivo</h3><p>Crea sesiones y, si no defines enlace, se genera automáticamente por plataforma.</p></div>
         <form className="form-grid teacher-form" onSubmit={handleCreateSala}>
-          <label>Título<input type="text" value={salaForm.titulo} onChange={(event) => setSalaForm((prev) => ({ ...prev, titulo: event.target.value }))} required /></label>
-          <label>Plataforma<input type="text" value={salaForm.plataforma} onChange={(event) => setSalaForm((prev) => ({ ...prev, plataforma: event.target.value }))} required /></label>
-          <label>Enlace (opcional)<input type="url" value={salaForm.enlace} onChange={(event) => setSalaForm((prev) => ({ ...prev, enlace: event.target.value }))} placeholder="Si lo dejas vacío, se autogenera" /></label>
-          <label className="teacher-datetime-field">Fecha programada<input className="teacher-datetime-input" type="datetime-local" value={salaForm.fecha_programada} onChange={(event) => setSalaForm((prev) => ({ ...prev, fecha_programada: event.target.value }))} required /></label>
+          <label>Título<input id="sala-titulo" name="titulo" type="text" value={salaForm.titulo} onChange={(event) => setSalaForm((prev) => ({ ...prev, titulo: event.target.value }))} required /></label>
+          <label>Plataforma<input id="sala-plataforma" name="plataforma" type="text" value={salaForm.plataforma} onChange={(event) => setSalaForm((prev) => ({ ...prev, plataforma: event.target.value }))} required /></label>
+          <label>Enlace (opcional)<input id="sala-enlace" name="enlace" type="url" value={salaForm.enlace} onChange={(event) => setSalaForm((prev) => ({ ...prev, enlace: event.target.value }))} placeholder="Si lo dejas vacío, se autogenera" /></label>
+          <label className="teacher-datetime-field">Fecha programada<input id="sala-fecha-programada" name="fecha_programada" className="teacher-datetime-input" type="datetime-local" value={salaForm.fecha_programada} onChange={(event) => setSalaForm((prev) => ({ ...prev, fecha_programada: event.target.value }))} required /></label>
           <button type="submit" className="btn-primary mini-action-button teacher-action-button">Crear sala</button>
         </form>
         <div className="teacher-list">

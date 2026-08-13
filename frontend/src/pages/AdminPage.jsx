@@ -86,6 +86,8 @@ export default function AdminPage() {
         <label>
           ID Alumno
           <input
+            id="asignacion-id-alumno"
+            name="id_alumno"
             type="number"
             min="1"
             value={form.id_alumno}
@@ -97,6 +99,8 @@ export default function AdminPage() {
         <label>
           ID Materia
           <input
+            id="asignacion-id-materia"
+            name="id_materia"
             type="number"
             min="1"
             value={form.id_materia}
@@ -108,6 +112,8 @@ export default function AdminPage() {
         <label>
           Grupo
           <input
+            id="asignacion-grupo"
+            name="grupo"
             type="text"
             value={form.grupo}
             onChange={(event) => setForm((prev) => ({ ...prev, grupo: event.target.value }))}
@@ -131,6 +137,8 @@ export default function AdminPage() {
         <label>
           ID Alumno
           <input
+            id="filtro-id-alumno"
+            name="filtro_id_alumno"
             type="number"
             min="1"
             value={filters.id_alumno}
@@ -141,6 +149,8 @@ export default function AdminPage() {
         <label>
           ID Materia
           <input
+            id="filtro-id-materia"
+            name="filtro_id_materia"
             type="number"
             min="1"
             value={filters.id_materia}
@@ -151,6 +161,8 @@ export default function AdminPage() {
         <label>
           Grupo
           <input
+            id="filtro-grupo"
+            name="filtro_grupo"
             type="text"
             value={filters.grupo}
             onChange={(event) => setFilters((prev) => ({ ...prev, grupo: event.target.value }))}

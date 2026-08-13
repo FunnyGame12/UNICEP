@@ -139,6 +139,8 @@ export default function LoginPage() {
           <label className={`field-group ${touched.correo && errores.correo ? 'field-group-error' : touched.correo ? 'field-group-success' : ''}`}>
             Correo electrónico
             <input
+              id="login-correo"
+              name="correo"
               type="email"
               value={correo}
               onChange={(event) => setCorreo(event.target.value)}
@@ -156,6 +158,8 @@ export default function LoginPage() {
             Contraseña
             <div className="password-field">
               <input
+                id="login-password"
+                name="password"
                 type={mostrarPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
