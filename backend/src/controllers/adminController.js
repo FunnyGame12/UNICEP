@@ -115,6 +115,49 @@ async function resumenUsuarios(_req, res) {
   return res.json({ alumnos, docentes, administrativos });
 }
 
+async function buscarUsuariosDirector(req, res) {
+  const query = String(req.query.q || '').trim();
+  const where = query
+    ? {
+      [Op.or]: [
+        { nombre_completo: { [Op.like]: `%${query}%` } },
+        { correo: { [Op.like]: `%${query}%` } },
+        { folio_matricula: { [Op.like]: `%${query}%` } },
+      ],
+    }
+    : {};
+
+  const usuarios = await Usuario.findAll({
+    where,
+    attributes: ['id_usuario', 'nombre_completo', 'correo', 'folio_matricula', 'rol'],
+    order: [['nombre_completo', 'ASC']],
+    limit: 25,
+  });
+
+  return res.json({ items: usuarios });
+}
+
+async function buscarPagosDirector(req, res) {
+  const query = String(req.query.q || '').trim();
+  const where = query
+    ? {
+      [Op.or]: [
+        { concepto: { [Op.like]: `%${query}%` } },
+        { folio_interno: { [Op.like]: `%${query}%` } },
+      ],
+    }
+    : {};
+
+  const pagos = await PagoEstatus.findAll({
+    where,
+    attributes: ['id_pago', 'id_alumno', 'concepto', 'monto', 'estatus', 'folio_interno'],
+    order: [['id_pago', 'DESC']],
+    limit: 25,
+  });
+
+  return res.json({ items: pagos });
+}
+
 async function dashboard(_req, res) {
   const [
     totalMaterias,
@@ -1053,6 +1096,8 @@ async function desasignarAlumnoDeGrupo(req, res) {
 }
 
 module.exports = {
+  buscarUsuariosDirector,
+  buscarPagosDirector,
   dashboard,
   resumenUsuarios,
   crearUsuario,

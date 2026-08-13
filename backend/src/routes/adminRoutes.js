@@ -12,6 +12,8 @@ router.use(auth(ADMIN_ROLES));
 router.get('/dashboard', requirePermission(PERMISSIONS.ADMIN_DASHBOARD_READ), adminController.dashboard);
 router.get('/director/dashboard', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.dashboard);
 router.get('/usuarios/resumen', requirePermission(PERMISSIONS.ADMIN_USUARIOS_RESUMEN_READ), adminController.resumenUsuarios);
+router.get('/director/usuarios', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.buscarUsuariosDirector);
+router.get('/director/pagos', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.buscarPagosDirector);
 router.post('/usuarios', requirePermission(PERMISSIONS.ADMIN_USUARIOS_CREATE), adminController.crearUsuario);
 router.patch('/usuarios/:id_usuario/cuenta', requirePermission(PERMISSIONS.ADMIN_CUENTAS_UPDATE), adminController.actualizarCuentaUsuario);
 
