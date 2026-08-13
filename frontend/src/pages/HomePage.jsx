@@ -352,8 +352,7 @@ export default function HomePage() {
                 <div className="oferta-mobile-actions">
                   <a
                     href={selectedOfferPdfUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                    target="_self"
                     className="btn btn-primary oferta-mobile-btn"
                   >
                     Abrir PDF
