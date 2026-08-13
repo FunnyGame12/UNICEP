@@ -633,7 +633,20 @@ main {
   border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   background: #111c33;
-  color: var(--text);
+  color: #e5e7eb;
+  color-scheme: dark;
+  appearance: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.director-calendar input[type='time']:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.34);
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
+.director-calendar input[type='time']::-webkit-calendar-picker-indicator {
+  filter: invert(0.9) sepia(0.05) saturate(0.5) hue-rotate(180deg) brightness(0.95);
+  cursor: pointer;
 }
 
 .director-calendar .rdp-root {
