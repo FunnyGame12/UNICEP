@@ -19,6 +19,23 @@ function App() {
     logout();
   };
 
+  const directorLinks = [
+    ['Resumen', '#director-supervision'],
+    ['Folios', '#director-folios'],
+    ['Finanzas', '#director-finanzas'],
+    ['Académico', '#director-academico'],
+    ['Aulas', '#director-infraestructura'],
+    ['Auditoría', '#director-auditoria'],
+  ];
+
+  const authenticatedLinks = user?.rol === 'director'
+    ? directorLinks
+    : user?.rol === 'alumno'
+      ? [['Mi panel', '/alumno']]
+      : user?.rol === 'maestro'
+        ? [['Mi panel', '/docente']]
+        : [['Panel administrativo', '/administrativo']];
+
   return (
     <div className="layout">
       <header className={`topbar ${hideNav ? 'topbar-login' : ''}`}>
@@ -47,15 +64,23 @@ function App() {
               id="site-navigation"
               className={`topbar-nav ${isMenuOpen ? 'is-open' : ''}`}
             >
-              <a href="/#inicio" className="nav-section-link">Inicio</a>
-              <a href="/#quienes-somos" className="nav-section-link">Identidad Institucional</a>
-              <a href="/#modelo" className="nav-section-link">Modelo Educativo</a>
-              <a href="/#oferta" className="nav-section-link">Oferta Académica</a>
-              <a href="/#horarios" className="nav-section-link">Horarios</a>
-              <a href="/#campus" className="nav-section-link">Campus</a>
-              <a href="/#servicios" className="nav-section-link">Servicios</a>
-              <a href="/#planteles" className="nav-section-link">Planteles</a>
-              <a href="/#contacto" className="nav-section-link">Contacto</a>
+              {(isAuthenticated ? authenticatedLinks : [
+                ['Inicio', '/#inicio'],
+                ['Identidad Institucional', '/#quienes-somos'],
+                ['Modelo Educativo', '/#modelo'],
+                ['Oferta Académica', '/#oferta'],
+                ['Horarios', '/#horarios'],
+                ['Campus', '/#campus'],
+                ['Servicios', '/#servicios'],
+                ['Planteles', '/#planteles'],
+                ['Contacto', '/#contacto'],
+              ]).map(([label, href]) => (
+                href.startsWith('#') ? (
+                  <a key={label} href={href} className="nav-section-link">{label}</a>
+                ) : (
+                  <Link key={label} to={href} className="nav-section-link">{label}</Link>
+                )
+              ))}
               {!isAuthenticated ? <Link to="/registro-folio">Registro</Link> : null}
               {!isAuthenticated ? (
                 <Link to="/login" className="btn-navbar menu-login-link">

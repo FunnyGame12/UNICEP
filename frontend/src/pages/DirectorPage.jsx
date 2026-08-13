@@ -64,15 +64,6 @@ export default function DirectorPage() {
 
       <ActionMessage message={message} />
 
-      <nav className="director-quick-nav" aria-label="Módulos de dirección">
-        <a href="#director-supervision">Resumen</a>
-        <a href="#director-folios">Folios</a>
-        <a href="#director-finanzas">Finanzas</a>
-        <a href="#director-academico">Académico</a>
-        <a href="#director-infraestructura">Aulas</a>
-        <a href="#director-auditoria">Auditoría</a>
-      </nav>
-
       <section id="director-supervision" className="director-section">
         <div className="section-heading">
           <h3>Supervisión integral</h3>
