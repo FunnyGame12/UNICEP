@@ -7,6 +7,7 @@ const {
   sequelize,
   Sequelize,
   Usuario,
+  ConceptoPago,
   PagoEstatus,
   PeriodoAcademico,
   PlanEstudio,
@@ -52,6 +53,11 @@ const FOLIO_TABLE_ROLE_ORDER = {
 };
 
 const VALID_FINANCIAL_STATUS = new Set(['pagado', 'pendiente', 'vencido']);
+const CONCEPTO_CLASIFICACION = new Set(['base', 'subrama']);
+const CONCEPTO_NATURALEZA = new Set(['descuento', 'penalizacion']);
+const CONCEPTO_MODO = new Set(['monto_fijo', 'porcentaje']);
+
+let conceptoPagoSchemaReadyPromise;
 
 function normalizeRole(value) {
   return String(value || '').trim().toLowerCase();
@@ -68,6 +74,443 @@ function normalizeRoleForTable(value) {
   const normalized = normalizeRole(value);
   if (normalized === 'administrativo') return 'administrativo';
   return normalized || 'otro';
+}
+
+function normalizeText(value) {
+  return String(value || '').trim();
+}
+
+function normalizeFolioInterno(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function normalizeClasificacion(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function parseNullableNumber(value) {
+  if (value === '' || value === undefined || value === null) return null;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? Number.NaN : parsed;
+}
+
+async function ensureConceptoPagoSchema() {
+  if (conceptoPagoSchemaReadyPromise) {
+    return conceptoPagoSchemaReadyPromise;
+  }
+
+  conceptoPagoSchemaReadyPromise = (async () => {
+    const qi = sequelize.getQueryInterface();
+    const tableName = 'conceptos_pago';
+    const desc = await qi.describeTable(tableName);
+
+    if (!desc.clasificacion) {
+      await qi.addColumn(tableName, 'clasificacion', {
+        type: Sequelize.ENUM('base', 'subrama'),
+        allowNull: false,
+        defaultValue: 'base',
+      });
+    }
+
+    if (!desc.precio_base_inicial) {
+      await qi.addColumn(tableName, 'precio_base_inicial', {
+        type: Sequelize.DECIMAL(12, 2),
+        allowNull: true,
+      });
+    }
+
+    if (!desc.id_concepto_padre) {
+      await qi.addColumn(tableName, 'id_concepto_padre', {
+        type: Sequelize.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'conceptos_pago',
+          key: 'id_concepto_pago',
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'CASCADE',
+      });
+    }
+
+    if (!desc.naturaleza_ajuste) {
+      await qi.addColumn(tableName, 'naturaleza_ajuste', {
+        type: Sequelize.ENUM('descuento', 'penalizacion'),
+        allowNull: true,
+      });
+    }
+
+    if (!desc.modo_aplicacion) {
+      await qi.addColumn(tableName, 'modo_aplicacion', {
+        type: Sequelize.ENUM('monto_fijo', 'porcentaje'),
+        allowNull: true,
+      });
+    }
+
+    if (!desc.valor_ajuste) {
+      await qi.addColumn(tableName, 'valor_ajuste', {
+        type: Sequelize.DECIMAL(12, 2),
+        allowNull: true,
+      });
+    }
+
+    if (!desc.folio_interno) {
+      await qi.addColumn(tableName, 'folio_interno', {
+        type: Sequelize.STRING(80),
+        allowNull: true,
+      });
+      await sequelize.query('UPDATE conceptos_pago SET folio_interno = UPPER(clave) WHERE folio_interno IS NULL OR folio_interno = \''\'');
+      await qi.changeColumn(tableName, 'folio_interno', {
+        type: Sequelize.STRING(80),
+        allowNull: false,
+      });
+    }
+
+    const indexes = await qi.showIndex(tableName);
+    const hasUniqueFolioIndex = indexes.some((idx) => idx.name === 'conceptos_pago_folio_interno_unique');
+    if (!hasUniqueFolioIndex) {
+      await qi.addIndex(tableName, ['folio_interno'], {
+        unique: true,
+        name: 'conceptos_pago_folio_interno_unique',
+      });
+    }
+  })();
+
+  return conceptoPagoSchemaReadyPromise;
+}
+
+function validateConceptoPayload(payload, { isEdit = false } = {}) {
+  const nombre = normalizeText(payload.nombre);
+  const clasificacion = normalizeClasificacion(payload.clasificacion);
+  const folioInterno = normalizeFolioInterno(payload.folio_interno);
+  const naturalezaAjuste = normalizeClasificacion(payload.naturaleza_ajuste);
+  const modoAplicacion = normalizeClasificacion(payload.modo_aplicacion);
+  const precioBaseInicial = parseNullableNumber(payload.precio_base_inicial);
+  const valorAjuste = parseNullableNumber(payload.valor_ajuste);
+  const idConceptoPadre = payload.id_concepto_padre ? Number(payload.id_concepto_padre) : null;
+
+  if (!nombre || nombre.length < 3) {
+    return { error: 'nombre debe tener al menos 3 caracteres.' };
+  }
+
+  if (!CONCEPTO_CLASIFICACION.has(clasificacion)) {
+    return { error: 'clasificacion invalida. Usa base o subrama.' };
+  }
+
+  if (!isEdit && (!folioInterno || folioInterno.length < 10)) {
+    return { error: 'folio_interno es obligatorio y debe tener al menos 10 caracteres.' };
+  }
+
+  if (clasificacion === 'base') {
+    if (precioBaseInicial === null || Number.isNaN(precioBaseInicial) || precioBaseInicial < 0) {
+      return { error: 'precio_base_inicial es obligatorio para conceptos base y debe ser >= 0.' };
+    }
+
+    return {
+      data: {
+        nombre,
+        clasificacion,
+        folio_interno: folioInterno,
+        precio_base_inicial: precioBaseInicial,
+        id_concepto_padre: null,
+        naturaleza_ajuste: null,
+        modo_aplicacion: null,
+        valor_ajuste: null,
+      },
+    };
+  }
+
+  if (!Number.isInteger(idConceptoPadre)) {
+    return { error: 'id_concepto_padre es obligatorio para subrama.' };
+  }
+  if (!CONCEPTO_NATURALEZA.has(naturalezaAjuste)) {
+    return { error: 'naturaleza_ajuste invalida. Usa descuento o penalizacion.' };
+  }
+  if (!CONCEPTO_MODO.has(modoAplicacion)) {
+    return { error: 'modo_aplicacion invalido. Usa monto_fijo o porcentaje.' };
+  }
+  if (valorAjuste === null || Number.isNaN(valorAjuste) || valorAjuste <= 0) {
+    return { error: 'valor_ajuste debe ser un numero positivo para subrama.' };
+  }
+
+  return {
+    data: {
+      nombre,
+      clasificacion,
+      folio_interno: folioInterno,
+      precio_base_inicial: null,
+      id_concepto_padre: idConceptoPadre,
+      naturaleza_ajuste: naturalezaAjuste,
+      modo_aplicacion: modoAplicacion,
+      valor_ajuste: valorAjuste,
+    },
+  };
+}
+
+function mapConceptoRow(row) {
+  return {
+    id_concepto_pago: row.id_concepto_pago,
+    nombre: row.nombre,
+    clasificacion: row.clasificacion,
+    precio_base_inicial: row.precio_base_inicial,
+    id_concepto_padre: row.id_concepto_padre,
+    naturaleza_ajuste: row.naturaleza_ajuste,
+    modo_aplicacion: row.modo_aplicacion,
+    valor_ajuste: row.valor_ajuste,
+    folio_interno: row.folio_interno,
+    fecha_creacion: row.fecha_creacion,
+  };
+}
+
+async function listConceptosPagoCatalog(req, res) {
+  await ensureConceptoPagoSchema();
+
+  const searchQuery = normalizeText(req.query.q).toLowerCase();
+  const sort = normalizeClasificacion(req.query.sort) === 'za' ? 'za' : 'az';
+
+  const [rows] = await sequelize.query(`
+    SELECT
+      id_concepto_pago,
+      nombre,
+      clasificacion,
+      precio_base_inicial,
+      id_concepto_padre,
+      naturaleza_ajuste,
+      modo_aplicacion,
+      valor_ajuste,
+      folio_interno,
+      fecha_creacion
+    FROM conceptos_pago
+  `);
+
+  const mapped = rows.map(mapConceptoRow);
+  const filtered = searchQuery
+    ? mapped.filter((item) => String(item.nombre || '').toLowerCase().includes(searchQuery))
+    : mapped;
+
+  const sorted = filtered.sort((a, b) => {
+    const cmp = String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' });
+    return sort === 'za' ? cmp * -1 : cmp;
+  });
+
+  const bases = sorted.filter((item) => item.clasificacion === 'base').map((base) => ({ ...base, subramas: [] }));
+  const baseMap = new Map(bases.map((base) => [base.id_concepto_pago, base]));
+
+  sorted
+    .filter((item) => item.clasificacion === 'subrama')
+    .forEach((subrama) => {
+      const parent = baseMap.get(subrama.id_concepto_padre);
+      if (parent) {
+        parent.subramas.push(subrama);
+      }
+    });
+
+  return res.json({
+    items: sorted,
+    hierarchy: bases,
+  });
+}
+
+async function createConceptoPagoCatalog(req, res) {
+  await ensureConceptoPagoSchema();
+
+  const validation = validateConceptoPayload(req.body, { isEdit: false });
+  if (validation.error) {
+    return res.status(400).json({ message: validation.error });
+  }
+
+  const payload = validation.data;
+
+  const existingFolio = await sequelize.query(
+    'SELECT id_concepto_pago FROM conceptos_pago WHERE folio_interno = :folio LIMIT 1',
+    { replacements: { folio: payload.folio_interno }, type: Sequelize.QueryTypes.SELECT },
+  );
+  if (existingFolio.length > 0) {
+    return res.status(409).json({ message: 'folio_interno ya existe.' });
+  }
+
+  if (payload.clasificacion === 'subrama') {
+    const parent = await sequelize.query(
+      'SELECT id_concepto_pago, clasificacion FROM conceptos_pago WHERE id_concepto_pago = :id LIMIT 1',
+      { replacements: { id: payload.id_concepto_padre }, type: Sequelize.QueryTypes.SELECT },
+    );
+    if (parent.length === 0 || parent[0].clasificacion !== 'base') {
+      return res.status(400).json({ message: 'id_concepto_padre debe apuntar a un concepto base existente.' });
+    }
+  }
+
+  const created = await ConceptoPago.create({
+    clave: payload.folio_interno,
+    nombre: payload.nombre,
+    descripcion: null,
+    categoria: 'otro',
+    periodicidad: 'unico',
+    carrera_objetivo: null,
+    activo: true,
+    fecha_creacion: new Date(),
+  });
+
+  await sequelize.query(
+    `
+      UPDATE conceptos_pago
+      SET
+        clasificacion = :clasificacion,
+        precio_base_inicial = :precio_base_inicial,
+        id_concepto_padre = :id_concepto_padre,
+        naturaleza_ajuste = :naturaleza_ajuste,
+        modo_aplicacion = :modo_aplicacion,
+        valor_ajuste = :valor_ajuste,
+        folio_interno = :folio_interno
+      WHERE id_concepto_pago = :id_concepto_pago
+    `,
+    {
+      replacements: {
+        ...payload,
+        id_concepto_pago: created.id_concepto_pago,
+      },
+    },
+  );
+
+  await registrarEventoAuditoria({
+    idUsuario: req.user.id_usuario,
+    rolActor: req.user.rol,
+    accion: 'crear_concepto_pago_jerarquico',
+    modulo: 'director',
+    entidad: 'conceptos_pago',
+    idEntidad: created.id_concepto_pago,
+    detalle: payload,
+  });
+
+  return res.status(201).json({ id_concepto_pago: created.id_concepto_pago });
+}
+
+async function updateConceptoPagoCatalog(req, res) {
+  await ensureConceptoPagoSchema();
+
+  const idConcepto = Number(req.params.id_concepto_pago);
+  if (!Number.isInteger(idConcepto)) {
+    return res.status(400).json({ message: 'id_concepto_pago invalido.' });
+  }
+
+  const existingRows = await sequelize.query(
+    'SELECT id_concepto_pago, folio_interno FROM conceptos_pago WHERE id_concepto_pago = :id LIMIT 1',
+    { replacements: { id: idConcepto }, type: Sequelize.QueryTypes.SELECT },
+  );
+  if (existingRows.length === 0) {
+    return res.status(404).json({ message: 'Concepto de pago no encontrado.' });
+  }
+
+  const existing = existingRows[0];
+  const incomingFolio = req.body.folio_interno === undefined ? existing.folio_interno : normalizeFolioInterno(req.body.folio_interno);
+  if (incomingFolio !== existing.folio_interno) {
+    return res.status(400).json({ message: 'folio_interno es inmutable y no puede modificarse.' });
+  }
+
+  const validation = validateConceptoPayload({ ...req.body, folio_interno: existing.folio_interno }, { isEdit: true });
+  if (validation.error) {
+    return res.status(400).json({ message: validation.error });
+  }
+  const payload = validation.data;
+
+  if (payload.clasificacion === 'subrama') {
+    if (payload.id_concepto_padre === idConcepto) {
+      return res.status(400).json({ message: 'Una subrama no puede ser su propio padre.' });
+    }
+    const parent = await sequelize.query(
+      'SELECT id_concepto_pago, clasificacion FROM conceptos_pago WHERE id_concepto_pago = :id LIMIT 1',
+      { replacements: { id: payload.id_concepto_padre }, type: Sequelize.QueryTypes.SELECT },
+    );
+    if (parent.length === 0 || parent[0].clasificacion !== 'base') {
+      return res.status(400).json({ message: 'id_concepto_padre debe apuntar a un concepto base existente.' });
+    }
+  }
+
+  await sequelize.query(
+    `
+      UPDATE conceptos_pago
+      SET
+        nombre = :nombre,
+        clave = :folio_interno,
+        clasificacion = :clasificacion,
+        precio_base_inicial = :precio_base_inicial,
+        id_concepto_padre = :id_concepto_padre,
+        naturaleza_ajuste = :naturaleza_ajuste,
+        modo_aplicacion = :modo_aplicacion,
+        valor_ajuste = :valor_ajuste
+      WHERE id_concepto_pago = :id_concepto_pago
+    `,
+    {
+      replacements: {
+        ...payload,
+        folio_interno: existing.folio_interno,
+        id_concepto_pago: idConcepto,
+      },
+    },
+  );
+
+  await registrarEventoAuditoria({
+    idUsuario: req.user.id_usuario,
+    rolActor: req.user.rol,
+    accion: 'actualizar_concepto_pago_jerarquico',
+    modulo: 'director',
+    entidad: 'conceptos_pago',
+    idEntidad: idConcepto,
+    detalle: payload,
+  });
+
+  return res.json({ id_concepto_pago: idConcepto, actualizado: true });
+}
+
+async function deleteConceptoPagoCatalog(req, res) {
+  await ensureConceptoPagoSchema();
+
+  const idConcepto = Number(req.params.id_concepto_pago);
+  if (!Number.isInteger(idConcepto)) {
+    return res.status(400).json({ message: 'id_concepto_pago invalido.' });
+  }
+
+  const rows = await sequelize.query(
+    'SELECT id_concepto_pago, clasificacion FROM conceptos_pago WHERE id_concepto_pago = :id LIMIT 1',
+    { replacements: { id: idConcepto }, type: Sequelize.QueryTypes.SELECT },
+  );
+  if (rows.length === 0) {
+    return res.status(404).json({ message: 'Concepto de pago no encontrado.' });
+  }
+
+  const concept = rows[0];
+  const tx = await sequelize.transaction();
+  try {
+    if (concept.clasificacion === 'base') {
+      await sequelize.query('DELETE FROM conceptos_pago WHERE id_concepto_padre = :id', {
+        replacements: { id: idConcepto },
+        transaction: tx,
+      });
+    }
+
+    await sequelize.query('DELETE FROM conceptos_pago WHERE id_concepto_pago = :id', {
+      replacements: { id: idConcepto },
+      transaction: tx,
+    });
+
+    await tx.commit();
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  }
+
+  await registrarEventoAuditoria({
+    idUsuario: req.user.id_usuario,
+    rolActor: req.user.rol,
+    accion: 'eliminar_concepto_pago_jerarquico',
+    modulo: 'director',
+    entidad: 'conceptos_pago',
+    idEntidad: idConcepto,
+    detalle: {
+      clasificacion: concept.clasificacion,
+      cascada_subramas: concept.clasificacion === 'base',
+    },
+  });
+
+  return res.status(204).send();
 }
 
 function getRolePrefix(role) {
@@ -1448,6 +1891,10 @@ async function desasignarAlumnoDeGrupo(req, res) {
 
 module.exports = {
   buscarUsuariosDirector,
+  listConceptosPagoCatalog,
+  createConceptoPagoCatalog,
+  updateConceptoPagoCatalog,
+  deleteConceptoPagoCatalog,
   buscarPagosDirector,
   buscarDocentesDirector,
   buscarMateriasDirector,

@@ -34,8 +34,69 @@ const folioUsuarioSchema = z.object({
 });
 
 const folioPagoSchema = z.object({
-  id_pago: z.string().min(1, 'Selecciona un pago.'),
-  folio_interno: z.string().trim().min(1, 'El folio interno es obligatorio.'),
+  clasificacion: z.enum(['base', 'subrama']),
+  nombre: z.string().trim().min(3, 'El nombre del concepto debe tener al menos 3 caracteres.'),
+  precio_base_inicial: z.preprocess(
+    (value) => {
+      if (value === '' || value === undefined || value === null) return undefined;
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? value : parsed;
+    },
+    z.number().min(0, 'El precio base debe ser mayor o igual a 0.').optional(),
+  ),
+  id_concepto_padre: z.string().optional(),
+  naturaleza_ajuste: z.enum(['descuento', 'penalizacion']).optional(),
+  modo_aplicacion: z.enum(['monto_fijo', 'porcentaje']).optional(),
+  valor_ajuste: z.preprocess(
+    (value) => {
+      if (value === '' || value === undefined || value === null) return undefined;
+      const parsed = Number(value);
+      return Number.isNaN(parsed) ? value : parsed;
+    },
+    z.number().positive('El valor del ajuste debe ser positivo.').optional(),
+  ),
+  folio_interno: z.string().trim().min(10, 'El folio debe tener al menos 10 caracteres.'),
+}).superRefine((value, ctx) => {
+  if (value.clasificacion === 'base') {
+    if (value.precio_base_inicial === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['precio_base_inicial'],
+        message: 'El precio base inicial es obligatorio para conceptos base.',
+      });
+    }
+  }
+
+  if (value.clasificacion === 'subrama') {
+    if (!value.id_concepto_padre) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['id_concepto_padre'],
+        message: 'Debes seleccionar un concepto base activo.',
+      });
+    }
+    if (!value.naturaleza_ajuste) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['naturaleza_ajuste'],
+        message: 'Selecciona la naturaleza del ajuste.',
+      });
+    }
+    if (!value.modo_aplicacion) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['modo_aplicacion'],
+        message: 'Selecciona el modo de aplicación.',
+      });
+    }
+    if (value.valor_ajuste === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['valor_ajuste'],
+        message: 'El valor del ajuste es obligatorio para subramas.',
+      });
+    }
+  }
 });
 
 const aulaSchema = z.object({
@@ -47,7 +108,16 @@ const aulaSchema = z.object({
 const financieroDefaults = { id_pago: '', estatus: 'pendiente', monto: '', motivo: '' };
 const extraordinariaDefaults = { id_docente: '', id_materia: '', fecha_limite_autorizacion: '', motivo: '' };
 const folioUsuarioDefaults = { nombre_destinatario: '', rol: '', folio_matricula: '' };
-const folioPagoDefaults = { id_pago: '', folio_interno: '' };
+const folioPagoDefaults = {
+  clasificacion: 'base',
+  nombre: '',
+  precio_base_inicial: '',
+  id_concepto_padre: '',
+  naturaleza_ajuste: 'descuento',
+  modo_aplicacion: 'monto_fijo',
+  valor_ajuste: '',
+  folio_interno: '',
+};
 const aulaDefaults = { id_horario: '', aula: '', motivo: '' };
 
 function SearchableSelect({ id, label, placeholder, value, onChange, items, onSearch, loading, renderItem, renderValue }) {
@@ -172,6 +242,34 @@ function buildRoleFolio(rol) {
   return `${prefix}-${yy}-${randomFolioToken(6)}`;
 }
 
+function safeConceptLetters(nombre = '') {
+  const cleaned = String(nombre || '').toUpperCase().replace(/[^A-Z]/g, '');
+  const padded = `${cleaned}XXX`;
+  return padded.slice(0, 3);
+}
+
+function randomSecureToken(length = 4) {
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const bytes = new Uint32Array(length);
+  window.crypto.getRandomValues(bytes);
+  let token = '';
+  for (let index = 0; index < length; index += 1) {
+    token += alphabet[bytes[index] % alphabet.length];
+  }
+  return token;
+}
+
+function buildConceptoFolio({ nombre, clasificacion, naturalezaAjuste }) {
+  const yy = String(new Date().getFullYear()).slice(-2);
+  const nameCode = safeConceptLetters(nombre);
+  const suffix = randomSecureToken(4);
+  if (clasificacion === 'subrama') {
+    const branchTag = naturalezaAjuste === 'descuento' ? 'DESC' : 'PEN';
+    return `${yy}-${nameCode}-${branchTag}-${suffix}`;
+  }
+  return `${yy}-${nameCode}-${suffix}`;
+}
+
 function roleLabel(rol = '') {
   const normalized = String(rol || '').trim().toLowerCase();
   if (normalized === 'director') return 'Director';
@@ -196,6 +294,12 @@ export default function DirectorPage() {
   const [folioRowsLoading, setFolioRowsLoading] = useState(false);
   const [folioRoleFilter, setFolioRoleFilter] = useState('');
   const [folioNameFilter, setFolioNameFilter] = useState('');
+  const [conceptosPagoCatalogo, setConceptosPagoCatalogo] = useState([]);
+  const [conceptosPagoHierarchy, setConceptosPagoHierarchy] = useState([]);
+  const [conceptosPagoLoading, setConceptosPagoLoading] = useState(false);
+  const [conceptoSearch, setConceptoSearch] = useState('');
+  const [conceptoSort, setConceptoSort] = useState('az');
+  const [editingConceptoId, setEditingConceptoId] = useState(null);
 
   const [pagos, setPagos] = useState([]);
   const [docentes, setDocentes] = useState([]);
@@ -291,6 +395,28 @@ export default function DirectorPage() {
       active = false;
     };
   }, [lastSyncAt, folioRoleFilter, folioNameFilter]);
+
+  useEffect(() => {
+    let active = true;
+    setConceptosPagoLoading(true);
+    api.get('/admin/director/conceptos-pago', { params: { q: conceptoSearch || undefined, sort: conceptoSort } })
+      .then((response) => {
+        if (!active) return;
+        setConceptosPagoCatalogo(response?.data?.items || []);
+        setConceptosPagoHierarchy(response?.data?.hierarchy || []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setConceptosPagoCatalogo([]);
+        setConceptosPagoHierarchy([]);
+      })
+      .finally(() => {
+        if (active) setConceptosPagoLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [lastSyncAt, conceptoSearch, conceptoSort]);
 
   useEffect(() => {
     let active = true;
@@ -472,6 +598,58 @@ export default function DirectorPage() {
     }
   }
 
+  function generarFolioAleatorioConcepto() {
+    const folioGenerado = buildConceptoFolio({
+      nombre: folioPagoValues.nombre,
+      clasificacion: folioPagoValues.clasificacion,
+      naturalezaAjuste: folioPagoValues.naturaleza_ajuste,
+    });
+
+    if (!folioGenerado || folioGenerado.length < 10) {
+      pushToast('error', 'No se pudo generar un folio interno válido para este concepto.');
+      return;
+    }
+
+    folioPagoForm.setValue('folio_interno', folioGenerado, { shouldDirty: true, shouldValidate: true });
+    pushToast('ok', `Folio interno generado: ${folioGenerado}`);
+  }
+
+  function iniciarEdicionConcepto(concepto) {
+    setEditingConceptoId(concepto.id_concepto_pago);
+    folioPagoForm.reset({
+      clasificacion: concepto.clasificacion || 'base',
+      nombre: concepto.nombre || '',
+      precio_base_inicial: concepto.precio_base_inicial ?? '',
+      id_concepto_padre: concepto.id_concepto_padre ? String(concepto.id_concepto_padre) : '',
+      naturaleza_ajuste: concepto.naturaleza_ajuste || 'descuento',
+      modo_aplicacion: concepto.modo_aplicacion || 'monto_fijo',
+      valor_ajuste: concepto.valor_ajuste ?? '',
+      folio_interno: concepto.folio_interno || '',
+    });
+  }
+
+  function cancelarEdicionConcepto() {
+    setEditingConceptoId(null);
+    folioPagoForm.reset(folioPagoDefaults);
+  }
+
+  async function eliminarConceptoCatalogo(concepto) {
+    await ejecutar(
+      () => api.delete(`/admin/director/conceptos-pago/${concepto.id_concepto_pago}`),
+      'Concepto eliminado del catálogo.',
+      () => {
+        if (editingConceptoId === concepto.id_concepto_pago) {
+          cancelarEdicionConcepto();
+        }
+      },
+    );
+  }
+
+  const conceptosBaseActivos = useMemo(
+    () => conceptosPagoCatalogo.filter((item) => item.clasificacion === 'base'),
+    [conceptosPagoCatalogo],
+  );
+
   const syncLabel = lastSyncAt
     ? `Última sync: ${new Date(lastSyncAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`
     : 'Sin sincronización';
@@ -598,15 +776,152 @@ export default function DirectorPage() {
         </section>
 
         <section className="director-section director-action-card">
-          <h3>Folio de pago</h3>
-          <p>Actualiza la referencia interna de un pago.</p>
-          <form className="form-grid" onSubmit={folioPagoForm.handleSubmit((values) => ejecutar(() => api.patch(`/admin/pagos/${values.id_pago}/folio`, { folio_interno: values.folio_interno }), 'Folio de pago actualizado.', () => folioPagoForm.reset(folioPagoDefaults)))}>
-            <SearchableSelect id="director-folio-pago-id" label="Pago" placeholder="Escribe concepto, alumno o folio" value={folioPagoValues.id_pago} onChange={(id_pago) => folioPagoForm.setValue('id_pago', id_pago, { shouldDirty: true, shouldValidate: true })} onSearch={setPagoSearch} loading={pagosLoading} items={pagos.map((item) => ({ ...item, id: item.id_pago }))} renderValue={(item) => `${item.concepto} (ID: ${item.id_pago} / Alumno: ${item.id_alumno})`} renderItem={(item) => <><strong>{item.concepto}</strong><small>ID: {item.id_pago} / Alumno: {item.id_alumno} / {item.estatus}</small></>} />
-            {folioPagoForm.formState.errors.id_pago ? <small className="director-field-error">{folioPagoForm.formState.errors.id_pago.message}</small> : null}
-            <input id="director-folio-pago" placeholder="Folio interno" {...folioPagoForm.register('folio_interno')} />
-            {folioPagoForm.formState.errors.folio_interno ? <small className="director-field-error">{folioPagoForm.formState.errors.folio_interno.message}</small> : null}
-            <button className="btn-primary" type="submit" disabled={actionLoading}>{actionLoading ? 'Actualizando...' : 'Actualizar referencia'}</button>
-          </form>
+          <h3>Catálogo jerárquico de folios de pago</h3>
+          <p>Administra conceptos base y subramas con reglas de descuento/penalización y trazabilidad de folio inmutable.</p>
+          <div className="director-conceptos-layout">
+            <form className="form-grid" onSubmit={folioPagoForm.handleSubmit((values) => ejecutar(
+              () => (editingConceptoId
+                ? api.put(`/admin/director/conceptos-pago/${editingConceptoId}`, {
+                  ...values,
+                  id_concepto_padre: values.id_concepto_padre ? Number(values.id_concepto_padre) : null,
+                })
+                : api.post('/admin/director/conceptos-pago', {
+                  ...values,
+                  id_concepto_padre: values.id_concepto_padre ? Number(values.id_concepto_padre) : null,
+                })),
+              editingConceptoId ? 'Concepto actualizado.' : 'Concepto creado en catálogo.',
+              () => {
+                cancelarEdicionConcepto();
+                setLastSyncAt(new Date().toISOString());
+              },
+            ))}>
+              <div className="director-segmented">
+                <button
+                  type="button"
+                  className={folioPagoValues.clasificacion === 'base' ? 'is-active' : ''}
+                  onClick={() => folioPagoForm.setValue('clasificacion', 'base', { shouldDirty: true, shouldValidate: true })}
+                >Concepto Base</button>
+                <button
+                  type="button"
+                  className={folioPagoValues.clasificacion === 'subrama' ? 'is-active' : ''}
+                  onClick={() => folioPagoForm.setValue('clasificacion', 'subrama', { shouldDirty: true, shouldValidate: true })}
+                >Subrama (Ajuste)</button>
+              </div>
+
+              <input id="director-concepto-nombre" placeholder="Nombre del concepto" {...folioPagoForm.register('nombre')} />
+              {folioPagoForm.formState.errors.nombre ? <small className="director-field-error">{folioPagoForm.formState.errors.nombre.message}</small> : null}
+
+              {folioPagoValues.clasificacion === 'base' ? (
+                <>
+                  <input id="director-concepto-precio-base" type="number" min="0" step="0.01" placeholder="Precio base inicial" {...folioPagoForm.register('precio_base_inicial')} />
+                  {folioPagoForm.formState.errors.precio_base_inicial ? <small className="director-field-error">{folioPagoForm.formState.errors.precio_base_inicial.message}</small> : null}
+                </>
+              ) : (
+                <>
+                  <select id="director-concepto-padre" {...folioPagoForm.register('id_concepto_padre')}>
+                    <option value="">Concepto padre (base)</option>
+                    {conceptosBaseActivos.map((base) => (
+                      <option key={base.id_concepto_pago} value={String(base.id_concepto_pago)}>{base.nombre}</option>
+                    ))}
+                  </select>
+                  {folioPagoForm.formState.errors.id_concepto_padre ? <small className="director-field-error">{folioPagoForm.formState.errors.id_concepto_padre.message}</small> : null}
+
+                  <select id="director-concepto-naturaleza" {...folioPagoForm.register('naturaleza_ajuste')}>
+                    <option value="descuento">Descuento</option>
+                    <option value="penalizacion">Penalización / Recargo</option>
+                  </select>
+                  {folioPagoForm.formState.errors.naturaleza_ajuste ? <small className="director-field-error">{folioPagoForm.formState.errors.naturaleza_ajuste.message}</small> : null}
+
+                  <select id="director-concepto-modo" {...folioPagoForm.register('modo_aplicacion')}>
+                    <option value="monto_fijo">Monto fijo</option>
+                    <option value="porcentaje">Porcentaje</option>
+                  </select>
+                  {folioPagoForm.formState.errors.modo_aplicacion ? <small className="director-field-error">{folioPagoForm.formState.errors.modo_aplicacion.message}</small> : null}
+
+                  <input id="director-concepto-valor-ajuste" type="number" min="0.01" step="0.01" placeholder="Valor del ajuste" {...folioPagoForm.register('valor_ajuste')} />
+                  {folioPagoForm.formState.errors.valor_ajuste ? <small className="director-field-error">{folioPagoForm.formState.errors.valor_ajuste.message}</small> : null}
+                </>
+              )}
+
+              <div className="director-folio-input-row">
+                <input id="director-folio-interno-concepto" placeholder="Folio interno (único e inmutable)" {...folioPagoForm.register('folio_interno')} disabled={Boolean(editingConceptoId)} />
+                {!editingConceptoId ? (
+                  <button className="btn-secondary" type="button" onClick={generarFolioAleatorioConcepto}>⚡ Generar Aleatorio</button>
+                ) : null}
+              </div>
+              {folioPagoForm.formState.errors.folio_interno ? <small className="director-field-error">{folioPagoForm.formState.errors.folio_interno.message}</small> : null}
+
+              <div className="director-conceptos-actions">
+                <button className="btn-primary" type="submit" disabled={actionLoading}>{actionLoading ? 'Guardando...' : editingConceptoId ? 'Guardar cambios' : 'Crear concepto'}</button>
+                {editingConceptoId ? (
+                  <button className="btn-secondary" type="button" onClick={cancelarEdicionConcepto}>Cancelar edición</button>
+                ) : null}
+              </div>
+            </form>
+
+            <div className="director-folio-table-wrap dark-table">
+              <h4>Catálogo de conceptos</h4>
+              <div className="director-folio-filter-row">
+                <input value={conceptoSearch} onChange={(event) => setConceptoSearch(event.target.value)} placeholder="Buscar por nombre" />
+                <select value={conceptoSort} onChange={(event) => setConceptoSort(event.target.value)}>
+                  <option value="az">Orden A-Z</option>
+                  <option value="za">Orden Z-A</option>
+                </select>
+              </div>
+              {conceptosPagoLoading ? <p className="director-audit-empty">Cargando conceptos...</p> : null}
+              {!conceptosPagoLoading && conceptosPagoHierarchy.length === 0 ? <p className="director-audit-empty">Sin conceptos registrados.</p> : null}
+              {!conceptosPagoLoading && conceptosPagoHierarchy.length > 0 ? (
+                <div className="director-folio-table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Concepto</th>
+                        <th>Folio</th>
+                        <th>Impacto</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {conceptosPagoHierarchy.flatMap((base) => {
+                        const baseRow = (
+                          <tr key={`base-${base.id_concepto_pago}`}>
+                            <td>{base.nombre}</td>
+                            <td>{base.folio_interno}</td>
+                            <td>{formatMoney(base.precio_base_inicial || 0)}</td>
+                            <td className="director-concepto-actions-cell">
+                              <button type="button" className="btn-secondary" onClick={() => iniciarEdicionConcepto(base)}>Editar</button>
+                              <button type="button" className="btn-secondary" onClick={() => eliminarConceptoCatalogo(base)}>Eliminar</button>
+                            </td>
+                          </tr>
+                        );
+
+                        const subRows = (base.subramas || []).map((subrama) => (
+                          <tr key={`sub-${subrama.id_concepto_pago}`}>
+                            <td>
+                              <span className="director-subrama-indent">↳ {subrama.nombre}</span>
+                            </td>
+                            <td>{subrama.folio_interno}</td>
+                            <td>
+                              <span className={`director-ajuste-chip ${subrama.naturaleza_ajuste === 'descuento' ? 'is-descuento' : 'is-penalizacion'}`}>
+                                {subrama.naturaleza_ajuste === 'descuento' ? 'Descuento' : 'Recargo'}
+                              </span>{' '}
+                              {subrama.modo_aplicacion === 'porcentaje' ? `${Number(subrama.valor_ajuste || 0)}%` : formatMoney(subrama.valor_ajuste || 0)}
+                            </td>
+                            <td className="director-concepto-actions-cell">
+                              <button type="button" className="btn-secondary" onClick={() => iniciarEdicionConcepto(subrama)}>Editar</button>
+                              <button type="button" className="btn-secondary" onClick={() => eliminarConceptoCatalogo(subrama)}>Eliminar</button>
+                            </td>
+                          </tr>
+                        ));
+
+                        return [baseRow, ...subRows];
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+          </div>
         </section>
 
           <section id="director-finanzas" className="director-section director-action-card director-critical-card">
