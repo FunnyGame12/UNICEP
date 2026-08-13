@@ -1,0 +1,15 @@
+{
+  "fecha": "2026-06-25T08:12:05.628Z",
+  "conteos": {
+    "usuarios": 6,
+    "alumnos": 1,
+    "grupos_docentes": 3,
+    "materias": 7,
+    "tareas": 5,
+    "entregas": 4,
+    "pagos": 4,
+    "conceptos_pago": 3,
+    "reglas_desbloqueo": 5
+  },
+  "nota": "Este respaldo es un snapshot de metadatos y conteos para auditoría operativa. La exportación binaria completa queda para integración de siguiente fase."
+}
