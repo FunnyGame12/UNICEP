@@ -30,6 +30,8 @@ const ROLE_FOLIO_PREFIX = {
   alumno: 'ALU',
 };
 
+const MANAGED_FOLIO_ROLES = new Set(Object.keys(ROLE_FOLIO_PREFIX));
+
 const VALID_FINANCIAL_STATUS = new Set(['pagado', 'pendiente', 'vencido']);
 
 function normalizeRole(value) {
@@ -37,35 +39,38 @@ function normalizeRole(value) {
 }
 
 function getRolePrefix(role) {
-  return ROLE_FOLIO_PREFIX[normalizeRole(role)] || 'USR';
+  return ROLE_FOLIO_PREFIX[normalizeRole(role)] || null;
 }
 
-function buildRoleBasedFolio(role, sequence) {
+function buildRoleBasedFolio(role, entropy) {
+  const prefix = getRolePrefix(role);
+  if (!prefix) {
+    throw new Error('Rol no soportado para generacion de folio.');
+  }
   const year = new Date().getFullYear();
-  return `${getRolePrefix(role)}-${year}-${String(sequence).padStart(5, '0')}`;
+  return `${prefix}-${year}-${entropy}`;
+}
+
+function randomFolioEntropy(length = 8) {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.randomBytes(length);
+  let token = '';
+  for (let index = 0; index < length; index += 1) {
+    token += alphabet[bytes[index] % alphabet.length];
+  }
+  return token;
 }
 
 async function nextFolioForRole(role) {
   const normalizedRole = normalizeRole(role);
-  const prefix = getRolePrefix(normalizedRole);
-  const year = new Date().getFullYear();
+  if (!MANAGED_FOLIO_ROLES.has(normalizedRole)) {
+    throw new Error(`rol invalido para folio automatico: ${normalizedRole || 'sin_rol'}`);
+  }
 
-  const [existing, totalByRole] = await Promise.all([
-    Usuario.count({
-      where: {
-        folio_matricula: {
-          [Op.like]: `${prefix}-${year}-%`,
-        },
-      },
-    }),
-    Usuario.count({ where: { rol: normalizedRole } }),
-  ]);
-
-  const seed = Math.max(existing, totalByRole) + 1;
   let attempts = 0;
 
-  while (attempts < 20) {
-    const candidate = buildRoleBasedFolio(normalizedRole, seed + attempts);
+  while (attempts < 40) {
+    const candidate = buildRoleBasedFolio(normalizedRole, randomFolioEntropy());
     // Evita colisión por folio único cuando hay altas concurrentes.
     // eslint-disable-next-line no-await-in-loop
     const duplicate = await Usuario.findOne({
@@ -84,7 +89,15 @@ async function nextFolioForRole(role) {
 async function assignOrGenerateFolio({ folioInput, role }) {
   const normalizedRole = normalizeRole(role);
   const incomingFolio = String(folioInput || '').trim().toUpperCase();
-  const expectedPrefix = `${getRolePrefix(normalizedRole)}-`;
+  const rolePrefix = getRolePrefix(normalizedRole);
+
+  if (!rolePrefix) {
+    return {
+      error: `rol invalido para folio: ${normalizedRole || 'sin_rol'}.`,
+    };
+  }
+
+  const expectedPrefix = `${rolePrefix}-`;
 
   if (incomingFolio) {
     if (!incomingFolio.startsWith(expectedPrefix)) {
@@ -427,7 +440,7 @@ async function politicaFoliosPorRol(_req, res) {
   const politica = Object.entries(ROLE_FOLIO_PREFIX).map(([rol, prefijo]) => ({
     rol,
     prefijo,
-    ejemplo: `${prefijo}-${year}-00001`,
+    ejemplo: `${prefijo}-${year}-A9K4M2QX`,
   }));
 
   return res.json({ items: politica });
@@ -437,6 +450,12 @@ async function preasignarFolioPorRol(req, res) {
   const rol = normalizeRole(req.body.rol);
   if (!rol) {
     return res.status(400).json({ message: 'rol es obligatorio.' });
+  }
+
+  if (!MANAGED_FOLIO_ROLES.has(rol)) {
+    return res.status(400).json({
+      message: `rol invalido. Usa uno de: ${Array.from(MANAGED_FOLIO_ROLES).join(', ')}.`,
+    });
   }
 
   const folio = await nextFolioForRole(rol);
