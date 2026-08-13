@@ -39,12 +39,17 @@ function App() {
 
             <nav
               id="site-navigation"
-              className={`topbar-nav ${isMenuOpen ? 'is-open' : ''} ${isAuthenticated ? 'is-auth-nav' : ''}`}
+              className={`topbar-nav ${isMenuOpen ? 'is-open' : ''}`}
             >
-              <Link to="/">Inicio</Link>
-              <Link to="/alumno">Alumno</Link>
-              <Link to="/docente">Docente</Link>
-              <Link to="/administrativo">Administrativo</Link>
+              <a href="/#inicio" className="nav-section-link">Inicio</a>
+              <a href="/#quienes-somos" className="nav-section-link">Identidad Institucional</a>
+              <a href="/#modelo" className="nav-section-link">Modelo Educativo</a>
+              <a href="/#oferta" className="nav-section-link">Oferta Académica</a>
+              <a href="/#horarios" className="nav-section-link">Horarios</a>
+              <a href="/#campus" className="nav-section-link">Campus</a>
+              <a href="/#servicios" className="nav-section-link">Servicios</a>
+              <a href="/#planteles" className="nav-section-link">Planteles</a>
+              <a href="/#contacto" className="nav-section-link">Contacto</a>
               {!isAuthenticated ? <Link to="/registro-folio">Registro</Link> : null}
               {!isAuthenticated ? (
                 <Link to="/login" className="btn-navbar menu-login-link">

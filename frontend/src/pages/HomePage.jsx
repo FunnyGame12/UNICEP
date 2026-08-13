@@ -202,7 +202,7 @@ export default function HomePage() {
 
   return (
     <main className="hero-page">
-      <section className="hero">
+      <section id="inicio" className="hero">
         <div className="hero-copy">
           <p className="hero-badge">Plataforma Institucional</p>
           <h1>Plataforma Académica UNICEP</h1>
