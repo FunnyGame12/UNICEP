@@ -18,6 +18,7 @@ const {
   Materia,
   AsignacionGrupo,
   Horario,
+  AuditoriaEvento,
 } = require('../../models');
 const { registrarEventoAuditoria } = require('../services/auditService');
 
@@ -156,6 +157,143 @@ async function buscarPagosDirector(req, res) {
   });
 
   return res.json({ items: pagos });
+}
+
+async function buscarDocentesDirector(req, res) {
+  const query = String(req.query.q || '').trim();
+  const usuarioWhere = query
+    ? {
+      [Op.or]: [
+        { nombre_completo: { [Op.like]: `%${query}%` } },
+        { correo: { [Op.like]: `%${query}%` } },
+        { folio_matricula: { [Op.like]: `%${query}%` } },
+      ],
+    }
+    : undefined;
+
+  const docentes = await DocentePerfil.findAll({
+    include: [
+      {
+        model: Usuario,
+        as: 'usuario',
+        attributes: ['id_usuario', 'nombre_completo', 'correo', 'folio_matricula'],
+        where: usuarioWhere,
+      },
+    ],
+    attributes: ['id_docente', 'estatus_laboral'],
+    order: [[{ model: Usuario, as: 'usuario' }, 'nombre_completo', 'ASC']],
+    limit: 25,
+  });
+
+  const items = docentes.map((docente) => ({
+    id: docente.id_docente,
+    id_docente: docente.id_docente,
+    estatus_laboral: docente.estatus_laboral,
+    nombre_completo: docente.usuario?.nombre_completo || `Docente ${docente.id_docente}`,
+    correo: docente.usuario?.correo || null,
+    folio_matricula: docente.usuario?.folio_matricula || null,
+  }));
+
+  return res.json({ items });
+}
+
+async function buscarMateriasDirector(req, res) {
+  const query = String(req.query.q || '').trim();
+  const where = query
+    ? {
+      [Op.or]: [
+        { nombre_materia: { [Op.like]: `%${query}%` } },
+        { codigo_materia: { [Op.like]: `%${query}%` } },
+      ],
+    }
+    : {};
+
+  const materias = await Materia.findAll({
+    where,
+    attributes: ['id_materia', 'nombre_materia', 'codigo_materia', 'bimestre_pertenece'],
+    order: [['nombre_materia', 'ASC']],
+    limit: 25,
+  });
+
+  const items = materias.map((materia) => ({
+    id: materia.id_materia,
+    id_materia: materia.id_materia,
+    nombre_materia: materia.nombre_materia,
+    codigo_materia: materia.codigo_materia,
+    bimestre_pertenece: materia.bimestre_pertenece,
+  }));
+
+  return res.json({ items });
+}
+
+async function buscarHorariosDirector(req, res) {
+  const query = String(req.query.q || '').trim();
+  const queryNumber = Number(query);
+  const where = query
+    ? {
+      [Op.or]: [
+        ...(Number.isInteger(queryNumber) ? [{ id_horario: queryNumber }] : []),
+        { modalidad: { [Op.like]: `%${query}%` } },
+        { periodo: { [Op.like]: `%${query}%` } },
+        { turno: { [Op.like]: `%${query}%` } },
+        { aula: { [Op.like]: `%${query}%` } },
+        { descripcion: { [Op.like]: `%${query}%` } },
+      ],
+    }
+    : {};
+
+  const horarios = await Horario.findAll({
+    where,
+    attributes: ['id_horario', 'modalidad', 'periodo', 'turno', 'hora_inicio', 'hora_fin', 'aula'],
+    order: [['id_horario', 'DESC']],
+    limit: 25,
+  });
+
+  const items = horarios.map((horario) => ({
+    id: horario.id_horario,
+    id_horario: horario.id_horario,
+    modalidad: horario.modalidad,
+    periodo: horario.periodo,
+    turno: horario.turno,
+    hora_inicio: horario.hora_inicio,
+    hora_fin: horario.hora_fin,
+    aula: horario.aula,
+  }));
+
+  return res.json({ items });
+}
+
+async function ultimosEventosAuditoriaDirector(_req, res) {
+  const eventos = await AuditoriaEvento.findAll({
+    attributes: ['id_evento', 'id_usuario', 'accion', 'modulo', 'entidad', 'id_entidad', 'detalle', 'fecha_evento'],
+    include: [
+      {
+        model: Usuario,
+        as: 'actor',
+        attributes: ['id_usuario', 'nombre_completo', 'rol'],
+        required: false,
+      },
+    ],
+    order: [['fecha_evento', 'DESC']],
+    limit: 5,
+  });
+
+  const items = eventos.map((evento) => ({
+    id_evento: evento.id_evento,
+    fecha_evento: evento.fecha_evento,
+    accion: evento.accion,
+    modulo: evento.modulo,
+    entidad: evento.entidad,
+    id_entidad: evento.id_entidad,
+    detalle: evento.detalle || null,
+    actor: {
+      id_usuario: evento.id_usuario,
+      nombre_completo: evento.actor?.nombre_completo || `Usuario ${evento.id_usuario}`,
+      rol: evento.actor?.rol || null,
+    },
+  }));
+
+  return res.json({ items });
 }
 
 async function dashboard(_req, res) {
@@ -1098,6 +1236,10 @@ async function desasignarAlumnoDeGrupo(req, res) {
 module.exports = {
   buscarUsuariosDirector,
   buscarPagosDirector,
+  buscarDocentesDirector,
+  buscarMateriasDirector,
+  buscarHorariosDirector,
+  ultimosEventosAuditoriaDirector,
   dashboard,
   resumenUsuarios,
   crearUsuario,
