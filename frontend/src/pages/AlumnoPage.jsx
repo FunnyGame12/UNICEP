@@ -34,6 +34,7 @@ const statusLabels = {
   fuera_de_tiempo: 'Fuera de tiempo',
   calificada: 'Calificada',
   pagado: 'Pagado',
+  condonado: 'Condonado por Dirección',
   vencido: 'Vencido',
   cursada: 'Cursada',
   en_curso: 'En curso',

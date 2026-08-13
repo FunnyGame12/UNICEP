@@ -14,7 +14,10 @@ function financialLock(blockedModules = []) {
     }
 
     const firstBlockedService = blockedServices[0];
-    const pagoReferencia = financialState.pagos.find((pago) => pago.estatus === 'vencido') || financialState.pagos[0];
+    const pagoReferencia =
+      financialState.pagos.find((pago) => pago.estatus === 'vencido')
+      || financialState.pagos.find((pago) => pago.estatus === 'pendiente')
+      || financialState.pagos[0];
 
     return res.status(423).json({
       message: 'Acceso academico restringido por reglas financieras activas.',

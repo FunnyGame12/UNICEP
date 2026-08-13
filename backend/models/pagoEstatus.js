@@ -31,7 +31,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       estatus: {
-        type: DataTypes.ENUM('pagado', 'pendiente', 'vencido'),
+        type: DataTypes.ENUM('pagado', 'pendiente', 'vencido', 'condonado', 'cancelado'),
         allowNull: false,
       },
       fecha_pago: {

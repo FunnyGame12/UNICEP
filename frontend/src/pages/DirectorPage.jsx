@@ -7,17 +7,10 @@ import 'react-day-picker/style.css';
 import api from '../services/api';
 
 const financieroSchema = z.object({
+  id_alumno: z.string().min(1, 'Selecciona un alumno.'),
   id_pago: z.string().min(1, 'Selecciona un pago.'),
-  estatus: z.enum(['pendiente', 'pagado', 'vencido']),
-  monto: z.preprocess(
-    (value) => {
-      if (value === '' || value === undefined || value === null) return undefined;
-      const parsed = Number(value);
-      return Number.isNaN(parsed) ? value : parsed;
-    },
-    z.number().min(0, 'El monto no puede ser negativo.').optional(),
-  ),
-  motivo: z.string().trim().min(5, 'El motivo debe tener al menos 5 caracteres.'),
+  estatus: z.enum(['pendiente', 'pagado', 'condonado', 'cancelado']),
+  motivo: z.string().trim().optional(),
 });
 
 const extraordinariaSchema = z.object({
@@ -105,7 +98,7 @@ const aulaSchema = z.object({
   motivo: z.string().optional(),
 });
 
-const financieroDefaults = { id_pago: '', estatus: 'pendiente', monto: '', motivo: '' };
+const financieroDefaults = { id_alumno: '', id_pago: '', estatus: 'pendiente', motivo: '' };
 const extraordinariaDefaults = { id_docente: '', id_materia: '', fecha_limite_autorizacion: '', motivo: '' };
 const folioUsuarioDefaults = { nombre_destinatario: '', rol: '', folio_matricula: '' };
 const folioPagoDefaults = {
@@ -302,17 +295,20 @@ export default function DirectorPage() {
   const [editingConceptoId, setEditingConceptoId] = useState(null);
 
   const [pagos, setPagos] = useState([]);
+  const [pagosAlumnoOverride, setPagosAlumnoOverride] = useState([]);
   const [docentes, setDocentes] = useState([]);
   const [materias, setMaterias] = useState([]);
   const [horarios, setHorarios] = useState([]);
   const [auditFeed, setAuditFeed] = useState([]);
 
   const [pagoSearch, setPagoSearch] = useState('');
+  const [alumnoOverrideSearch, setAlumnoOverrideSearch] = useState('');
   const [docenteSearch, setDocenteSearch] = useState('');
   const [materiaSearch, setMateriaSearch] = useState('');
   const [horarioSearch, setHorarioSearch] = useState('');
 
   const [pagosLoading, setPagosLoading] = useState(false);
+  const [alumnosOverrideLoading, setAlumnosOverrideLoading] = useState(false);
   const [docentesLoading, setDocentesLoading] = useState(false);
   const [materiasLoading, setMateriasLoading] = useState(false);
   const [horariosLoading, setHorariosLoading] = useState(false);
@@ -320,6 +316,7 @@ export default function DirectorPage() {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState();
   const [selectedTime, setSelectedTime] = useState('12:00');
+  const [alumnosOverride, setAlumnosOverride] = useState([]);
 
   const financieroForm = useForm({
     resolver: zodResolver(financieroSchema),
@@ -417,6 +414,53 @@ export default function DirectorPage() {
       active = false;
     };
   }, [lastSyncAt, conceptoSearch, conceptoSort]);
+
+  useEffect(() => {
+    let active = true;
+    setAlumnosOverrideLoading(true);
+    api.get('/admin/director/alumnos-override', { params: { q: alumnoOverrideSearch } })
+      .then((response) => {
+        if (!active) return;
+        setAlumnosOverride(response.data.items || []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setAlumnosOverride([]);
+      })
+      .finally(() => {
+        if (active) setAlumnosOverrideLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [alumnoOverrideSearch]);
+
+  useEffect(() => {
+    const idAlumno = Number(financieroValues.id_alumno || 0);
+    if (!idAlumno) {
+      setPagosAlumnoOverride([]);
+      return;
+    }
+
+    let active = true;
+    setPagosLoading(true);
+    api.get('/admin/director/pagos', { params: { id_alumno: idAlumno } })
+      .then((response) => {
+        if (!active) return;
+        setPagosAlumnoOverride(response.data.items || []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setPagosAlumnoOverride([]);
+      })
+      .finally(() => {
+        if (active) setPagosLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [financieroValues.id_alumno]);
 
   useEffect(() => {
     let active = true;
@@ -572,7 +616,7 @@ export default function DirectorPage() {
     await operation();
   }
 
-  const selectedPagoFinanciero = pagos.find((item) => String(item.id) === String(financieroValues.id_pago));
+  const selectedPagoFinanciero = pagosAlumnoOverride.find((item) => String(item.id_pago) === String(financieroValues.id_pago));
   const selectedFolioRole = String(folioUsuarioValues.rol || '').trim().toLowerCase();
   const conceptYearPrefix = String(new Date().getFullYear()).slice(-2);
 
@@ -936,20 +980,31 @@ export default function DirectorPage() {
 
           <section id="director-finanzas" className="director-section director-action-card director-critical-card">
           <h3>Override financiero</h3>
-          <p>Todo cambio exige un motivo y genera auditoría.</p>
+            <p>Actualiza estatus de pago por alumno con trazabilidad de auditoría.</p>
             <form className="form-grid" onSubmit={financieroForm.handleSubmit((values) => {
             solicitarConfirmacion({
               title: 'Confirmar override financiero',
-                description: `¿Estás seguro de cambiar el pago #${values.id_pago || 'N/A'} a ${values.estatus.toUpperCase()} por ${formatMoney(values.monto ?? selectedPagoFinanciero?.monto ?? 0)}? Esta acción registrará auditoría e informará al área financiera.`,
+                  description: `¿Confirmas cambiar el pago #${values.id_pago || 'N/A'} a ${values.estatus.toUpperCase()} por ${formatMoney(selectedPagoFinanciero?.monto ?? 0)}? Esta acción registrará auditoría.`,
               confirmLabel: 'Confirmar override',
-              }, () => ejecutar(() => api.patch(`/admin/pagos/${values.id_pago}/estatus-director`, { estatus: values.estatus, monto: values.monto ?? undefined, motivo: values.motivo }), 'Cambio financiero autorizado y auditado.', () => financieroForm.reset(financieroDefaults)));
+                }, () => ejecutar(() => api.patch(`/admin/pagos/${values.id_pago}/estatus-director`, { estatus: values.estatus, motivo: values.motivo || undefined }), 'Cambio financiero autorizado y auditado.', () => financieroForm.reset(financieroDefaults)));
             })}>
-              <SearchableSelect id="director-financial-id" label="Pago a modificar" placeholder="Escribe concepto, estado, alumno o folio" value={financieroValues.id_pago} onChange={(id_pago) => financieroForm.setValue('id_pago', id_pago, { shouldDirty: true, shouldValidate: true })} onSearch={setPagoSearch} loading={pagosLoading} items={pagos.map((item) => ({ ...item, id: item.id_pago }))} renderValue={(item) => `${item.concepto} (ID: ${item.id_pago} / Alumno: ${item.id_alumno})`} renderItem={(item) => <><strong>{item.concepto}</strong><small>ID: {item.id_pago} / {item.estatus} / {formatMoney(item.monto)}</small></>} />
+                <SearchableSelect id="director-financial-alumno" label="Nombre completo del alumno" placeholder="Escribe nombre completo del alumno" value={financieroValues.id_alumno} onChange={(id_alumno) => {
+                  financieroForm.setValue('id_alumno', id_alumno, { shouldDirty: true, shouldValidate: true });
+                  financieroForm.setValue('id_pago', '', { shouldDirty: true, shouldValidate: true });
+                }} onSearch={setAlumnoOverrideSearch} loading={alumnosOverrideLoading} items={alumnosOverride.map((item) => ({ ...item, id: item.id_usuario }))} renderValue={(item) => `${item.nombre_completo} (ID: ${item.id_usuario})`} renderItem={(item) => <><strong>{item.nombre_completo}</strong><small>ID: {item.id_usuario} / {item.folio_matricula || 'Sin matrícula'}</small></>} />
+                {financieroForm.formState.errors.id_alumno ? <small className="director-field-error">{financieroForm.formState.errors.id_alumno.message}</small> : null}
+                <label htmlFor="director-financial-id">Folio de pago</label>
+                <select id="director-financial-id" value={financieroValues.id_pago} onChange={(event) => financieroForm.setValue('id_pago', event.target.value, { shouldDirty: true, shouldValidate: true })}>
+                  <option value="">Selecciona un folio/adeudo</option>
+                  {pagosAlumnoOverride.map((item) => (
+                    <option key={item.id_pago} value={String(item.id_pago)}>{`${item.concepto} - ${item.folio_interno || `PAGO-${item.id_pago}`}`}</option>
+                  ))}
+                </select>
               {financieroForm.formState.errors.id_pago ? <small className="director-field-error">{financieroForm.formState.errors.id_pago.message}</small> : null}
-              <select id="director-financial-status" {...financieroForm.register('estatus')}><option value="pendiente">Pendiente</option><option value="pagado">Pagado</option><option value="vencido">Vencido</option></select>
-              <input id="director-financial-amount" type="number" min="0" step="0.01" placeholder="Monto opcional" {...financieroForm.register('monto')} />
-              {financieroForm.formState.errors.monto ? <small className="director-field-error">{financieroForm.formState.errors.monto.message}</small> : null}
-              <textarea id="director-financial-reason" placeholder="Motivo obligatorio" {...financieroForm.register('motivo')} />
+                <label htmlFor="director-financial-status">Estado de pago</label>
+                <select id="director-financial-status" {...financieroForm.register('estatus')}><option value="pagado">Pagado</option><option value="pendiente">Pendiente</option><option value="condonado">Condonado / Becado</option><option value="cancelado">Cancelado</option></select>
+                <label htmlFor="director-financial-reason">Motivo (Opcional)</label>
+                <textarea id="director-financial-reason" placeholder="Justificación administrativa opcional" {...financieroForm.register('motivo')} />
               {financieroForm.formState.errors.motivo ? <small className="director-field-error">{financieroForm.formState.errors.motivo.message}</small> : null}
             <button className="btn-primary" type="submit" disabled={actionLoading}>{actionLoading ? 'Autorizando...' : 'Autorizar cambio'}</button>
           </form>

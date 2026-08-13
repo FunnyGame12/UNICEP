@@ -31,11 +31,11 @@ function toNumber(value) {
 
 function buildPaymentSummary(pagos = []) {
   const totalPagado = pagos
-    .filter((pago) => pago.estatus === 'pagado')
+    .filter((pago) => pago.estatus === 'pagado' || pago.estatus === 'condonado')
     .reduce((acc, pago) => acc + toNumber(pago.monto), 0);
 
   const totalPendiente = pagos
-    .filter((pago) => pago.estatus !== 'pagado')
+    .filter((pago) => pago.estatus === 'pendiente' || pago.estatus === 'vencido')
     .reduce((acc, pago) => acc + toNumber(pago.monto), 0);
 
   const periodoActivo = pagos[0]?.fecha_limite || null;
@@ -85,7 +85,7 @@ function isManualUnlockActive(unlock, now = new Date()) {
 }
 
 function paymentMatchesRule(pago, regla) {
-  if (pago.estatus !== 'pagado') {
+  if (pago.estatus !== 'pagado' && pago.estatus !== 'condonado') {
     return false;
   }
 

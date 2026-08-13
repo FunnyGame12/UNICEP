@@ -13,6 +13,7 @@ router.get('/dashboard', requirePermission(PERMISSIONS.ADMIN_DASHBOARD_READ), ad
 router.get('/director/dashboard', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.dashboard);
 router.get('/usuarios/resumen', requirePermission(PERMISSIONS.ADMIN_USUARIOS_RESUMEN_READ), adminController.resumenUsuarios);
 router.get('/director/usuarios', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.buscarUsuariosDirector);
+router.get('/director/alumnos-override', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.buscarAlumnosOverrideDirector);
 router.get('/director/folios', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.listarFoliosDirector);
 router.get('/director/conceptos-pago', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), adminController.listConceptosPagoCatalog);
 router.post('/director/conceptos-pago', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_FINANCIAL_OVERRIDE), adminController.createConceptoPagoCatalog);

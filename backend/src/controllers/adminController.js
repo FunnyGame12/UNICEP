@@ -52,7 +52,7 @@ const FOLIO_TABLE_ROLE_ORDER = {
   otro: 99,
 };
 
-const VALID_FINANCIAL_STATUS = new Set(['pagado', 'pendiente', 'vencido']);
+const VALID_FINANCIAL_STATUS = new Set(['pagado', 'pendiente', 'condonado', 'cancelado']);
 const CONCEPTO_CLASIFICACION = new Set(['base', 'subrama']);
 const CONCEPTO_NATURALEZA = new Set(['descuento', 'penalizacion']);
 const CONCEPTO_MODO = new Set(['monto_fijo', 'porcentaje']);
@@ -577,6 +577,30 @@ async function buscarUsuariosDirector(req, res) {
   return res.json({ items: usuarios });
 }
 
+async function buscarAlumnosOverrideDirector(req, res) {
+  const query = String(req.query.q || '').trim();
+  const where = {
+    rol: 'alumno',
+  };
+
+  if (query) {
+    where[Op.or] = [
+      { nombre_completo: { [Op.like]: `%${query}%` } },
+      { correo: { [Op.like]: `%${query}%` } },
+      { folio_matricula: { [Op.like]: `%${query}%` } },
+    ];
+  }
+
+  const alumnos = await Usuario.findAll({
+    where,
+    attributes: ['id_usuario', 'nombre_completo', 'correo', 'folio_matricula'],
+    order: [['nombre_completo', 'ASC']],
+    limit: 25,
+  });
+
+  return res.json({ items: alumnos });
+}
+
 async function listarFoliosDirector(req, res) {
   const roleQuery = normalizeRole(req.query.rol);
   const normalizedRoleFilter = roleQuery ? normalizeRoleForTable(roleQuery) : '';
@@ -639,6 +663,7 @@ async function listarFoliosDirector(req, res) {
 
 async function buscarPagosDirector(req, res) {
   const query = String(req.query.q || '').trim();
+  const idAlumno = req.query.id_alumno ? Number(req.query.id_alumno) : null;
   const where = query
     ? {
       [Op.or]: [
@@ -647,6 +672,10 @@ async function buscarPagosDirector(req, res) {
       ],
     }
     : {};
+
+  if (idAlumno && Number.isInteger(idAlumno)) {
+    where.id_alumno = idAlumno;
+  }
 
   const pagos = await PagoEstatus.findAll({
     where,
@@ -1194,17 +1223,13 @@ async function overrideEstatusFinanciero(req, res) {
 
   const estatusNuevo = String(req.body.estatus || '').trim().toLowerCase();
   if (estatusNuevo && !VALID_FINANCIAL_STATUS.has(estatusNuevo)) {
-    return res.status(400).json({ message: 'estatus invalido. Usa: pagado, pendiente o vencido.' });
+    return res.status(400).json({ message: 'estatus invalido. Usa: pagado, pendiente, condonado o cancelado.' });
   }
 
   const montoNuevo = req.body.monto;
   const fechaLimiteNueva = req.body.fecha_limite;
   const observaciones = req.body.observaciones || null;
   const motivo = String(req.body.motivo || '').trim();
-
-  if (!motivo) {
-    return res.status(400).json({ message: 'motivo es obligatorio para override financiero.' });
-  }
 
   const before = {
     estatus: pago.estatus,
@@ -1215,8 +1240,10 @@ async function overrideEstatusFinanciero(req, res) {
 
   if (estatusNuevo) {
     pago.estatus = estatusNuevo;
-    if (estatusNuevo === 'pagado') {
+    if (estatusNuevo === 'pagado' || estatusNuevo === 'condonado') {
       pago.fecha_pago = req.body.fecha_pago || new Date();
+    } else {
+      pago.fecha_pago = null;
     }
   }
 
@@ -1797,6 +1824,7 @@ async function desasignarAlumnoDeGrupo(req, res) {
 
 module.exports = {
   buscarUsuariosDirector,
+  buscarAlumnosOverrideDirector,
   listConceptosPagoCatalog,
   createConceptoPagoCatalog,
   updateConceptoPagoCatalog,
