@@ -591,6 +591,59 @@ main {
   font-size: 0.78rem;
 }
 
+.director-folio-user-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.director-folio-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.9rem;
+  padding: 0.2rem 0.62rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  background: rgba(15, 23, 42, 0.72);
+  color: #dbeafe;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.director-folio-pill-institucional {
+  border-color: rgba(74, 222, 128, 0.58);
+  color: #bbf7d0;
+}
+
+.director-folio-pill-gmail {
+  border-color: rgba(251, 191, 36, 0.58);
+  color: #fef3c7;
+}
+
+.director-folio-pill-otro {
+  border-color: rgba(248, 113, 113, 0.52);
+  color: #fecaca;
+}
+
+.director-folio-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.director-folio-input-row .btn-secondary {
+  min-height: 3rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .director-folio-input-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .director-combobox-empty {
   margin: 0;
   padding: 0.55rem 0.65rem;

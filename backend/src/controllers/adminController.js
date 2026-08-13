@@ -22,15 +22,25 @@ const {
 } = require('../../models');
 const { registrarEventoAuditoria } = require('../services/auditService');
 
-const ROLE_FOLIO_PREFIX = {
+const SECURE_FOLIO_PREFIX_BY_ROLE = {
   director: 'DIR',
-  control_escolar: 'CES',
-  coordinacion_academica: 'COA',
-  maestro: 'DOC',
+  control_escolar: 'CTL',
+  coordinacion: 'COO',
+  docente: 'DOC',
   alumno: 'ALU',
 };
 
-const MANAGED_FOLIO_ROLES = new Set(Object.keys(ROLE_FOLIO_PREFIX));
+const ROLE_ALIASES = {
+  director: 'director',
+  control_escolar: 'control_escolar',
+  coordinacion: 'coordinacion',
+  coordinacion_academica: 'coordinacion',
+  docente: 'docente',
+  maestro: 'docente',
+  alumno: 'alumno',
+};
+
+const MANAGED_FOLIO_ROLES = new Set(Object.keys(SECURE_FOLIO_PREFIX_BY_ROLE));
 
 const VALID_FINANCIAL_STATUS = new Set(['pagado', 'pendiente', 'vencido']);
 
@@ -38,8 +48,14 @@ function normalizeRole(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function canonicalFolioRole(value) {
+  const normalized = normalizeRole(value);
+  return ROLE_ALIASES[normalized] || null;
+}
+
 function getRolePrefix(role) {
-  return ROLE_FOLIO_PREFIX[normalizeRole(role)] || null;
+  const canonical = canonicalFolioRole(role);
+  return canonical ? SECURE_FOLIO_PREFIX_BY_ROLE[canonical] : null;
 }
 
 function buildRoleBasedFolio(role, entropy) {
@@ -47,12 +63,12 @@ function buildRoleBasedFolio(role, entropy) {
   if (!prefix) {
     throw new Error('Rol no soportado para generacion de folio.');
   }
-  const year = new Date().getFullYear();
-  return `${prefix}-${year}-${entropy}`;
+  const year2Digits = String(new Date().getFullYear()).slice(-2);
+  return `${prefix}-${year2Digits}-${entropy}`;
 }
 
-function randomFolioEntropy(length = 8) {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function randomFolioEntropy(length = 6) {
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
   const bytes = crypto.randomBytes(length);
   let token = '';
   for (let index = 0; index < length; index += 1) {
@@ -62,15 +78,15 @@ function randomFolioEntropy(length = 8) {
 }
 
 async function nextFolioForRole(role) {
-  const normalizedRole = normalizeRole(role);
-  if (!MANAGED_FOLIO_ROLES.has(normalizedRole)) {
-    throw new Error(`rol invalido para folio automatico: ${normalizedRole || 'sin_rol'}`);
+  const canonicalRole = canonicalFolioRole(role);
+  if (!canonicalRole || !MANAGED_FOLIO_ROLES.has(canonicalRole)) {
+    throw new Error(`rol invalido para folio automatico: ${normalizeRole(role) || 'sin_rol'}`);
   }
 
   let attempts = 0;
 
   while (attempts < 40) {
-    const candidate = buildRoleBasedFolio(normalizedRole, randomFolioEntropy());
+    const candidate = buildRoleBasedFolio(canonicalRole, randomFolioEntropy());
     // Evita colisión por folio único cuando hay altas concurrentes.
     // eslint-disable-next-line no-await-in-loop
     const duplicate = await Usuario.findOne({
@@ -87,9 +103,10 @@ async function nextFolioForRole(role) {
 }
 
 async function assignOrGenerateFolio({ folioInput, role }) {
+  const canonicalRole = canonicalFolioRole(role);
   const normalizedRole = normalizeRole(role);
   const incomingFolio = String(folioInput || '').trim().toUpperCase();
-  const rolePrefix = getRolePrefix(normalizedRole);
+  const rolePrefix = getRolePrefix(canonicalRole);
 
   if (!rolePrefix) {
     return {
@@ -109,8 +126,51 @@ async function assignOrGenerateFolio({ folioInput, role }) {
     return { folio: incomingFolio, auto: false };
   }
 
-  const generated = await nextFolioForRole(normalizedRole);
+  const generated = await nextFolioForRole(canonicalRole);
   return { folio: generated, auto: true };
+}
+
+function classifyCorreo(correo) {
+  const normalized = String(correo || '').trim().toLowerCase();
+  if (normalized.endsWith('@gmail.com')) {
+    return 'gmail';
+  }
+  if (normalized.endsWith('@unicepmerida.edu.mx')) {
+    return 'institucional';
+  }
+  return 'otro';
+}
+
+async function generateFolioByUserId(req, res) {
+  const idUsuario = Number(req.params.userId);
+  if (!Number.isInteger(idUsuario)) {
+    return res.status(400).json({ message: 'userId invalido.' });
+  }
+
+  const usuario = await Usuario.findByPk(idUsuario, {
+    attributes: ['id_usuario', 'rol', 'correo', 'folio_matricula'],
+  });
+
+  if (!usuario) {
+    return res.status(404).json({ message: 'Usuario no encontrado.' });
+  }
+
+  const canonicalRole = canonicalFolioRole(usuario.rol);
+  if (!canonicalRole || !MANAGED_FOLIO_ROLES.has(canonicalRole)) {
+    return res.status(400).json({
+      message: `rol no elegible para folios automaticos: ${usuario.rol}.`,
+    });
+  }
+
+  const folio = await nextFolioForRole(canonicalRole);
+  return res.json({
+    id_usuario: usuario.id_usuario,
+    rol: canonicalRole,
+    correo: usuario.correo,
+    correo_tipo: classifyCorreo(usuario.correo),
+    folio,
+    formato: `${getRolePrefix(canonicalRole)}-YY-XXXXXX`,
+  });
 }
 
 async function resumenUsuarios(_req, res) {
@@ -436,18 +496,19 @@ async function crearUsuario(req, res) {
 }
 
 async function politicaFoliosPorRol(_req, res) {
-  const year = new Date().getFullYear();
-  const politica = Object.entries(ROLE_FOLIO_PREFIX).map(([rol, prefijo]) => ({
+  const year2Digits = String(new Date().getFullYear()).slice(-2);
+  const politica = Object.entries(SECURE_FOLIO_PREFIX_BY_ROLE).map(([rol, prefijo]) => ({
     rol,
     prefijo,
-    ejemplo: `${prefijo}-${year}-A9K4M2QX`,
+    ejemplo: `${prefijo}-${year2Digits}-X8K2M9`,
   }));
 
   return res.json({ items: politica });
 }
 
 async function preasignarFolioPorRol(req, res) {
-  const rol = normalizeRole(req.body.rol);
+  const rolInput = normalizeRole(req.body.rol);
+  const rol = canonicalFolioRole(rolInput);
   if (!rol) {
     return res.status(400).json({ message: 'rol es obligatorio.' });
   }
@@ -1271,6 +1332,7 @@ module.exports = {
   respaldoMetadatos,
   politicaFoliosPorRol,
   preasignarFolioPorRol,
+  generateFolioByUserId,
   actualizarFolioUsuario,
   validarPago,
   actualizarFolioPago,

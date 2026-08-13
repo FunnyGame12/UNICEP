@@ -138,14 +138,23 @@ function formatMoney(value) {
   return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number.isNaN(parsed) ? 0 : parsed);
 }
 
+function classifyEmailDomain(correo = '') {
+  const normalized = String(correo || '').trim().toLowerCase();
+  if (normalized.endsWith('@unicepmerida.edu.mx')) return 'institucional';
+  if (normalized.endsWith('@gmail.com')) return 'gmail';
+  return 'otro';
+}
+
 export default function DirectorPage() {
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [folioAutoLoading, setFolioAutoLoading] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [confirmData, setConfirmData] = useState(null);
   const [activeKpi, setActiveKpi] = useState('');
   const [lastSyncAt, setLastSyncAt] = useState('');
+  const [selectedFolioUser, setSelectedFolioUser] = useState(null);
 
   const [usuarios, setUsuarios] = useState([]);
   const [pagos, setPagos] = useState([]);
@@ -401,6 +410,37 @@ export default function DirectorPage() {
   }
 
   const selectedPagoFinanciero = pagos.find((item) => String(item.id) === String(financieroValues.id_pago));
+  const selectedFolioRole = String(selectedFolioUser?.rol || '').trim().toLowerCase();
+  const selectedFolioEmailType = classifyEmailDomain(selectedFolioUser?.correo || '');
+
+  async function generarFolioAleatorioUsuario() {
+    if (!folioUsuarioValues.id_usuario) {
+      pushToast('error', 'Selecciona un usuario antes de generar su folio.');
+      return;
+    }
+
+    setFolioAutoLoading(true);
+    try {
+      const response = await api.get(`/admin/generate-folio/${folioUsuarioValues.id_usuario}`);
+      const folioGenerado = response?.data?.folio || '';
+      if (!folioGenerado) {
+        pushToast('error', 'No se pudo generar un folio válido.');
+        return;
+      }
+
+      folioUsuarioForm.setValue('folio_matricula', folioGenerado, { shouldDirty: true, shouldValidate: true });
+      setSelectedFolioUser((current) => ({
+        ...(current || {}),
+        rol: response?.data?.rol || current?.rol,
+        correo: response?.data?.correo || current?.correo,
+      }));
+      pushToast('ok', `Folio sugerido generado: ${folioGenerado}`);
+    } catch (requestError) {
+      pushToast('error', requestError?.response?.data?.message || 'No se pudo generar el folio aleatorio.');
+    } finally {
+      setFolioAutoLoading(false);
+    }
+  }
 
   const syncLabel = lastSyncAt
     ? `Última sync: ${new Date(lastSyncAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`
@@ -453,10 +493,28 @@ export default function DirectorPage() {
         <section id="director-folios" className="director-section director-action-card">
           <h3>Gestión de folios de usuario</h3>
           <p>Asigna o reasigna el folio de una cuenta.</p>
-          <form className="form-grid" onSubmit={folioUsuarioForm.handleSubmit((values) => ejecutar(() => api.patch(`/admin/usuarios/${values.id_usuario}/folio`, { folio_matricula: values.folio_matricula || undefined }), 'Folio de usuario actualizado.', () => folioUsuarioForm.reset(folioUsuarioDefaults)))}>
-            <SearchableSelect id="director-folio-usuario-id" label="Usuario" placeholder="Escribe nombre, correo o matrícula" value={folioUsuarioValues.id_usuario} onChange={(id_usuario) => folioUsuarioForm.setValue('id_usuario', id_usuario, { shouldDirty: true, shouldValidate: true })} onSearch={setUsuarioSearch} loading={usuariosLoading} items={usuarios.map((item) => ({ ...item, id: item.id_usuario }))} renderValue={(item) => `${item.nombre_completo} (ID: ${item.id_usuario} / Matrícula: ${item.folio_matricula || 'N/A'})`} renderItem={(item) => <><strong>{item.nombre_completo}</strong><small>ID: {item.id_usuario} / Matrícula: {item.folio_matricula || 'N/A'}</small></>} />
+          <form className="form-grid" onSubmit={folioUsuarioForm.handleSubmit((values) => ejecutar(() => api.patch(`/admin/usuarios/${values.id_usuario}/folio`, { folio_matricula: values.folio_matricula || undefined }), 'Folio de usuario actualizado.', () => {
+            folioUsuarioForm.reset(folioUsuarioDefaults);
+            setSelectedFolioUser(null);
+          }))}>
+            <SearchableSelect id="director-folio-usuario-id" label="Usuario" placeholder="Escribe nombre, correo o matrícula" value={folioUsuarioValues.id_usuario} onChange={(id_usuario) => {
+              folioUsuarioForm.setValue('id_usuario', id_usuario, { shouldDirty: true, shouldValidate: true });
+              const found = usuarios.find((item) => String(item.id_usuario) === String(id_usuario)) || null;
+              setSelectedFolioUser(found);
+            }} onSearch={setUsuarioSearch} loading={usuariosLoading} items={usuarios.map((item) => ({ ...item, id: item.id_usuario }))} renderValue={(item) => `${item.nombre_completo} (ID: ${item.id_usuario} / Matrícula: ${item.folio_matricula || 'N/A'})`} renderItem={(item) => <><strong>{item.nombre_completo}</strong><small>ID: {item.id_usuario} / Matrícula: {item.folio_matricula || 'N/A'}</small></>} />
             {folioUsuarioForm.formState.errors.id_usuario ? <small className="director-field-error">{folioUsuarioForm.formState.errors.id_usuario.message}</small> : null}
-            <input id="director-folio-usuario" placeholder="Folio nuevo (opcional)" {...folioUsuarioForm.register('folio_matricula')} />
+            {selectedFolioUser ? (
+              <div className="director-folio-user-meta">
+                <span className="director-folio-pill">Rol: {selectedFolioRole || 'sin rol'}</span>
+                <span className={`director-folio-pill director-folio-pill-${selectedFolioEmailType}`}>{selectedFolioUser.correo || 'Sin correo'}</span>
+              </div>
+            ) : null}
+            <div className="director-folio-input-row">
+              <input id="director-folio-usuario" placeholder="Folio nuevo (opcional)" {...folioUsuarioForm.register('folio_matricula')} />
+              <button className="btn-secondary" type="button" onClick={generarFolioAleatorioUsuario} disabled={folioAutoLoading || actionLoading || !folioUsuarioValues.id_usuario}>
+                {folioAutoLoading ? 'Generando...' : '⚡ Generar Aleatorio'}
+              </button>
+            </div>
             <button className="btn-primary" type="submit" disabled={actionLoading}>{actionLoading ? 'Guardando...' : 'Guardar folio'}</button>
           </form>
         </section>

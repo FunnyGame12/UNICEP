@@ -32,6 +32,7 @@ router.get('/respaldo', requirePermission(PERMISSIONS.ADMIN_RESPALDO_READ), admi
 
 router.get('/folios/politica', requirePermission(PERMISSIONS.ADMIN_FOLIOS_USUARIOS_READ), adminController.politicaFoliosPorRol);
 router.post('/folios/preasignacion', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_FOLIOS_MANAGE), adminController.preasignarFolioPorRol);
+router.get('/generate-folio/:userId', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_FOLIOS_MANAGE), adminController.generateFolioByUserId);
 
 router.patch('/usuarios/:id_usuario/folio', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_FOLIOS_MANAGE), adminController.actualizarFolioUsuario);
 router.patch('/pagos/:id_pago/folio', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_FOLIOS_MANAGE), adminController.actualizarFolioPago);
