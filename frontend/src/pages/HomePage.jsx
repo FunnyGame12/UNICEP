@@ -105,7 +105,7 @@ const planteles = [
     nivel: 'Educación Media Superior',
     direccion: 'Calle 60 #729 por calle 91, Colonia Centro, Mérida, Yucatán, México.',
     referencia: 'Ubicado en el centro histórico, a pocos pasos de Plaza Grande y principales servicios.',
-    mapaUrl: 'https://www.google.com/maps/search/?api=1&query=Calle+60+%23729+Colonia+Centro+Mérida+Yucatán',
+    mapaUrl: 'https://maps.app.goo.gl/2xpT7CmBNQydDa8i9',
   },
 ];
 
