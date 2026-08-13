@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const ofertas = [
@@ -152,7 +152,6 @@ export default function HomePage() {
   const [selectedOffer, setSelectedOffer] = useState(ofertas[0]);
   const [selectedCampusByArea, setSelectedCampusByArea] = useState(initialCampusSelection);
   const [viewerError, setViewerError] = useState('');
-  const [viewerAttempt, setViewerAttempt] = useState(0);
   const [isMobilePdfMode, setIsMobilePdfMode] = useState(() => {
     if (typeof window === 'undefined') {
       return false;
@@ -160,48 +159,11 @@ export default function HomePage() {
 
     return window.matchMedia('(max-width: 760px)').matches;
   });
-  const iframeRef = useRef(null);
-
-  const buildPdfUrl = (file, attempt = 0) => {
-    const baseUrl = encodeURI(`/pdf/${file}`);
-    return attempt > 0 ? `${baseUrl}?retry=${attempt}` : baseUrl;
-  };
+  const buildPdfUrl = (file) => encodeURI(`/pdf/${file}`);
 
   const handleOfferSelect = (oferta) => {
     setViewerError('');
-    setViewerAttempt(0);
     setSelectedOffer(oferta);
-  };
-
-  const handleViewerLoad = () => {
-    const frame = iframeRef.current;
-    if (!frame) {
-      return;
-    }
-
-    try {
-      const currentPath = (frame.contentWindow?.location?.pathname || '').toUpperCase();
-      const expectedPath = `/PDF/${selectedOffer.file}`.toUpperCase();
-      const loadedPdfPath = currentPath.endsWith(expectedPath);
-
-      if (!loadedPdfPath) {
-        if (viewerAttempt < 1) {
-          setViewerAttempt(1);
-          return;
-        }
-
-        setViewerError(
-          'El servidor devolvió una vista distinta al PDF. Intenta recargar si persiste.',
-        );
-        return;
-      }
-
-      setViewerError('');
-    } catch (error) {
-      setViewerError(
-        'No fue posible validar el documento en el visor. Intenta recargar la página.',
-      );
-    }
   };
 
   const handleCampusImageSelect = (areaId, image) => {
@@ -410,10 +372,9 @@ export default function HomePage() {
               </div>
             ) : (
               <iframe
-                ref={iframeRef}
+                key={selectedOffer.file}
                 title={`Oferta PDF ${selectedOffer.label}`}
-                src={buildPdfUrl(selectedOffer.file, viewerAttempt)}
-                onLoad={handleViewerLoad}
+                src={selectedOfferPdfUrl}
                 className="oferta-iframe"
               />
             )}
