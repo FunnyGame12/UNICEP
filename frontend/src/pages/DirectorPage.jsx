@@ -815,7 +815,7 @@ export default function DirectorPage() {
 
               {folioPagoValues.clasificacion === 'base' ? (
                 <>
-                  <label htmlFor="director-concepto-precio-base">Monto / Precio Base ($ MXN)</label>
+                  <label htmlFor="director-concepto-precio-base">Precio Base ($ MXN)</label>
                   <input id="director-concepto-precio-base" type="number" min="0" step="0.01" placeholder="Precio base inicial" {...folioPagoForm.register('precio_base_inicial')} />
                   {folioPagoForm.formState.errors.precio_base_inicial ? <small className="director-field-error">{folioPagoForm.formState.errors.precio_base_inicial.message}</small> : null}
                 </>
@@ -844,8 +844,8 @@ export default function DirectorPage() {
                   </select>
                   {folioPagoForm.formState.errors.modo_aplicacion ? <small className="director-field-error">{folioPagoForm.formState.errors.modo_aplicacion.message}</small> : null}
 
-                  <label htmlFor="director-concepto-valor-ajuste">Monto / Precio Base ($ MXN)</label>
-                  <input id="director-concepto-valor-ajuste" type="number" min="0.01" step="0.01" placeholder="Valor del ajuste" {...folioPagoForm.register('valor_ajuste')} />
+                  <label htmlFor="director-concepto-valor-ajuste">{folioPagoValues.modo_aplicacion === 'porcentaje' ? 'Porcentaje de Ajuste (%)' : 'Monto de Ajuste ($ MXN)'}</label>
+                  <input id="director-concepto-valor-ajuste" type="number" min="0.01" step="0.01" placeholder={folioPagoValues.modo_aplicacion === 'porcentaje' ? '15' : '250.00'} {...folioPagoForm.register('valor_ajuste')} />
                   {folioPagoForm.formState.errors.valor_ajuste ? <small className="director-field-error">{folioPagoForm.formState.errors.valor_ajuste.message}</small> : null}
                 </>
               )}
