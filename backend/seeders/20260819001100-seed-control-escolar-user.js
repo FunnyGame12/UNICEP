@@ -44,7 +44,7 @@ module.exports = {
         cuenta_activada: true,
         id_rol: idRol,
         id_subrol: null,
-        rol: 'administrativo',
+        rol: 'control_escolar',
         foto_url: null,
         fecha_creacion: now,
       },
