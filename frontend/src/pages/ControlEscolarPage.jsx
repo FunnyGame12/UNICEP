@@ -403,7 +403,7 @@ export default function ControlEscolarPage() {
 
                 <form className="form-grid ce-reject-form" onSubmit={rechazoForm.handleSubmit(rechazarComprobante)}>
                   <label htmlFor="ce-rechazo-motivo">Motivo de rechazo</label>
-                  <textarea id="ce-rechazo-motivo" rows="3" placeholder="Describe por qué se rechaza el comprobante." {...rechazoForm.register('motivo')} />
+                  <textarea className="ce-textarea" id="ce-rechazo-motivo" rows="3" placeholder="Describe por qué se rechaza el comprobante." {...rechazoForm.register('motivo')} />
                   {rechazoForm.formState.errors.motivo ? <small>{rechazoForm.formState.errors.motivo.message}</small> : null}
                   <button type="submit" className="btn-danger" disabled={sending}>Rechazar y notificar</button>
                 </form>
@@ -573,7 +573,7 @@ export default function ControlEscolarPage() {
                   {tramiteForm.formState.errors.estatus ? <small>{tramiteForm.formState.errors.estatus.message}</small> : null}
 
                   <label htmlFor="ce-tramite-notas">Notas de entrega (opcional)</label>
-                  <textarea id="ce-tramite-notas" rows="4" placeholder="Observaciones de ventanilla o entrega física." {...tramiteForm.register('notas_entrega')} />
+                  <textarea className="ce-textarea" id="ce-tramite-notas" rows="4" placeholder="Observaciones de ventanilla o entrega física." {...tramiteForm.register('notas_entrega')} />
 
                   <button type="submit" className="btn-primary" disabled={sending}>Actualizar trámite</button>
                 </form>
