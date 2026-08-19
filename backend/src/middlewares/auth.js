@@ -39,4 +39,21 @@ function auth(requiredRoles = []) {
   };
 }
 
+function authorizeRoles(...roles) {
+  const normalizedRoles = Array.isArray(roles[0]) ? roles[0] : roles;
+
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Token requerido.' });
+    }
+
+    if (normalizedRoles.length > 0 && !normalizedRoles.includes(req.user.rol)) {
+      return res.status(403).json({ message: 'No autorizado para este recurso.' });
+    }
+
+    return next();
+  };
+}
+
 module.exports = auth;
+module.exports.authorizeRoles = authorizeRoles;

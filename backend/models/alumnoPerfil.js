@@ -21,6 +21,21 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      estatus_financiero: {
+        type: DataTypes.ENUM('al_dia', 'deudor', 'suspendido'),
+        allowNull: false,
+        defaultValue: 'al_dia',
+      },
+      bloqueo_plataforma: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
+      bloqueo_calificaciones: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
     },
     {
       tableName: 'alumnos_perfil',

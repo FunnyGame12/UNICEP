@@ -1,0 +1,150 @@
+.control-escolar-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.ce-header {
+  padding: 1.25rem;
+  border-radius: 20px;
+  background: linear-gradient(140deg, rgba(8, 64, 72, 0.82), rgba(20, 34, 60, 0.9));
+  border: 1px solid rgba(144, 229, 214, 0.2);
+}
+
+.ce-header h2 {
+  margin: 0;
+}
+
+.ce-header p {
+  margin: 0.35rem 0 0;
+}
+
+.ce-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.74rem;
+  color: #8ee2d2;
+  margin: 0 0 0.4rem;
+}
+
+.ce-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.ce-tabs button {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.04);
+  color: #d7e7ff;
+  border-radius: 999px;
+  padding: 0.62rem 1rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.ce-tabs button.is-active {
+  border-color: rgba(116, 246, 217, 0.55);
+  background: linear-gradient(140deg, rgba(13, 141, 128, 0.34), rgba(16, 99, 126, 0.5));
+  color: #ffffff;
+}
+
+.ce-feedback {
+  margin: 0;
+}
+
+.ce-grid-2 {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ce-card {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(9, 14, 28, 0.72);
+  border-radius: 18px;
+  padding: 1rem;
+}
+
+.ce-card h3 {
+  margin-top: 0;
+}
+
+.ce-card small {
+  color: #ffd4d4;
+}
+
+.ce-list {
+  display: grid;
+  gap: 0.55rem;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.ce-list-item {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 0.7rem 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  color: #d7e7ff;
+  text-align: left;
+  display: grid;
+  gap: 0.2rem;
+  cursor: pointer;
+}
+
+.ce-list-item.is-selected {
+  border-color: rgba(116, 246, 217, 0.5);
+  background: rgba(12, 89, 84, 0.35);
+}
+
+.ce-preview {
+  margin-top: 0.9rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 0.9rem;
+}
+
+.ce-actions-row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.ce-reject-form {
+  margin-top: 0.8rem;
+}
+
+.ce-subheader {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ce-subheader h3 {
+  margin: 0;
+}
+
+.ce-filters {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ce-table-wrap td p {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.ce-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 960px) {
+  .ce-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}

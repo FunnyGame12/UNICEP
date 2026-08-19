@@ -6,6 +6,7 @@ const adminController = require('../controllers/adminController');
 
 const router = express.Router();
 const directorOnly = auth([ROLES.DIRECTOR]);
+const coordinacionOrDirector = auth([ROLES.DIRECTOR, ROLES.COORDINACION_ACADEMICA]);
 
 router.use(auth(ADMIN_ROLES));
 
@@ -27,11 +28,8 @@ router.get('/director/auditoria-eventos', directorOnly, requirePermission(PERMIS
 router.post('/usuarios', requirePermission(PERMISSIONS.ADMIN_USUARIOS_CREATE), adminController.crearUsuario);
 router.patch('/usuarios/:id_usuario/cuenta', requirePermission(PERMISSIONS.ADMIN_CUENTAS_UPDATE), adminController.actualizarCuentaUsuario);
 
-router.post('/materias', requirePermission(PERMISSIONS.ADMIN_MATERIAS_CREATE), adminController.crearMateria);
-router.post('/docente-grupos', requirePermission(PERMISSIONS.ADMIN_DOCENTE_GRUPOS_CREATE), adminController.asignarDocenteAGrupo);
-
-router.get('/tramites', requirePermission(PERMISSIONS.ADMIN_TRAMITES_READ), adminController.listarTramites);
-router.patch('/tramites/:id_tramite', requirePermission(PERMISSIONS.ADMIN_TRAMITES_UPDATE), adminController.actualizarTramite);
+router.post('/materias', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_MATERIAS_CREATE), adminController.crearMateria);
+router.post('/docente-grupos', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_DOCENTE_GRUPOS_CREATE), adminController.asignarDocenteAGrupo);
 
 router.get('/reportes/financieros', requirePermission(PERMISSIONS.ADMIN_REPORTES_FINANCIEROS_READ), adminController.reporteFinanciero);
 router.get('/respaldo', requirePermission(PERMISSIONS.ADMIN_RESPALDO_READ), adminController.respaldoMetadatos);
@@ -43,14 +41,13 @@ router.get('/generate-folio/:userId', directorOnly, requirePermission(PERMISSION
 router.patch('/usuarios/:id_usuario/folio', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_FOLIOS_MANAGE), adminController.actualizarFolioUsuario);
 router.patch('/pagos/:id_pago/folio', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_FOLIOS_MANAGE), adminController.actualizarFolioPago);
 
-router.patch('/pagos/:id/validar', requirePermission(PERMISSIONS.ADMIN_PAGOS_VALIDAR), adminController.validarPago);
 router.patch('/pagos/:id_pago/estatus-director', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_FINANCIAL_OVERRIDE), adminController.overrideEstatusFinanciero);
 
 router.post('/director/calificaciones-extemporaneas/autorizaciones', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_CALIFICACIONES_EXTEMPORANEAS_AUTHORIZE), adminController.autorizarCalificacionExtemporanea);
 router.patch('/director/horarios/:id_horario/aula', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_AULAS_ASSIGN), adminController.asignarAulaHorario);
 
-router.get('/alumno-grupos', requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_READ), adminController.listarAsignacionesAlumnoGrupo);
-router.post('/alumno-grupos', requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_CREATE), adminController.asignarAlumnoAGrupo);
-router.delete('/alumno-grupos/:id_alumno/:id_materia', requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_DELETE), adminController.desasignarAlumnoDeGrupo);
+router.get('/alumno-grupos', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_READ), adminController.listarAsignacionesAlumnoGrupo);
+router.post('/alumno-grupos', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_CREATE), adminController.asignarAlumnoAGrupo);
+router.delete('/alumno-grupos/:id_alumno/:id_materia', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_DELETE), adminController.desasignarAlumnoDeGrupo);
 
 module.exports = router;

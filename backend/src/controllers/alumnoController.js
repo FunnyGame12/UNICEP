@@ -102,9 +102,14 @@ async function obtenerContextoAcademico(idAlumno) {
 }
 
 async function validarLiberacionControlEscolar(idAlumno) {
-  const usuario = await Usuario.findByPk(idAlumno, {
-    attributes: ['id_usuario', 'cuenta_activada', 'cuenta_bloqueada'],
-  });
+  const [usuario, perfil] = await Promise.all([
+    Usuario.findByPk(idAlumno, {
+      attributes: ['id_usuario', 'cuenta_activada', 'cuenta_bloqueada'],
+    }),
+    AlumnoPerfil.findByPk(idAlumno, {
+      attributes: ['id_alumno', 'bloqueo_plataforma', 'bloqueo_calificaciones'],
+    }),
+  ]);
 
   if (!usuario) {
     return {
@@ -114,13 +119,19 @@ async function validarLiberacionControlEscolar(idAlumno) {
     };
   }
 
-  if (!usuario.cuenta_activada || usuario.cuenta_bloqueada) {
+  if (!usuario.cuenta_activada || usuario.cuenta_bloqueada || perfil?.bloqueo_plataforma || perfil?.bloqueo_calificaciones) {
+    const razon = !usuario.cuenta_activada
+      ? 'cuenta_no_activada'
+      : usuario.cuenta_bloqueada || perfil?.bloqueo_plataforma
+        ? 'bloqueo_plataforma'
+        : 'bloqueo_calificaciones';
+
     return {
       ok: false,
       status: 423,
       payload: {
         message: 'Tu progreso academico esta temporalmente restringido hasta liberacion de Control Escolar.',
-        razon: !usuario.cuenta_activada ? 'cuenta_no_activada' : 'cuenta_bloqueada',
+        razon,
       },
     };
   }

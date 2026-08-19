@@ -117,8 +117,12 @@ export default function LoginPage() {
         password,
       });
 
-      if (['director', 'control_escolar', 'coordinacion_academica', 'soporte_ti'].includes(auth.user?.rol)) {
-        navigate(auth.user?.rol === 'director' ? '/director' : '/administrativo', { replace: true });
+      if (auth.user?.rol === 'director') {
+        navigate('/director', { replace: true });
+      } else if (auth.user?.rol === 'control_escolar') {
+        navigate('/control-escolar', { replace: true });
+      } else if (auth.user?.rol === 'coordinacion_academica') {
+        navigate('/administrativo', { replace: true });
       } else if (auth.user?.rol === 'maestro') {
         navigate('/docente', { replace: true });
       } else {

@@ -5,6 +5,7 @@ import AlumnoPage from './pages/AlumnoPage';
 import DocentePage from './pages/DocentePage';
 import AdminPage from './pages/AdminPage';
 import DirectorPage from './pages/DirectorPage';
+import ControlEscolarPage from './pages/ControlEscolarPage';
 import LoginPage from './pages/LoginPage';
 import RegistroFolioPage from './pages/RegistroFolioPage';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -43,9 +44,17 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: 'control-escolar',
+        element: (
+          <ProtectedRoute roles={['control_escolar']}>
+            <ControlEscolarPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
         path: 'administrativo',
         element: (
-          <ProtectedRoute roles={['control_escolar', 'coordinacion_academica']}>
+          <ProtectedRoute roles={['coordinacion_academica']}>
             <AdminPage />
           </ProtectedRoute>
         ),
