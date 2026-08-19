@@ -132,7 +132,9 @@
 }
 
 .ce-filters input,
-.ce-filters select {
+.ce-filters select,
+.ce-table-wrap select,
+.ce-table-wrap option {
   background: #1f2937;
   border: 1px solid #374151;
   color: #f9fafb;
@@ -140,6 +142,46 @@
 
 .ce-filters input::placeholder {
   color: #9ca3af;
+}
+
+.ce-table-wrap select {
+  appearance: none;
+  background-color: #1f2937;
+  color: #f9fafb;
+  border: 1px solid #374151;
+}
+
+.ce-table-wrap option {
+  background-color: #1f2937;
+  color: #f9fafb;
+}
+
+.ce-reference-field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.ce-reference-field input {
+  width: 100%;
+  background: #1f2937;
+  border: 1px solid #374151;
+  color: #f9fafb;
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  font: inherit;
+}
+
+.ce-reference-button {
+  border: 1px solid #374151;
+  background: #1f2937;
+  color: #f9fafb;
+  border-radius: 14px;
+  width: 3rem;
+  height: 3rem;
+  cursor: pointer;
+  font-size: 1.1rem;
 }
 
 .ce-table-wrap {

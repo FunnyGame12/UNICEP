@@ -31,6 +31,23 @@ const tabs = [
   { id: 'tramites', label: 'Trámites Institucionales' },
 ];
 
+function buildCajaReference() {
+  const yearSuffix = String(new Date().getFullYear()).slice(-2);
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const randomValues = new Uint8Array(6);
+
+  if (window && window.crypto && window.crypto.getRandomValues) {
+    window.crypto.getRandomValues(randomValues);
+  } else {
+    for (let index = 0; index < randomValues.length; index += 1) {
+      randomValues[index] = Math.floor(Math.random() * alphabet.length);
+    }
+  }
+
+  const token = Array.from(randomValues, (value) => alphabet[value % alphabet.length]).join('');
+  return `CAJA-${yearSuffix}-${token}`;
+}
+
 const estatusLabels = {
   al_dia: 'Al día',
   deudor: 'Deudor',
@@ -78,11 +95,32 @@ export default function ControlEscolarPage() {
     defaultValues: {
       alumno_id: '',
       concepto_folio_id: '',
-      referencia_caja: '',
+      referencia_caja: buildCajaReference(),
       monto_recibido: '',
       metodo_pago: 'efectivo',
     },
   });
+
+  const alumnoActualWatch = cobroForm.watch('alumno_id');
+  const conceptoActualWatch = cobroForm.watch('concepto_folio_id');
+
+  function regenerateCajaReference() {
+    const newFolio = buildCajaReference();
+    cobroForm.setValue('referencia_caja', newFolio, { shouldValidate: true });
+    return newFolio;
+  }
+
+  useEffect(() => {
+    if (!cobroForm.getValues('referencia_caja')) {
+      regenerateCajaReference();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (alumnoActualWatch || conceptoActualWatch) {
+      regenerateCajaReference();
+    }
+  }, [alumnoActualWatch, conceptoActualWatch]);
 
   const rechazoForm = useForm({
     resolver: zodResolver(rechazoComprobanteSchema),
@@ -179,11 +217,13 @@ export default function ControlEscolarPage() {
         monto_recibido: Number(values.monto_recibido),
         metodo_pago: values.metodo_pago,
       });
+
       setMessage('Cobro de caja registrado correctamente.');
+      const siguienteFolio = regenerateCajaReference();
       cobroForm.reset({
         alumno_id: '',
         concepto_folio_id: '',
-        referencia_caja: '',
+        referencia_caja: siguienteFolio,
         monto_recibido: '',
         metodo_pago: 'efectivo',
       });
@@ -350,7 +390,22 @@ export default function ControlEscolarPage() {
               {cobroForm.formState.errors.concepto_folio_id ? <small>{cobroForm.formState.errors.concepto_folio_id.message}</small> : null}
 
               <label htmlFor="ce-referencia">Referencia de caja</label>
-              <input id="ce-referencia" placeholder="CAJA-2026-001" {...cobroForm.register('referencia_caja')} />
+              <div className="ce-reference-field">
+                <input
+                  id="ce-referencia"
+                  readOnly
+                  placeholder="CAJA-YY-XXXXXX"
+                  {...cobroForm.register('referencia_caja')}
+                />
+                <button
+                  type="button"
+                  className="ce-reference-button"
+                  aria-label="Regenerar referencia de caja"
+                  onClick={regenerateCajaReference}
+                >
+                  🔄
+                </button>
+              </div>
               {cobroForm.formState.errors.referencia_caja ? <small>{cobroForm.formState.errors.referencia_caja.message}</small> : null}
 
               <label htmlFor="ce-monto">Monto recibido</label>
