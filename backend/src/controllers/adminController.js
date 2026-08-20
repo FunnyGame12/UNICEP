@@ -26,7 +26,7 @@ const { registrarEventoAuditoria } = require('../services/auditService');
 const SECURE_FOLIO_PREFIX_BY_ROLE = {
   director: 'DIR',
   control_escolar: 'CTL',
-  coordinacion: 'COO',
+  coordinacion_academica: 'COO',
   docente: 'DOC',
   alumno: 'ALU',
 };
@@ -34,8 +34,9 @@ const SECURE_FOLIO_PREFIX_BY_ROLE = {
 const ROLE_ALIASES = {
   director: 'director',
   control_escolar: 'control_escolar',
-  coordinacion: 'coordinacion',
-  coordinacion_academica: 'coordinacion',
+  // Backward compatible alias for legacy payloads from director panel.
+  coordinacion: 'coordinacion_academica',
+  coordinacion_academica: 'coordinacion_academica',
   docente: 'docente',
   maestro: 'docente',
   alumno: 'alumno',
@@ -45,7 +46,7 @@ const MANAGED_FOLIO_ROLES = new Set(Object.keys(SECURE_FOLIO_PREFIX_BY_ROLE));
 const FOLIO_TABLE_ROLE_ORDER = {
   director: 1,
   control_escolar: 2,
-  coordinacion: 3,
+  coordinacion_academica: 3,
   docente: 4,
   alumno: 5,
   administrativo: 6,
@@ -70,6 +71,7 @@ function normalizeRoleForTable(value) {
   const canonical = canonicalFolioRole(value);
   if (canonical) return canonical;
   const normalized = normalizeRole(value);
+  if (normalized === 'coordinacion') return 'coordinacion_academica';
   if (normalized === 'administrativo') return 'administrativo';
   return normalized || 'otro';
 }

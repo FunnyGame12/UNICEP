@@ -22,7 +22,7 @@ const extraordinariaSchema = z.object({
 
 const folioUsuarioSchema = z.object({
   nombre_destinatario: z.string().trim().min(3, 'Escribe el nombre del destinatario.'),
-  rol: z.enum(['control_escolar', 'coordinacion', 'docente', 'alumno']),
+  rol: z.enum(['control_escolar', 'coordinacion_academica', 'docente', 'alumno']),
   folio_matricula: z.string().optional(),
 });
 
@@ -211,14 +211,14 @@ function classifyEmailDomain(correo = '') {
 
 const FOLIO_ROLE_OPTIONS = [
   { value: 'control_escolar', label: 'Control Escolar' },
-  { value: 'coordinacion', label: 'Coordinación Académica' },
+  { value: 'coordinacion_academica', label: 'Coordinación Académica' },
   { value: 'docente', label: 'Maestro / Docente' },
   { value: 'alumno', label: 'Alumno' },
 ];
 
 const ROLE_PREFIX = {
   control_escolar: 'CTL',
-  coordinacion: 'COO',
+  coordinacion_academica: 'COO',
   docente: 'DOC',
   alumno: 'ALU',
 };
@@ -267,7 +267,7 @@ function roleLabel(rol = '') {
   const normalized = String(rol || '').trim().toLowerCase();
   if (normalized === 'director') return 'Director';
   if (normalized === 'control_escolar') return 'Control Escolar';
-  if (normalized === 'coordinacion') return 'Coordinación';
+  if (normalized === 'coordinacion_academica' || normalized === 'coordinacion') return 'Coordinación Académica';
   if (normalized === 'docente') return 'Docente';
   if (normalized === 'alumno') return 'Alumno';
   if (normalized === 'administrativo') return 'Administrativo';
