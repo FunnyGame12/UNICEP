@@ -22,6 +22,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      id_docente_sinodal: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       tipo: {
         type: DataTypes.ENUM('extraordinario', 'recursamiento'),
         allowNull: false,
@@ -41,6 +45,10 @@ module.exports = (sequelize, DataTypes) => {
       },
       observaciones: {
         type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      costo_folio_ref: {
+        type: DataTypes.STRING(80),
         allowNull: true,
       },
       fecha_creacion: {
@@ -71,6 +79,12 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'id_periodo',
       targetKey: 'id_periodo',
       as: 'periodo',
+    });
+
+    EvaluacionExtraordinaria.belongsTo(models.DocentePerfil, {
+      foreignKey: 'id_docente_sinodal',
+      targetKey: 'id_docente',
+      as: 'sinodal',
     });
   };
 

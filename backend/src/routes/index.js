@@ -4,6 +4,7 @@ const alumnoRoutes = require('./alumnoRoutes');
 const docenteRoutes = require('./docenteRoutes');
 const adminRoutes = require('./adminRoutes');
 const controlEscolarRoutes = require('./controlEscolarRoutes');
+const coordinacionRoutes = require('./coordinacionRoutes');
 const auth = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/permissions');
 const docenteController = require('../controllers/docenteController');
@@ -25,5 +26,6 @@ router.get('/docentes/justificantes-preaprobados', authMaestro, requirePermissio
 router.use('/docentes', docenteRoutes);
 router.use('/admin', adminRoutes);
 router.use('/control-escolar', controlEscolarRoutes);
+router.use('/coordinacion', coordinacionRoutes);
 
 module.exports = router;

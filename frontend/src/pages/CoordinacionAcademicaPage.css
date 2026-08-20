@@ -1,0 +1,256 @@
+.coord-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.coord-header {
+  border-radius: 18px;
+  padding: 1.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(140deg, rgba(17, 24, 39, 0.98), rgba(22, 33, 54, 0.92));
+}
+
+.coord-eyebrow {
+  margin: 0 0 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #93c5fd;
+  font-size: 0.76rem;
+}
+
+.coord-header h2,
+.coord-header p {
+  margin: 0;
+}
+
+.coord-header p {
+  margin-top: 0.45rem;
+  color: #c7d2fe;
+}
+
+.coord-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.coord-kpi {
+  border-radius: 16px;
+  padding: 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #111827;
+}
+
+.coord-kpi p {
+  margin: 0;
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+.coord-kpi strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.5rem;
+  color: #f9fafb;
+}
+
+.coord-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.coord-tabs button {
+  border: 1px solid #374151;
+  background: transparent;
+  color: #9ca3af;
+  border-radius: 999px;
+  padding: 0.62rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.coord-tabs button.is-active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.coord-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.coord-card {
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #111827;
+  padding: 1rem;
+}
+
+.coord-card h3 {
+  margin-top: 0;
+}
+
+.coord-span-2 {
+  grid-column: 1 / -1;
+}
+
+.coord-card input,
+.coord-card select,
+.coord-card option,
+.coord-card textarea,
+.coord-table-wrap select,
+.coord-table-wrap option {
+  background: #1f2937;
+  color: #f9fafb;
+  border: 1px solid #374151;
+}
+
+.coord-card input,
+.coord-card select,
+.coord-card textarea {
+  width: 100%;
+  border-radius: 14px;
+  padding: 0.8rem 0.9rem;
+  font: inherit;
+}
+
+.coord-card select {
+  appearance: none;
+}
+
+.coord-textarea {
+  resize: none;
+  font-family: inherit;
+}
+
+.coord-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.coord-checkbox {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  color: #d1d5db;
+  font-size: 0.9rem;
+}
+
+.coord-table-wrap {
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #111827;
+}
+
+.coord-table-wrap table {
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #111827;
+}
+
+.coord-table-wrap th,
+.coord-table-wrap td {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.coord-table-wrap th {
+  color: #9ca3af;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.coord-table-wrap td {
+  color: #f9fafb;
+}
+
+.coord-table-wrap td p {
+  margin: 0.2rem 0 0;
+  color: #9ca3af;
+  font-size: 0.84rem;
+}
+
+.coord-aulas-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.coord-aula-item {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 0.65rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.coord-aula-item h4,
+.coord-aula-item p {
+  margin: 0;
+}
+
+.coord-aula-item p {
+  margin-top: 0.3rem;
+  color: #d1d5db;
+  font-size: 0.9rem;
+}
+
+.coord-list {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.coord-list-item {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #f9fafb;
+  text-align: left;
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.2rem;
+  cursor: pointer;
+}
+
+.coord-list-item span {
+  color: #9ca3af;
+  font-size: 0.88rem;
+}
+
+.coord-list-item.is-selected {
+  border-color: rgba(59, 130, 246, 0.6);
+  background: rgba(37, 99, 235, 0.2);
+}
+
+.coord-form-4 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.coord-form-4 button {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1080px) {
+  .coord-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .coord-aulas-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .coord-grid-2,
+  .coord-form-4 {
+    grid-template-columns: 1fr;
+  }
+
+  .coord-aulas-grid {
+    grid-template-columns: 1fr;
+  }
+}

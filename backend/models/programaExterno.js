@@ -23,9 +23,9 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       estatus: {
-        type: DataTypes.ENUM('registrado', 'en_proceso', 'validado', 'liberado'),
+        type: DataTypes.ENUM('en_revision', 'horas_cubiertas', 'liberado', 'rechazado', 'registrado', 'en_proceso', 'validado'),
         allowNull: false,
-        defaultValue: 'registrado',
+        defaultValue: 'en_revision',
       },
       fecha_inicio: {
         type: DataTypes.DATEONLY,
@@ -41,6 +41,14 @@ module.exports = (sequelize, DataTypes) => {
       },
       observaciones: {
         type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      horas_concluidas: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      oficio_liberacion: {
+        type: DataTypes.STRING(120),
         allowNull: true,
       },
       fecha_creacion: {

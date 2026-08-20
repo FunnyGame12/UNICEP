@@ -3,9 +3,9 @@ import App from './App';
 import HomePage from './pages/HomePage';
 import AlumnoPage from './pages/AlumnoPage';
 import DocentePage from './pages/DocentePage';
-import AdminPage from './pages/AdminPage';
 import DirectorPage from './pages/DirectorPage';
 import ControlEscolarPage from './pages/ControlEscolarPage';
+import CoordinacionAcademicaPage from './pages/CoordinacionAcademicaPage';
 import LoginPage from './pages/LoginPage';
 import RegistroFolioPage from './pages/RegistroFolioPage';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -55,7 +55,15 @@ const router = createBrowserRouter([
         path: 'administrativo',
         element: (
           <ProtectedRoute roles={['coordinacion_academica']}>
-            <AdminPage />
+            <CoordinacionAcademicaPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'coordinacion-academica',
+        element: (
+          <ProtectedRoute roles={['coordinacion_academica']}>
+            <CoordinacionAcademicaPage />
           </ProtectedRoute>
         ),
       },

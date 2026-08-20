@@ -15,7 +15,16 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       tipo_merito: {
-        type: DataTypes.ENUM('diploma', 'constancia', 'reconocimiento', 'curso_adicional', 'taller'),
+        type: DataTypes.ENUM(
+          'diploma',
+          'constancia',
+          'reconocimiento',
+          'curso_adicional',
+          'taller',
+          'mencion_honorifica',
+          'insignia',
+          'cuadro_honor',
+        ),
         allowNull: false,
       },
       nombre: {

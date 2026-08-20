@@ -36,7 +36,9 @@ function App() {
         ? [['Mi panel', '/docente']]
         : user?.rol === 'control_escolar'
           ? [['Control Escolar', '/control-escolar']]
-          : [['Panel coordinación', '/administrativo']];
+          : user?.rol === 'coordinacion_academica'
+            ? [['Panel coordinacion', '/administrativo']]
+            : [['Inicio', '/']];
 
   return (
     <div className="layout">
