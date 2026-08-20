@@ -6,6 +6,23 @@ const env = require('./config/env');
 const apiRoutes = require('./routes');
 
 const app = express();
+const cspDirectives = {
+  defaultSrc: ["'self'"],
+  baseUri: ["'self'"],
+  objectSrc: ["'none'"],
+  frameAncestors: ["'self'"],
+  scriptSrc: env.cspScriptSrc,
+  styleSrc: env.cspStyleSrc,
+  imgSrc: env.cspImgSrc,
+  fontSrc: env.cspFontSrc,
+  connectSrc: env.cspConnectSrc,
+  frameSrc: ["'self'", 'blob:', 'https://docs.google.com'],
+  formAction: ["'self'"],
+};
+
+if (env.cspReportUri) {
+  cspDirectives.reportUri = env.cspReportUri;
+}
 
 const allowedOrigins = new Set(
   String(env.corsOrigin || '')
@@ -32,7 +49,14 @@ function corsOrigin(origin, callback) {
   return callback(new Error(`Origen no permitido por CORS: ${origin}`));
 }
 
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: cspDirectives,
+    },
+  }),
+);
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('dev'));

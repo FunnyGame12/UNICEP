@@ -41,6 +41,9 @@ cd ../frontend
 npm install
 npm run build
 
+echo "[deploy] Ajuste de CSP para nginx"
+ssh "${SSH_TARGET}" "sudo sed -i \"s|script-src 'self'; style-src 'self' 'unsafe-inline'|script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'|\" /etc/nginx/sites-available/unicep /etc/nginx/sites-enabled/unicep && sudo nginx -t && sudo systemctl reload nginx"
+
 echo "[deploy] Despliegue completado correctamente"
 EOS
 
