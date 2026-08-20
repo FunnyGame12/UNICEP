@@ -1671,6 +1671,7 @@ async function respaldoMetadatos(req, res) {
 
 async function listarAsignacionesAlumnoGrupo(req, res) {
   const where = {};
+  const query = normalizeText(req.query.q).toLowerCase();
 
   if (req.query.id_alumno) {
     const idAlumno = Number(req.query.id_alumno);
@@ -1712,6 +1713,134 @@ async function listarAsignacionesAlumnoGrupo(req, res) {
     order: [['id_alumno_grupo', 'DESC']],
   });
 
+  const filteredItems = !query
+    ? items
+    : items.filter((item) => {
+      const alumnoNombre = String(item.alumno?.usuario?.nombre_completo || '').toLowerCase();
+      const alumnoFolio = String(item.alumno?.usuario?.folio_matricula || '').toLowerCase();
+      const materiaNombre = String(item.materia?.nombre_materia || '').toLowerCase();
+      const materiaCodigo = String(item.materia?.codigo_materia || '').toLowerCase();
+      const grupo = String(item.grupo || '').toLowerCase();
+      return alumnoNombre.includes(query)
+        || alumnoFolio.includes(query)
+        || materiaNombre.includes(query)
+        || materiaCodigo.includes(query)
+        || grupo.includes(query);
+    });
+
+  return res.json({ items: filteredItems });
+}
+
+async function catalogosAlumnoGrupo(req, res) {
+  const [materiasRows, asignacionesRows, periodoActivo] = await Promise.all([
+    Materia.findAll({
+      attributes: ['id_materia', 'nombre_materia', 'codigo_materia', 'bimestre_pertenece'],
+      order: [['nombre_materia', 'ASC']],
+    }),
+    AsignacionGrupo.findAll({
+      attributes: ['id_materia', 'grupo'],
+      include: [{
+        model: Materia,
+        as: 'materia',
+        attributes: ['id_materia', 'nombre_materia', 'codigo_materia', 'bimestre_pertenece'],
+      }],
+      order: [['id_materia', 'ASC'], ['grupo', 'ASC']],
+    }),
+    PeriodoAcademico.findOne({
+      where: { estatus: 'activo' },
+      attributes: ['id_periodo', 'nombre', 'ciclo', 'bimestre'],
+    }),
+  ]);
+
+  const gruposMap = new Map();
+  const materiasActivasMap = new Map();
+
+  asignacionesRows.forEach((row) => {
+    const idMateria = Number(row.id_materia);
+    const grupo = normalizeText(row.grupo);
+    if (!Number.isInteger(idMateria) || !grupo) return;
+
+    const key = `${idMateria}-${grupo}`;
+    if (!gruposMap.has(key)) {
+      gruposMap.set(key, {
+        id_materia: idMateria,
+        grupo,
+        label: `${grupo}${row.materia?.nombre_materia ? ` · ${row.materia.nombre_materia}` : ''}`,
+      });
+    }
+
+    if (row.materia && !materiasActivasMap.has(idMateria)) {
+      materiasActivasMap.set(idMateria, {
+        id_materia: idMateria,
+        nombre_materia: row.materia.nombre_materia,
+        codigo_materia: row.materia.codigo_materia,
+        bimestre_pertenece: row.materia.bimestre_pertenece,
+      });
+    }
+  });
+
+  const materias = (materiasActivasMap.size > 0
+    ? [...materiasActivasMap.values()]
+    : materiasRows.map((row) => ({
+      id_materia: row.id_materia,
+      nombre_materia: row.nombre_materia,
+      codigo_materia: row.codigo_materia,
+      bimestre_pertenece: row.bimestre_pertenece,
+    })))
+    .sort((a, b) => String(a.nombre_materia).localeCompare(String(b.nombre_materia), 'es'));
+
+  const grupos = [...gruposMap.values()].sort((a, b) => {
+    if (a.id_materia !== b.id_materia) return a.id_materia - b.id_materia;
+    return String(a.grupo).localeCompare(String(b.grupo), 'es');
+  });
+
+  const gruposPorMateria = grupos.reduce((acc, row) => {
+    const key = String(row.id_materia);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push({ grupo: row.grupo, label: row.label });
+    return acc;
+  }, {});
+
+  return res.json({
+    materias,
+    grupos,
+    grupos_por_materia: gruposPorMateria,
+    periodo_activo: periodoActivo || null,
+  });
+}
+
+async function buscarAlumnosAlumnoGrupo(req, res) {
+  const query = normalizeText(req.query.q);
+  const whereUsuario = {};
+
+  if (query) {
+    whereUsuario[Op.or] = [
+      { nombre_completo: { [Op.like]: `%${query}%` } },
+      { folio_matricula: { [Op.like]: `%${query}%` } },
+    ];
+  }
+
+  const rows = await AlumnoPerfil.findAll({
+    include: [{
+      model: Usuario,
+      as: 'usuario',
+      attributes: ['id_usuario', 'folio_matricula', 'nombre_completo', 'correo'],
+      ...(whereUsuario[Op.or] ? { where: whereUsuario } : {}),
+    }],
+    order: [['id_alumno', 'DESC']],
+    limit: 25,
+  });
+
+  const items = rows
+    .filter((row) => row.usuario)
+    .map((row) => ({
+      id_alumno: row.id_alumno,
+      nombre_completo: row.usuario.nombre_completo,
+      folio_matricula: row.usuario.folio_matricula,
+      correo: row.usuario.correo,
+      label: `${row.usuario.folio_matricula || 'SIN-FOLIO'} · ${row.usuario.nombre_completo}`,
+    }));
+
   return res.json({ items });
 }
 
@@ -1748,9 +1877,24 @@ async function asignarAlumnoAGrupo(req, res) {
     });
   }
 
-  const existente = await AlumnoGrupo.findOne({
-    where: { id_alumno: idAlumno, id_materia: idMateria },
-  });
+  const [existente, periodoActivo] = await Promise.all([
+    AlumnoGrupo.findOne({
+      where: { id_alumno: idAlumno, id_materia: idMateria },
+    }),
+    PeriodoAcademico.findOne({
+      where: { estatus: 'activo' },
+      attributes: ['nombre', 'ciclo'],
+    }),
+  ]);
+
+  if (existente && String(existente.grupo) === grupo) {
+    const cicloActual = periodoActivo
+      ? `${periodoActivo.nombre} (${periodoActivo.ciclo})`
+      : 'ciclo vigente';
+    return res.status(409).json({
+      message: `Asignacion duplicada: el alumno ya esta inscrito en la misma materia y grupo durante ${cicloActual}.`,
+    });
+  }
 
   let registro;
   let accion;
@@ -1857,6 +2001,8 @@ module.exports = {
   autorizarCalificacionExtemporanea,
   asignarAulaHorario,
   listarAsignacionesAlumnoGrupo,
+  catalogosAlumnoGrupo,
+  buscarAlumnosAlumnoGrupo,
   asignarAlumnoAGrupo,
   desasignarAlumnoDeGrupo,
 };

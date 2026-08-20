@@ -6,9 +6,10 @@ import api from '../services/api';
 import './CoordinacionAcademicaPage.css';
 
 const tabs = [
-  { id: 'carga', label: 'Carga Horaria y Aulas' },
-  { id: 'actas', label: 'Actas y Extraordinarios' },
-  { id: 'externos', label: 'Programas Externos y Meritos' },
+  { id: 'carga', label: 'Carga Horaria y Grupos' },
+  { id: 'calificaciones', label: 'Calificaciones y Extraordinarios' },
+  { id: 'servicio', label: 'Servicio Social y Practicas' },
+  { id: 'progreso', label: 'Progreso y Reconocimientos' },
 ];
 
 const programaStatusOptions = [
@@ -107,6 +108,12 @@ const meritoSchema = z.object({
   archivo_url: z.string().trim().optional(),
 });
 
+const alumnoGrupoSchema = z.object({
+  id_alumno: z.string().min(1, 'Selecciona un alumno.'),
+  id_materia: z.string().min(1, 'Selecciona una materia.'),
+  grupo: z.string().trim().min(1, 'Selecciona un grupo.'),
+});
+
 export default function CoordinacionAcademicaPage() {
   const [activeTab, setActiveTab] = useState('carga');
   const [loading, setLoading] = useState(true);
@@ -122,6 +129,19 @@ export default function CoordinacionAcademicaPage() {
   const [programas, setProgramas] = useState([]);
   const [alumnosProgreso, setAlumnosProgreso] = useState([]);
   const [selectedPrograma, setSelectedPrograma] = useState(null);
+
+  const [alumnoGrupoItems, setAlumnoGrupoItems] = useState([]);
+  const [alumnoGrupoSearch, setAlumnoGrupoSearch] = useState('');
+  const [alumnoGrupoTableLoading, setAlumnoGrupoTableLoading] = useState(false);
+  const [alumnoGrupoCatalogLoading, setAlumnoGrupoCatalogLoading] = useState(false);
+  const [alumnoGrupoSearchLoading, setAlumnoGrupoSearchLoading] = useState(false);
+  const [alumnoGrupoSending, setAlumnoGrupoSending] = useState(false);
+  const [alumnoGrupoAlumnoQuery, setAlumnoGrupoAlumnoQuery] = useState('');
+  const [alumnoGrupoAlumnoSuggestions, setAlumnoGrupoAlumnoSuggestions] = useState([]);
+  const [alumnoGrupoAlumnoSelected, setAlumnoGrupoAlumnoSelected] = useState(null);
+  const [alumnoGrupoMaterias, setAlumnoGrupoMaterias] = useState([]);
+  const [alumnoGrupoGrupos, setAlumnoGrupoGrupos] = useState([]);
+  const [alumnoGrupoGruposPorMateria, setAlumnoGrupoGruposPorMateria] = useState({});
 
   const [kpis, setKpis] = useState({
     grupos_sin_docente: 0,
@@ -189,11 +209,28 @@ export default function CoordinacionAcademicaPage() {
     },
   });
 
+  const alumnoGrupoForm = useForm({
+    resolver: zodResolver(alumnoGrupoSchema),
+    defaultValues: {
+      id_alumno: '',
+      id_materia: '',
+      grupo: '',
+    },
+  });
+
   const alumnos = useMemo(() => alumnosProgreso.map((item) => ({
     id_alumno: item.id_alumno,
     nombre_completo: item.nombre_completo,
     folio_matricula: item.folio_matricula,
   })), [alumnosProgreso]);
+
+  const alumnoGrupoSelectedMateria = alumnoGrupoForm.watch('id_materia');
+  const alumnoGrupoGruposDisponibles = useMemo(() => {
+    if (alumnoGrupoSelectedMateria && alumnoGrupoGruposPorMateria[alumnoGrupoSelectedMateria]) {
+      return alumnoGrupoGruposPorMateria[alumnoGrupoSelectedMateria];
+    }
+    return alumnoGrupoGrupos;
+  }, [alumnoGrupoSelectedMateria, alumnoGrupoGruposPorMateria, alumnoGrupoGrupos]);
 
   async function loadData() {
     setLoading(true);
@@ -257,6 +294,136 @@ export default function CoordinacionAcademicaPage() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    async function loadAlumnoGrupoCatalogos() {
+      setAlumnoGrupoCatalogLoading(true);
+      try {
+        const response = await api.get('/admin/alumno-grupos/catalogos');
+        setAlumnoGrupoMaterias(response?.data?.materias || []);
+        setAlumnoGrupoGrupos(response?.data?.grupos || []);
+        setAlumnoGrupoGruposPorMateria(response?.data?.grupos_por_materia || {});
+      } catch {
+        setAlumnoGrupoMaterias([]);
+        setAlumnoGrupoGrupos([]);
+        setAlumnoGrupoGruposPorMateria({});
+      } finally {
+        setAlumnoGrupoCatalogLoading(false);
+      }
+    }
+
+    loadAlumnoGrupoCatalogos();
+  }, []);
+
+  useEffect(() => {
+    async function loadAlumnoGrupoItems() {
+      setAlumnoGrupoTableLoading(true);
+      try {
+        const response = await api.get('/admin/alumno-grupos', {
+          params: {
+            q: alumnoGrupoSearch.trim(),
+          },
+        });
+        setAlumnoGrupoItems(response?.data?.items || []);
+      } catch {
+        setAlumnoGrupoItems([]);
+      } finally {
+        setAlumnoGrupoTableLoading(false);
+      }
+    }
+
+    const timeoutId = setTimeout(() => {
+      loadAlumnoGrupoItems();
+    }, 260);
+
+    return () => clearTimeout(timeoutId);
+  }, [alumnoGrupoSearch]);
+
+  useEffect(() => {
+    const trimmed = alumnoGrupoAlumnoQuery.trim();
+    if (trimmed.length < 2) {
+      setAlumnoGrupoAlumnoSuggestions([]);
+      return;
+    }
+
+    async function buscarAlumnos() {
+      setAlumnoGrupoSearchLoading(true);
+      try {
+        const response = await api.get('/admin/alumno-grupos/buscar-alumnos', {
+          params: { q: trimmed },
+        });
+        setAlumnoGrupoAlumnoSuggestions(response?.data?.items || []);
+      } catch {
+        setAlumnoGrupoAlumnoSuggestions([]);
+      } finally {
+        setAlumnoGrupoSearchLoading(false);
+      }
+    }
+
+    const timeoutId = setTimeout(() => {
+      buscarAlumnos();
+    }, 260);
+
+    return () => clearTimeout(timeoutId);
+  }, [alumnoGrupoAlumnoQuery]);
+
+  useEffect(() => {
+    if (!alumnoGrupoSelectedMateria) return;
+    const selectedGrupo = alumnoGrupoForm.getValues('grupo');
+    if (!selectedGrupo) return;
+
+    const hasGroupInMateria = (alumnoGrupoGruposPorMateria[alumnoGrupoSelectedMateria] || [])
+      .some((item) => item.grupo === selectedGrupo);
+
+    if (!hasGroupInMateria) {
+      alumnoGrupoForm.setValue('grupo', '');
+    }
+  }, [alumnoGrupoSelectedMateria, alumnoGrupoGruposPorMateria, alumnoGrupoForm]);
+
+  async function submitAlumnoGrupo(values) {
+    setAlumnoGrupoSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      await api.post('/admin/alumno-grupos', {
+        id_alumno: Number(values.id_alumno),
+        id_materia: Number(values.id_materia),
+        grupo: values.grupo,
+      });
+
+      setMessage('Alumno inscrito/asignado correctamente al grupo.');
+      alumnoGrupoForm.reset({ id_alumno: '', id_materia: '', grupo: '' });
+      setAlumnoGrupoAlumnoQuery('');
+      setAlumnoGrupoAlumnoSelected(null);
+      setAlumnoGrupoAlumnoSuggestions([]);
+
+      const response = await api.get('/admin/alumno-grupos', {
+        params: { q: alumnoGrupoSearch.trim() },
+      });
+      setAlumnoGrupoItems(response?.data?.items || []);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo guardar la asignacion alumno-grupo.');
+    } finally {
+      setAlumnoGrupoSending(false);
+    }
+  }
+
+  async function eliminarAlumnoGrupo(idAlumno, idMateria) {
+    setError('');
+    setMessage('');
+
+    try {
+      await api.delete(`/admin/alumno-grupos/${idAlumno}/${idMateria}`);
+      setMessage('Asignacion alumno-grupo eliminada.');
+      const response = await api.get('/admin/alumno-grupos', {
+        params: { q: alumnoGrupoSearch.trim() },
+      });
+      setAlumnoGrupoItems(response?.data?.items || []);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo eliminar la asignacion alumno-grupo.');
+    }
+  }
 
   async function submitAsignacion(values) {
     setSending(true);
@@ -442,6 +609,131 @@ export default function CoordinacionAcademicaPage() {
 
       {activeTab === 'carga' ? (
         <div className="coord-grid-2">
+          <article className="coord-card coord-span-2">
+            <h3>Inscripcion y asignacion alumno a materia/grupo</h3>
+            <form className="form-grid coord-form-4" onSubmit={alumnoGrupoForm.handleSubmit(submitAlumnoGrupo)}>
+              <label htmlFor="coord-ag-alumno">Alumno</label>
+              <div className="coord-combobox-wrap">
+                <input
+                  id="coord-ag-alumno"
+                  name="coord_ag_alumno"
+                  type="text"
+                  value={alumnoGrupoAlumnoQuery}
+                  onChange={(event) => {
+                    setAlumnoGrupoAlumnoQuery(event.target.value);
+                    if (alumnoGrupoAlumnoSelected) {
+                      setAlumnoGrupoAlumnoSelected(null);
+                      alumnoGrupoForm.setValue('id_alumno', '');
+                    }
+                  }}
+                  placeholder="UNICEP-26-001 · Carlos Chan"
+                  autoComplete="off"
+                />
+                {alumnoGrupoSearchLoading ? <small>Buscando alumnos...</small> : null}
+                {!alumnoGrupoAlumnoSelected && alumnoGrupoAlumnoSuggestions.length > 0 ? (
+                  <div className="coord-combobox-list" role="listbox" aria-label="Resultados de alumnos">
+                    {alumnoGrupoAlumnoSuggestions.map((alumno) => (
+                      <button
+                        key={alumno.id_alumno}
+                        type="button"
+                        className="coord-combobox-option"
+                        onClick={() => {
+                          setAlumnoGrupoAlumnoSelected(alumno);
+                          setAlumnoGrupoAlumnoQuery(alumno.label);
+                          alumnoGrupoForm.setValue('id_alumno', String(alumno.id_alumno), { shouldValidate: true });
+                          setAlumnoGrupoAlumnoSuggestions([]);
+                        }}
+                      >
+                        {alumno.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {alumnoGrupoAlumnoSelected ? <small>{`Seleccionado: ${alumnoGrupoAlumnoSelected.label}`}</small> : null}
+                <input type="hidden" {...alumnoGrupoForm.register('id_alumno')} />
+                {alumnoGrupoForm.formState.errors.id_alumno ? <small>{alumnoGrupoForm.formState.errors.id_alumno.message}</small> : null}
+              </div>
+
+              <label htmlFor="coord-ag-materia">Asignatura</label>
+              <select id="coord-ag-materia" {...alumnoGrupoForm.register('id_materia')} disabled={alumnoGrupoCatalogLoading}>
+                <option value="">Selecciona asignatura activa</option>
+                {alumnoGrupoMaterias.map((materia) => (
+                  <option key={materia.id_materia} value={String(materia.id_materia)}>
+                    {`${materia.nombre_materia} (${materia.codigo_materia || 'SIN-CODIGO'})`}
+                  </option>
+                ))}
+              </select>
+              {alumnoGrupoForm.formState.errors.id_materia ? <small>{alumnoGrupoForm.formState.errors.id_materia.message}</small> : null}
+
+              <label htmlFor="coord-ag-grupo">Grupo</label>
+              <select id="coord-ag-grupo" {...alumnoGrupoForm.register('grupo')} disabled={alumnoGrupoCatalogLoading || alumnoGrupoGruposDisponibles.length === 0}>
+                <option value="">Selecciona grupo</option>
+                {alumnoGrupoGruposDisponibles.map((item) => (
+                  <option key={`${item.id_materia || alumnoGrupoSelectedMateria}-${item.grupo}`} value={item.grupo}>
+                    {item.grupo}
+                  </option>
+                ))}
+              </select>
+              {alumnoGrupoForm.formState.errors.grupo ? <small>{alumnoGrupoForm.formState.errors.grupo.message}</small> : null}
+
+              <button type="submit" className="btn-primary" disabled={loading || alumnoGrupoSending || alumnoGrupoCatalogLoading}>
+                {alumnoGrupoSending ? 'Guardando...' : 'Inscribir alumno'}
+              </button>
+            </form>
+
+            <div className="form-grid coord-search-wrap">
+              <label htmlFor="coord-ag-search">Busqueda en tiempo real</label>
+              <input
+                id="coord-ag-search"
+                type="text"
+                value={alumnoGrupoSearch}
+                onChange={(event) => setAlumnoGrupoSearch(event.target.value)}
+                placeholder="Nombre, matricula, materia, codigo o grupo"
+              />
+            </div>
+
+            <div className="table-wrap coord-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Alumno</th>
+                    <th>Asignatura</th>
+                    <th>Grupo</th>
+                    <th>Fecha alta</th>
+                    <th>Accion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {alumnoGrupoTableLoading ? (
+                    <tr>
+                      <td colSpan="6">Cargando asignaciones...</td>
+                    </tr>
+                  ) : null}
+                  {!alumnoGrupoTableLoading && alumnoGrupoItems.length === 0 ? (
+                    <tr>
+                      <td colSpan="6">Sin resultados.</td>
+                    </tr>
+                  ) : null}
+                  {!alumnoGrupoTableLoading ? alumnoGrupoItems.map((item) => (
+                    <tr key={`ag-${item.id_alumno_grupo}`}>
+                      <td>{item.id_alumno_grupo}</td>
+                      <td>{item.alumno?.usuario ? `${item.alumno.usuario.folio_matricula || 'SIN-FOLIO'} · ${item.alumno.usuario.nombre_completo}` : item.id_alumno}</td>
+                      <td>{item.materia ? `${item.materia.nombre_materia} (${item.materia.codigo_materia || 'SIN-CODIGO'})` : item.id_materia}</td>
+                      <td>{item.grupo}</td>
+                      <td>{new Date(item.fecha_alta).toLocaleString()}</td>
+                      <td>
+                        <button type="button" className="btn-danger-sm" onClick={() => eliminarAlumnoGrupo(item.id_alumno, item.id_materia)}>
+                          Eliminar
+                        </button>
+                      </td>
+                    </tr>
+                  )) : null}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
           <article className="coord-card">
             <h3>Asignador docente por materia y grupo</h3>
             <form className="form-grid" onSubmit={asignacionForm.handleSubmit(submitAsignacion)}>
@@ -605,7 +897,7 @@ export default function CoordinacionAcademicaPage() {
         </div>
       ) : null}
 
-      {activeTab === 'actas' ? (
+      {activeTab === 'calificaciones' ? (
         <div className="coord-grid-2">
           <article className="coord-card coord-span-2">
             <h3>Actas pendientes de validacion</h3>
@@ -701,7 +993,7 @@ export default function CoordinacionAcademicaPage() {
         </div>
       ) : null}
 
-      {activeTab === 'externos' ? (
+      {activeTab === 'servicio' ? (
         <div className="coord-grid-2">
           <article className="coord-card">
             <h3>Bandeja de programas externos</h3>
@@ -773,7 +1065,11 @@ export default function CoordinacionAcademicaPage() {
               </button>
             </form>
           </article>
+        </div>
+      ) : null}
 
+      {activeTab === 'progreso' ? (
+        <div className="coord-grid-2">
           <article className="coord-card">
             <h3>Asignar merito academico</h3>
             <form className="form-grid" onSubmit={meritoForm.handleSubmit(submitMerito)}>

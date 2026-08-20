@@ -47,6 +47,8 @@ router.post('/director/calificaciones-extemporaneas/autorizaciones', directorOnl
 router.patch('/director/horarios/:id_horario/aula', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_AULAS_ASSIGN), adminController.asignarAulaHorario);
 
 router.get('/alumno-grupos', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_READ), adminController.listarAsignacionesAlumnoGrupo);
+router.get('/alumno-grupos/catalogos', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_READ), adminController.catalogosAlumnoGrupo);
+router.get('/alumno-grupos/buscar-alumnos', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_READ), adminController.buscarAlumnosAlumnoGrupo);
 router.post('/alumno-grupos', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_CREATE), adminController.asignarAlumnoAGrupo);
 router.delete('/alumno-grupos/:id_alumno/:id_materia', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_ALUMNO_GRUPOS_DELETE), adminController.desasignarAlumnoDeGrupo);
 
