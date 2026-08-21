@@ -27,18 +27,19 @@ const SECURE_FOLIO_PREFIX_BY_ROLE = {
   director: 'DIR',
   control_escolar: 'CTL',
   coordinacion_academica: 'COO',
-  docente: 'DOC',
+  maestro: 'DOC',
   alumno: 'ALU',
 };
 
 const ROLE_ALIASES = {
   director: 'director',
   control_escolar: 'control_escolar',
-  // Backward compatible alias for legacy payloads from director panel.
+  administrativo: 'control_escolar',
+  // Backward compatible aliases for legacy payloads from director panel.
   coordinacion: 'coordinacion_academica',
   coordinacion_academica: 'coordinacion_academica',
-  docente: 'docente',
-  maestro: 'docente',
+  docente: 'maestro',
+  maestro: 'maestro',
   alumno: 'alumno',
 };
 
@@ -47,7 +48,7 @@ const FOLIO_TABLE_ROLE_ORDER = {
   director: 1,
   control_escolar: 2,
   coordinacion_academica: 3,
-  docente: 4,
+  maestro: 4,
   alumno: 5,
   administrativo: 6,
   otro: 99,
@@ -887,7 +888,7 @@ async function crearUsuario(req, res) {
     foto_url,
   } = req.body;
 
-  const rolNormalizado = normalizeRole(rol);
+  const rolNormalizado = canonicalFolioRole(rol) || normalizeRole(rol);
   const nombre = String(nombre_completo || '').trim();
   const correoInput = (correo || '').trim().toLowerCase();
 
@@ -965,7 +966,7 @@ async function politicaFoliosPorRol(_req, res) {
 
 async function preasignarFolioPorRol(req, res) {
   const rolInput = normalizeRole(req.body.rol);
-  const rol = canonicalFolioRole(rolInput);
+  const rol = canonicalFolioRole(rolInput) || normalizeRole(rolInput);
   const nombreDestinatario = String(req.body.nombre_destinatario || '').trim();
 
   if (!rol) {

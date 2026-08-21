@@ -15,7 +15,18 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       rol_actor: {
-        type: DataTypes.ENUM('alumno', 'docente', 'administrativo'),
+        type: DataTypes.ENUM(
+          'director',
+          'control_escolar',
+          'coordinacion_academica',
+          'maestro',
+          'alumno',
+          'soporte_ti',
+          'control_escolar_preparatoria',
+          'prefecto_en_linea',
+          'administrativo',
+          'docente',
+        ),
         allowNull: false,
       },
       accion: {

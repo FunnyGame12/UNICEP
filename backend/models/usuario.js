@@ -41,7 +41,16 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       rol: {
-        type: DataTypes.ENUM('alumno', 'docente', 'administrativo'),
+        type: DataTypes.ENUM(
+          'director',
+          'control_escolar',
+          'coordinacion_academica',
+          'maestro',
+          'alumno',
+          'soporte_ti',
+          'administrativo',
+          'docente',
+        ),
         allowNull: false,
       },
       foto_url: {
