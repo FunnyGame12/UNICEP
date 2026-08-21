@@ -11,12 +11,37 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       nombre_materia: {
-        type: DataTypes.STRING(100),
+        type: DataTypes.STRING(255),
         allowNull: false,
       },
       codigo_materia: {
-        type: DataTypes.STRING(20),
+        type: DataTypes.STRING(50),
         allowNull: false,
+      },
+      programa_academico_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      periodo_numero: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      creditos: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      horas_semanales: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      carrera: {
+        type: DataTypes.STRING(120),
+        allowNull: true,
+      },
+      activa: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
       },
       bimestre_pertenece: {
         type: DataTypes.INTEGER,
@@ -30,6 +55,12 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   Materia.associate = (models) => {
+    Materia.belongsTo(models.ProgramaAcademico, {
+      foreignKey: 'programa_academico_id',
+      targetKey: 'id',
+      as: 'programa_academico',
+    });
+
     Materia.hasMany(models.AsignacionGrupo, {
       foreignKey: 'id_materia',
       sourceKey: 'id_materia',

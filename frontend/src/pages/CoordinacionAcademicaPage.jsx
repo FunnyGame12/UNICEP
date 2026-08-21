@@ -8,6 +8,7 @@ import './CoordinacionAcademicaPage.css';
 const tabs = [
   { id: 'carga', label: 'Carga Horaria y Grupos' },
   { id: 'calificaciones', label: 'Calificaciones y Extraordinarios' },
+  { id: 'oferta', label: 'Planes de Estudio y Materias' },
   { id: 'servicio', label: 'Servicio Social y Practicas' },
   { id: 'progreso', label: 'Progreso y Reconocimientos' },
 ];
@@ -114,6 +115,34 @@ const alumnoGrupoSchema = z.object({
   grupo: z.string().trim().min(1, 'Selecciona un grupo.'),
 });
 
+const programaAcademicoSchema = z.object({
+  tipo_nivel: z.enum(['preparatoria', 'licenciatura', 'ingenieria', 'maestria']),
+  nombre: z.string().trim().min(3, 'Ingresa el nombre del programa.'),
+  modalidad_periodo: z.enum(['semestral', 'cuatrimestral']),
+  total_periodos: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? NaN : Number(value)),
+    z.number().int().min(1, 'Minimo 1 periodo.').max(20, 'Maximo 20 periodos.'),
+  ),
+});
+
+const materiaPlanSchema = z.object({
+  programa_academico_id: z.string().min(1, 'Selecciona un programa academico.'),
+  periodo_numero: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? NaN : Number(value)),
+    z.number().int().min(1, 'Selecciona un periodo valido.'),
+  ),
+  codigo_materia: z.string().trim().min(2, 'Ingresa el codigo de la materia.'),
+  nombre_materia: z.string().trim().min(3, 'Ingresa el nombre de la materia.'),
+  creditos: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? undefined : Number(value)),
+    z.number().int().min(0, 'No puede ser negativo.').optional(),
+  ),
+  horas_semanales: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? undefined : Number(value)),
+    z.number().int().min(0, 'No puede ser negativo.').optional(),
+  ),
+});
+
 export default function CoordinacionAcademicaPage() {
   const [activeTab, setActiveTab] = useState('carga');
   const [loading, setLoading] = useState(true);
@@ -127,6 +156,16 @@ export default function CoordinacionAcademicaPage() {
   const [aulas, setAulas] = useState([]);
   const [actas, setActas] = useState([]);
   const [programas, setProgramas] = useState([]);
+  const [programasAcademicos, setProgramasAcademicos] = useState([]);
+  const [programaCurricular, setProgramaCurricular] = useState(null);
+  const [programaPeriodos, setProgramaPeriodos] = useState([]);
+  const [editingProgramaAcademicoId, setEditingProgramaAcademicoId] = useState(null);
+  const [editingMateriaPlanId, setEditingMateriaPlanId] = useState(null);
+  const [selectedProgramaOfertaId, setSelectedProgramaOfertaId] = useState('');
+  const [selectedProgramaCargaId, setSelectedProgramaCargaId] = useState('');
+  const [selectedPeriodoCarga, setSelectedPeriodoCarga] = useState('');
+  const [selectedProgramaCalifId, setSelectedProgramaCalifId] = useState('');
+  const [selectedPeriodoCalif, setSelectedPeriodoCalif] = useState('');
   const [alumnosProgreso, setAlumnosProgreso] = useState([]);
   const [selectedPrograma, setSelectedPrograma] = useState(null);
 
@@ -218,6 +257,28 @@ export default function CoordinacionAcademicaPage() {
     },
   });
 
+  const programaAcademicoForm = useForm({
+    resolver: zodResolver(programaAcademicoSchema),
+    defaultValues: {
+      tipo_nivel: 'licenciatura',
+      nombre: '',
+      modalidad_periodo: 'semestral',
+      total_periodos: 9,
+    },
+  });
+
+  const materiaPlanForm = useForm({
+    resolver: zodResolver(materiaPlanSchema),
+    defaultValues: {
+      programa_academico_id: '',
+      periodo_numero: 1,
+      codigo_materia: '',
+      nombre_materia: '',
+      creditos: 0,
+      horas_semanales: 0,
+    },
+  });
+
   const alumnos = useMemo(() => alumnosProgreso.map((item) => ({
     id_alumno: item.id_alumno,
     nombre_completo: item.nombre_completo,
@@ -237,12 +298,13 @@ export default function CoordinacionAcademicaPage() {
     setError('');
 
     try {
-      const [docentesResp, aulasResp, actasResp, programasResp, progresoResp] = await Promise.all([
+      const [docentesResp, aulasResp, actasResp, programasResp, progresoResp, programasAcademicosResp] = await Promise.all([
         api.get('/coordinacion/docentes-asignaciones'),
         api.get('/coordinacion/aulas-disponibilidad'),
         api.get('/coordinacion/actas-pendientes'),
         api.get('/coordinacion/programas-externos'),
         api.get('/coordinacion/alumnos-progreso'),
+        api.get('/coordinacion/programas'),
       ]);
 
       const docentesData = docentesResp?.data?.items || [];
@@ -252,6 +314,7 @@ export default function CoordinacionAcademicaPage() {
       const actasData = actasResp?.data?.items || [];
       const programasData = programasResp?.data?.items || [];
       const progresoData = progresoResp?.data?.items || [];
+      const programasAcademicosData = programasAcademicosResp?.data?.items || [];
 
       setDocentes(docentesData);
       setMaterias(materiasData);
@@ -259,7 +322,16 @@ export default function CoordinacionAcademicaPage() {
       setAulas(aulasData);
       setActas(actasData);
       setProgramas(programasData);
+      setProgramasAcademicos(programasAcademicosData);
       setAlumnosProgreso(progresoData);
+
+      const firstProgramaAcademico = programasAcademicosData[0] || null;
+      if (firstProgramaAcademico) {
+        const firstId = String(firstProgramaAcademico.id);
+        setSelectedProgramaOfertaId((current) => current || firstId);
+        setSelectedProgramaCargaId((current) => current || firstId);
+        setSelectedProgramaCalifId((current) => current || firstId);
+      }
 
       const firstPrograma = programasData[0] || null;
       setSelectedPrograma(firstPrograma);
@@ -562,6 +634,229 @@ export default function CoordinacionAcademicaPage() {
     }
   }
 
+  const periodoOptionsCarga = useMemo(() => {
+    const programa = programasAcademicos.find((item) => String(item.id) === String(selectedProgramaCargaId));
+    if (!programa) return [];
+    return Array.from({ length: Number(programa.total_periodos || 0) }, (_, index) => {
+      const numero = index + 1;
+      const base = programa.modalidad_periodo === 'semestral' ? 'Semestre' : 'Cuatrimestre';
+      return { value: String(numero), label: `${base} ${numero}` };
+    });
+  }, [programasAcademicos, selectedProgramaCargaId]);
+
+  const periodoOptionsCalif = useMemo(() => {
+    const programa = programasAcademicos.find((item) => String(item.id) === String(selectedProgramaCalifId));
+    if (!programa) return [];
+    return Array.from({ length: Number(programa.total_periodos || 0) }, (_, index) => {
+      const numero = index + 1;
+      const base = programa.modalidad_periodo === 'semestral' ? 'Semestre' : 'Cuatrimestre';
+      return { value: String(numero), label: `${base} ${numero}` };
+    });
+  }, [programasAcademicos, selectedProgramaCalifId]);
+
+  const materiasCargaFiltradas = useMemo(() => materias.filter((materia) => {
+    if (!selectedProgramaCargaId) {
+      return false;
+    }
+    if (selectedProgramaCargaId && String(materia.programa_academico_id || '') !== String(selectedProgramaCargaId)) {
+      return false;
+    }
+    if (selectedPeriodoCarga && String(materia.periodo_numero || materia.bimestre_pertenece || '') !== String(selectedPeriodoCarga)) {
+      return false;
+    }
+    return true;
+  }), [materias, selectedProgramaCargaId, selectedPeriodoCarga]);
+
+  const materiasCalifFiltradas = useMemo(() => materias.filter((materia) => {
+    if (!selectedProgramaCalifId) {
+      return false;
+    }
+    if (selectedProgramaCalifId && String(materia.programa_academico_id || '') !== String(selectedProgramaCalifId)) {
+      return false;
+    }
+    if (selectedPeriodoCalif && String(materia.periodo_numero || materia.bimestre_pertenece || '') !== String(selectedPeriodoCalif)) {
+      return false;
+    }
+    return true;
+  }), [materias, selectedProgramaCalifId, selectedPeriodoCalif]);
+
+  const materiaIdsCarga = useMemo(() => new Set(materiasCargaFiltradas.map((item) => Number(item.id_materia))), [materiasCargaFiltradas]);
+  const gruposCargaFiltrados = useMemo(
+    () => grupos.filter((grupo) => materiaIdsCarga.has(Number(grupo.materia_id))),
+    [grupos, materiaIdsCarga],
+  );
+
+  useEffect(() => {
+    const first = periodoOptionsCarga[0]?.value || '';
+    setSelectedPeriodoCarga((current) => {
+      if (!periodoOptionsCarga.length) return '';
+      if (periodoOptionsCarga.some((item) => item.value === current)) return current;
+      return first;
+    });
+  }, [periodoOptionsCarga]);
+
+  useEffect(() => {
+    const first = periodoOptionsCalif[0]?.value || '';
+    setSelectedPeriodoCalif((current) => {
+      if (!periodoOptionsCalif.length) return '';
+      if (periodoOptionsCalif.some((item) => item.value === current)) return current;
+      return first;
+    });
+  }, [periodoOptionsCalif]);
+
+  useEffect(() => {
+    async function loadMateriasPrograma() {
+      if (!selectedProgramaOfertaId) {
+        setProgramaCurricular(null);
+        setProgramaPeriodos([]);
+        return;
+      }
+
+      try {
+        const response = await api.get(`/coordinacion/programas/${Number(selectedProgramaOfertaId)}/materias`);
+        setProgramaCurricular(response?.data?.programa || null);
+        setProgramaPeriodos(response?.data?.periodos || []);
+        materiaPlanForm.setValue('programa_academico_id', String(selectedProgramaOfertaId), { shouldValidate: true });
+      } catch {
+        setProgramaCurricular(null);
+        setProgramaPeriodos([]);
+      }
+    }
+
+    loadMateriasPrograma();
+  }, [selectedProgramaOfertaId, materiaPlanForm]);
+
+  async function refreshProgramasAcademicos() {
+    const response = await api.get('/coordinacion/programas');
+    const items = response?.data?.items || [];
+    setProgramasAcademicos(items);
+    return items;
+  }
+
+  async function submitProgramaAcademico(values) {
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      if (editingProgramaAcademicoId) {
+        await api.put(`/coordinacion/programas/${editingProgramaAcademicoId}`, {
+          nombre: values.nombre,
+          modalidad_periodo: values.modalidad_periodo,
+          total_periodos: Number(values.total_periodos),
+        });
+        setMessage('Programa academico actualizado.');
+      } else {
+        await api.post('/coordinacion/programas', {
+          tipo_nivel: values.tipo_nivel,
+          nombre: values.nombre,
+          modalidad_periodo: values.modalidad_periodo,
+          total_periodos: Number(values.total_periodos),
+        });
+        setMessage('Programa academico creado.');
+      }
+
+      const programasActualizados = await refreshProgramasAcademicos();
+      if (programasActualizados.length > 0 && !selectedProgramaOfertaId) {
+        const firstId = String(programasActualizados[0].id);
+        setSelectedProgramaOfertaId(firstId);
+      }
+
+      setEditingProgramaAcademicoId(null);
+      programaAcademicoForm.reset({
+        tipo_nivel: 'licenciatura',
+        nombre: '',
+        modalidad_periodo: 'semestral',
+        total_periodos: 9,
+      });
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo guardar el programa academico.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function desactivarProgramaAcademico(id) {
+    setSending(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.delete(`/coordinacion/programas/${id}`);
+      setMessage('Programa academico desactivado.');
+      const programasActualizados = await refreshProgramasAcademicos();
+      if (!programasActualizados.some((item) => String(item.id) === String(selectedProgramaOfertaId))) {
+        const nextId = programasActualizados[0] ? String(programasActualizados[0].id) : '';
+        setSelectedProgramaOfertaId(nextId);
+      }
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo desactivar el programa academico.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function submitMateriaPlan(values) {
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const payload = {
+        programa_academico_id: Number(values.programa_academico_id),
+        periodo_numero: Number(values.periodo_numero),
+        codigo_materia: values.codigo_materia.trim(),
+        nombre_materia: values.nombre_materia.trim(),
+        creditos: values.creditos === undefined ? undefined : Number(values.creditos),
+        horas_semanales: values.horas_semanales === undefined ? undefined : Number(values.horas_semanales),
+      };
+
+      if (editingMateriaPlanId) {
+        await api.put(`/coordinacion/materias/${editingMateriaPlanId}`, payload);
+        setMessage('Materia actualizada.');
+      } else {
+        await api.post('/coordinacion/materias', payload);
+        setMessage('Materia agregada al plan de estudios.');
+      }
+
+      setEditingMateriaPlanId(null);
+      materiaPlanForm.reset({
+        programa_academico_id: String(selectedProgramaOfertaId || values.programa_academico_id),
+        periodo_numero: Number(values.periodo_numero),
+        codigo_materia: '',
+        nombre_materia: '',
+        creditos: 0,
+        horas_semanales: 0,
+      });
+
+      await loadData();
+      const response = await api.get(`/coordinacion/programas/${Number(selectedProgramaOfertaId)}/materias`);
+      setProgramaCurricular(response?.data?.programa || null);
+      setProgramaPeriodos(response?.data?.periodos || []);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo guardar la materia del plan.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function eliminarMateriaPlan(idMateria) {
+    setSending(true);
+    setError('');
+    setMessage('');
+    try {
+      await api.delete(`/coordinacion/materias/${idMateria}`);
+      setMessage('Materia eliminada del plan de estudios.');
+      await loadData();
+      const response = await api.get(`/coordinacion/programas/${Number(selectedProgramaOfertaId)}/materias`);
+      setProgramaCurricular(response?.data?.programa || null);
+      setProgramaPeriodos(response?.data?.periodos || []);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo eliminar la materia.');
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <section className="coord-page">
       <header className="coord-header">
@@ -609,6 +904,38 @@ export default function CoordinacionAcademicaPage() {
 
       {activeTab === 'carga' ? (
         <div className="coord-grid-2">
+          <article className="coord-card coord-span-2">
+            <h3>Filtro curricular para carga horaria</h3>
+            <div className="form-grid coord-form-4">
+              <label htmlFor="coord-carga-programa">Programa / Carrera</label>
+              <select
+                id="coord-carga-programa"
+                value={selectedProgramaCargaId}
+                onChange={(event) => setSelectedProgramaCargaId(event.target.value)}
+              >
+                <option value="">Selecciona programa</option>
+                {programasAcademicos.map((item) => (
+                  <option key={`pc-${item.id}`} value={String(item.id)}>
+                    {item.nombre}
+                  </option>
+                ))}
+              </select>
+
+              <label htmlFor="coord-carga-periodo">Periodo / Semestre</label>
+              <select
+                id="coord-carga-periodo"
+                value={selectedPeriodoCarga}
+                onChange={(event) => setSelectedPeriodoCarga(event.target.value)}
+                disabled={!selectedProgramaCargaId}
+              >
+                <option value="">Selecciona periodo</option>
+                {periodoOptionsCarga.map((item) => (
+                  <option key={`pc-per-${item.value}`} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+            </div>
+          </article>
+
           <article className="coord-card coord-span-2">
             <h3>Inscripcion y asignacion alumno a materia/grupo</h3>
             <form className="form-grid coord-form-4" onSubmit={alumnoGrupoForm.handleSubmit(submitAlumnoGrupo)}>
@@ -751,7 +1078,7 @@ export default function CoordinacionAcademicaPage() {
               <label htmlFor="coord-materia">Materia</label>
               <select id="coord-materia" {...asignacionForm.register('materia_id')}>
                 <option value="">Selecciona materia</option>
-                {materias.map((materia) => (
+                {materiasCargaFiltradas.map((materia) => (
                   <option key={materia.id_materia} value={String(materia.id_materia)}>
                     {materia.nombre_materia}
                   </option>
@@ -762,7 +1089,7 @@ export default function CoordinacionAcademicaPage() {
               <label htmlFor="coord-grupo">Grupo</label>
               <select id="coord-grupo" {...asignacionForm.register('grupo_id')}>
                 <option value="">Selecciona grupo</option>
-                {grupos.map((grupo) => (
+                {gruposCargaFiltrados.map((grupo) => (
                   <option key={`${grupo.materia_id}-${grupo.grupo_id}`} value={grupo.grupo_id}>
                     {grupo.etiqueta}
                   </option>
@@ -786,7 +1113,7 @@ export default function CoordinacionAcademicaPage() {
               <label htmlFor="coord-h-grupo">Grupo</label>
               <select id="coord-h-grupo" {...horarioForm.register('grupo_id')}>
                 <option value="">Selecciona grupo</option>
-                {grupos.map((grupo) => (
+                {gruposCargaFiltrados.map((grupo) => (
                   <option key={`h-${grupo.materia_id}-${grupo.grupo_id}`} value={grupo.grupo_id}>
                     {grupo.etiqueta}
                   </option>
@@ -796,7 +1123,7 @@ export default function CoordinacionAcademicaPage() {
               <label htmlFor="coord-h-materia">Materia</label>
               <select id="coord-h-materia" {...horarioForm.register('materia_id')}>
                 <option value="">Selecciona materia</option>
-                {materias.map((materia) => (
+                {materiasCargaFiltradas.map((materia) => (
                   <option key={`h-m-${materia.id_materia}`} value={String(materia.id_materia)}>
                     {materia.nombre_materia}
                   </option>
@@ -900,6 +1227,38 @@ export default function CoordinacionAcademicaPage() {
       {activeTab === 'calificaciones' ? (
         <div className="coord-grid-2">
           <article className="coord-card coord-span-2">
+            <h3>Filtro curricular para calificaciones</h3>
+            <div className="form-grid coord-form-4">
+              <label htmlFor="coord-calif-programa">Programa / Carrera</label>
+              <select
+                id="coord-calif-programa"
+                value={selectedProgramaCalifId}
+                onChange={(event) => setSelectedProgramaCalifId(event.target.value)}
+              >
+                <option value="">Selecciona programa</option>
+                {programasAcademicos.map((item) => (
+                  <option key={`pcal-${item.id}`} value={String(item.id)}>
+                    {item.nombre}
+                  </option>
+                ))}
+              </select>
+
+              <label htmlFor="coord-calif-periodo">Periodo / Semestre</label>
+              <select
+                id="coord-calif-periodo"
+                value={selectedPeriodoCalif}
+                onChange={(event) => setSelectedPeriodoCalif(event.target.value)}
+                disabled={!selectedProgramaCalifId}
+              >
+                <option value="">Selecciona periodo</option>
+                {periodoOptionsCalif.map((item) => (
+                  <option key={`pcal-per-${item.value}`} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+            </div>
+          </article>
+
+          <article className="coord-card coord-span-2">
             <h3>Actas pendientes de validacion</h3>
             <div className="table-wrap coord-table-wrap">
               <table>
@@ -958,7 +1317,7 @@ export default function CoordinacionAcademicaPage() {
               <label htmlFor="coord-ext-materia">Materia</label>
               <select id="coord-ext-materia" {...extraordinarioForm.register('materia_id')}>
                 <option value="">Selecciona materia</option>
-                {materias.map((materia) => (
+                {materiasCalifFiltradas.map((materia) => (
                   <option key={`e-m-${materia.id_materia}`} value={String(materia.id_materia)}>
                     {materia.nombre_materia}
                   </option>
@@ -989,6 +1348,206 @@ export default function CoordinacionAcademicaPage() {
                 {sending ? 'Agendando...' : 'Agendar extraordinario'}
               </button>
             </form>
+          </article>
+        </div>
+      ) : null}
+
+      {activeTab === 'oferta' ? (
+        <div className="coord-grid-2">
+          <article className="coord-card">
+            <h3>{editingProgramaAcademicoId ? 'Editar programa academico' : 'Crear programa academico'}</h3>
+            <form className="form-grid" onSubmit={programaAcademicoForm.handleSubmit(submitProgramaAcademico)}>
+              <label htmlFor="coord-pa-nivel">Nivel</label>
+              <select id="coord-pa-nivel" {...programaAcademicoForm.register('tipo_nivel')}>
+                <option value="preparatoria">Preparatoria</option>
+                <option value="licenciatura">Licenciatura</option>
+                <option value="ingenieria">Ingenieria</option>
+                <option value="maestria">Maestria</option>
+              </select>
+
+              <label htmlFor="coord-pa-nombre">Nombre del programa</label>
+              <input id="coord-pa-nombre" placeholder="Ing. en Desarrollo de Software" {...programaAcademicoForm.register('nombre')} />
+              {programaAcademicoForm.formState.errors.nombre ? <small>{programaAcademicoForm.formState.errors.nombre.message}</small> : null}
+
+              <label>Modalidad de periodos</label>
+              <div className="coord-days">
+                <label className="coord-checkbox">
+                  <input type="radio" value="semestral" {...programaAcademicoForm.register('modalidad_periodo')} />
+                  <span>Semestral</span>
+                </label>
+                <label className="coord-checkbox">
+                  <input type="radio" value="cuatrimestral" {...programaAcademicoForm.register('modalidad_periodo')} />
+                  <span>Cuatrimestral</span>
+                </label>
+              </div>
+
+              <label htmlFor="coord-pa-total">Total de periodos</label>
+              <input id="coord-pa-total" type="number" min="1" max="20" {...programaAcademicoForm.register('total_periodos')} />
+              {programaAcademicoForm.formState.errors.total_periodos ? <small>{programaAcademicoForm.formState.errors.total_periodos.message}</small> : null}
+
+              <button type="submit" className="btn-primary" disabled={loading || sending}>
+                {sending ? 'Guardando...' : 'Guardar Programa Academico'}
+              </button>
+
+              {editingProgramaAcademicoId ? (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setEditingProgramaAcademicoId(null);
+                    programaAcademicoForm.reset({
+                      tipo_nivel: 'licenciatura',
+                      nombre: '',
+                      modalidad_periodo: 'semestral',
+                      total_periodos: 9,
+                    });
+                  }}
+                >
+                  Cancelar edicion
+                </button>
+              ) : null}
+            </form>
+
+            <div className="coord-list">
+              {programasAcademicos.map((programa) => (
+                <div key={`pa-row-${programa.id}`} className="coord-list-item">
+                  <strong>{programa.nombre}</strong>
+                  <span>{`${programa.tipo_nivel} · ${programa.modalidad_periodo}`}</span>
+                  <span>{`${programa.total_materias || 0} materias`}</span>
+                  <div>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => {
+                        setEditingProgramaAcademicoId(programa.id);
+                        programaAcademicoForm.reset({
+                          tipo_nivel: programa.tipo_nivel,
+                          nombre: programa.nombre,
+                          modalidad_periodo: programa.modalidad_periodo,
+                          total_periodos: programa.total_periodos,
+                        });
+                        setSelectedProgramaOfertaId(String(programa.id));
+                      }}
+                    >
+                      Editar
+                    </button>
+                    <button type="button" className="btn-danger-sm" onClick={() => desactivarProgramaAcademico(programa.id)}>
+                      Desactivar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="coord-card">
+            <h3>Organizador de materias por periodos</h3>
+
+            <div className="form-grid">
+              <label htmlFor="coord-oferta-programa">Programa a gestionar</label>
+              <select
+                id="coord-oferta-programa"
+                value={selectedProgramaOfertaId}
+                onChange={(event) => {
+                  setSelectedProgramaOfertaId(event.target.value);
+                  setEditingMateriaPlanId(null);
+                }}
+              >
+                <option value="">Selecciona programa</option>
+                {programasAcademicos.map((item) => (
+                  <option key={`po-${item.id}`} value={String(item.id)}>{item.nombre}</option>
+                ))}
+              </select>
+            </div>
+
+            <form className="form-grid coord-form-4" onSubmit={materiaPlanForm.handleSubmit(submitMateriaPlan)}>
+              <input type="hidden" {...materiaPlanForm.register('programa_academico_id')} />
+
+              <label htmlFor="coord-mat-periodo">Periodo</label>
+              <select id="coord-mat-periodo" {...materiaPlanForm.register('periodo_numero')} disabled={!programaCurricular}>
+                {(programaPeriodos || []).map((periodo) => (
+                  <option key={`periodo-${periodo.numero}`} value={String(periodo.numero)}>{periodo.label}</option>
+                ))}
+              </select>
+
+              <label htmlFor="coord-mat-codigo">Codigo</label>
+              <input id="coord-mat-codigo" placeholder="ING-101" {...materiaPlanForm.register('codigo_materia')} />
+
+              <label htmlFor="coord-mat-nombre">Nombre de materia</label>
+              <input id="coord-mat-nombre" placeholder="Calculo Diferencial" {...materiaPlanForm.register('nombre_materia')} />
+
+              <label htmlFor="coord-mat-creditos">Creditos</label>
+              <input id="coord-mat-creditos" type="number" min="0" step="1" {...materiaPlanForm.register('creditos')} />
+
+              <label htmlFor="coord-mat-horas">Horas semanales</label>
+              <input id="coord-mat-horas" type="number" min="0" step="1" {...materiaPlanForm.register('horas_semanales')} />
+
+              <button type="submit" className="btn-primary" disabled={loading || sending || !selectedProgramaOfertaId}>
+                {editingMateriaPlanId ? 'Actualizar materia' : 'Agregar Materia'}
+              </button>
+
+              {editingMateriaPlanId ? (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setEditingMateriaPlanId(null);
+                    materiaPlanForm.reset({
+                      programa_academico_id: String(selectedProgramaOfertaId),
+                      periodo_numero: 1,
+                      codigo_materia: '',
+                      nombre_materia: '',
+                      creditos: 0,
+                      horas_semanales: 0,
+                    });
+                  }}
+                >
+                  Cancelar edicion
+                </button>
+              ) : null}
+            </form>
+
+            <div className="coord-list">
+              {(programaPeriodos || []).map((periodo) => (
+                <div key={`bloque-${periodo.numero}`} className="coord-list-item">
+                  <strong>{periodo.label}</strong>
+                  {periodo.materias.length === 0 ? <p>Sin materias asignadas.</p> : null}
+                  {periodo.materias.map((materia) => (
+                    <div key={`materia-row-${materia.id_materia || materia.id}`}>
+                      <span>{`${materia.codigo_materia} · ${materia.nombre_materia}`}</span>
+                      <span>{`${materia.creditos ?? 0} cred. · ${materia.horas_semanales ?? 0} hrs/sem`}</span>
+                      <div>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => {
+                            const idMateria = materia.id_materia || materia.id;
+                            setEditingMateriaPlanId(idMateria);
+                            materiaPlanForm.reset({
+                              programa_academico_id: String(selectedProgramaOfertaId),
+                              periodo_numero: Number(materia.periodo_numero || periodo.numero),
+                              codigo_materia: materia.codigo_materia || '',
+                              nombre_materia: materia.nombre_materia || '',
+                              creditos: materia.creditos ?? 0,
+                              horas_semanales: materia.horas_semanales ?? 0,
+                            });
+                          }}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-danger-sm"
+                          onClick={() => eliminarMateriaPlan(materia.id_materia || materia.id)}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
           </article>
         </div>
       ) : null}

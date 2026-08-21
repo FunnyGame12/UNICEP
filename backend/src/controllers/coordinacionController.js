@@ -11,12 +11,16 @@ const {
   AlumnoPerfil,
   AlumnoGrupo,
   MeritoAcademico,
+  ProgramaAcademico,
   PeriodoAcademico,
   EntregaTarea,
 } = require('../../models');
 
 const DIAS_VALIDOS = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
 const ESTATUS_PROGRAMA_VALIDOS = new Set(['en_revision', 'horas_cubiertas', 'liberado', 'rechazado']);
+const TIPOS_NIVEL_VALIDOS = new Set(['preparatoria', 'licenciatura', 'ingenieria', 'maestria']);
+const MODALIDADES_PERIODO_VALIDAS = new Set(['semestral', 'cuatrimestral']);
+const ESTATUS_PROGRAMA_ACADEMICO_VALIDOS = new Set(['activo', 'inactivo']);
 
 function toInt(value) {
   const parsed = Number(value);
@@ -31,6 +35,10 @@ function toPositiveNumber(value) {
 function normalizeText(value) {
   const text = String(value || '').trim();
   return text || null;
+}
+
+function normalizeEnum(value) {
+  return String(value || '').trim().toLowerCase();
 }
 
 function normalizeGrupo(value) {
@@ -135,7 +143,7 @@ async function docentesAsignaciones(_req, res) {
       order: [['id_asignacion', 'DESC']],
     }),
     Materia.findAll({
-      attributes: ['id_materia', 'nombre_materia', 'codigo_materia', 'bimestre_pertenece'],
+      attributes: ['id_materia', 'nombre_materia', 'codigo_materia', 'bimestre_pertenece', 'programa_academico_id', 'periodo_numero'],
       order: [['nombre_materia', 'ASC']],
     }),
     AlumnoGrupo.findAll({
@@ -188,6 +196,8 @@ async function docentesAsignaciones(_req, res) {
         nombre_materia: materia.nombre_materia,
         codigo_materia: materia.codigo_materia,
         bimestre_pertenece: materia.bimestre_pertenece,
+        programa_academico_id: materia.programa_academico_id,
+        periodo_numero: materia.periodo_numero || materia.bimestre_pertenece,
       })),
       grupos: gruposRaw.map((item) => ({
         materia_id: item.id_materia,
@@ -495,27 +505,39 @@ async function programarExtraordinario(req, res) {
 }
 
 async function programasExternos(req, res) {
-  const tipo = normalizeText(req.query.tipo);
-  const where = {};
-  if (tipo && ['servicio_social', 'practicas_profesionales'].includes(tipo)) {
-    where.tipo_programa = tipo;
-  }
+  try {
+    const tipo = normalizeText(req.query.tipo);
+    const where = {};
 
-  const items = await ProgramaExterno.findAll({
-    where,
-    include: [{
-      model: AlumnoPerfil,
-      as: 'alumno',
+    if (tipo && ['servicio_social', 'practicas_profesionales'].includes(tipo)) {
+      where.tipo_programa = tipo;
+    }
+
+    const items = await ProgramaExterno.findAll({
+      where,
       include: [{
-        model: Usuario,
-        as: 'usuario',
-        attributes: ['id_usuario', 'folio_matricula', 'nombre_completo', 'correo'],
+        model: AlumnoPerfil,
+        as: 'alumno',
+        required: false,
+        include: [{
+          model: Usuario,
+          as: 'usuario',
+          required: false,
+          attributes: ['id_usuario', 'folio_matricula', 'nombre_completo', 'correo'],
+        }],
       }],
-    }],
-    order: [['fecha_creacion', 'DESC']],
-  });
+      order: [['fecha_creacion', 'DESC']],
+    });
 
-  return res.json({ items });
+    return res.status(200).json({ items: Array.isArray(items) ? items : [] });
+  } catch (error) {
+    console.error('[Error coordinacion/programas-externos]:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error al obtener programas externos',
+      error: error.message,
+    });
+  }
 }
 
 async function actualizarEstatusProgramaExterno(req, res) {
@@ -664,6 +686,359 @@ async function asignarMerito(req, res) {
   });
 }
 
+function serializeProgramaAcademico(programa, materias = []) {
+  const periodos = [...new Set(
+    materias
+      .map((item) => Number(item.periodo_numero || item.bimestre_pertenece))
+      .filter((value) => Number.isInteger(value) && value > 0),
+  )].sort((a, b) => a - b);
+
+  return {
+    id: programa.id,
+    tipo_nivel: programa.tipo_nivel,
+    nombre: programa.nombre,
+    modalidad_periodo: programa.modalidad_periodo,
+    total_periodos: programa.total_periodos,
+    estatus: programa.estatus,
+    total_materias: materias.length,
+    periodos_con_materias: periodos,
+  };
+}
+
+function serializeMateria(item) {
+  return {
+    id: item.id_materia,
+    id_materia: item.id_materia,
+    programa_academico_id: item.programa_academico_id,
+    periodo_numero: item.periodo_numero || item.bimestre_pertenece,
+    codigo_materia: item.codigo_materia,
+    nombre_materia: item.nombre_materia,
+    creditos: item.creditos,
+    horas_semanales: item.horas_semanales,
+  };
+}
+
+function getPeriodoLabel(modalidad, numero) {
+  const base = modalidad === 'semestral' ? 'Semestre' : 'Cuatrimestre';
+  return `${base} ${numero}`;
+}
+
+async function listarProgramasAcademicos(_req, res) {
+  try {
+    const programas = await ProgramaAcademico.findAll({
+      where: { estatus: 'activo' },
+      include: [{
+        model: Materia,
+        as: 'materias_plan',
+        attributes: ['id_materia', 'periodo_numero', 'bimestre_pertenece'],
+        where: { activa: true },
+        required: false,
+      }],
+      order: [['nombre', 'ASC']],
+    });
+
+    const items = programas.map((programa) => serializeProgramaAcademico(programa, programa.materias_plan || []));
+    return res.json({ items });
+  } catch (error) {
+    console.error('[Error coordinacion/programas]:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error al obtener programas academicos',
+      error: error.message,
+    });
+  }
+}
+
+async function crearProgramaAcademico(req, res) {
+  try {
+    const tipoNivel = normalizeEnum(req.body.tipo_nivel);
+    const nombre = normalizeText(req.body.nombre);
+    const modalidadPeriodo = normalizeEnum(req.body.modalidad_periodo);
+    const totalPeriodos = toInt(req.body.total_periodos);
+    const estatus = normalizeEnum(req.body.estatus || 'activo');
+
+    if (!TIPOS_NIVEL_VALIDOS.has(tipoNivel) || !nombre || !MODALIDADES_PERIODO_VALIDAS.has(modalidadPeriodo)) {
+      return res.status(400).json({ message: 'tipo_nivel, nombre y modalidad_periodo son obligatorios.' });
+    }
+    if (!Number.isInteger(totalPeriodos) || totalPeriodos < 1 || totalPeriodos > 20) {
+      return res.status(400).json({ message: 'total_periodos invalido. Usa un entero entre 1 y 20.' });
+    }
+    if (!ESTATUS_PROGRAMA_ACADEMICO_VALIDOS.has(estatus)) {
+      return res.status(400).json({ message: 'estatus invalido. Usa activo o inactivo.' });
+    }
+
+    const created = await ProgramaAcademico.create({
+      tipo_nivel: tipoNivel,
+      nombre,
+      modalidad_periodo: modalidadPeriodo,
+      total_periodos: totalPeriodos,
+      estatus,
+      fecha_creacion: new Date(),
+    });
+
+    return res.status(201).json(serializeProgramaAcademico(created, []));
+  } catch (error) {
+    console.error('[Error coordinacion/programas:create]:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error al crear programa academico',
+      error: error.message,
+    });
+  }
+}
+
+async function actualizarProgramaAcademico(req, res) {
+  try {
+    const id = toInt(req.params.id);
+    const nombre = normalizeText(req.body.nombre);
+    const modalidadPeriodo = req.body.modalidad_periodo !== undefined ? normalizeEnum(req.body.modalidad_periodo) : null;
+    const totalPeriodos = req.body.total_periodos !== undefined ? toInt(req.body.total_periodos) : null;
+
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ message: 'id invalido.' });
+    }
+
+    const programa = await ProgramaAcademico.findByPk(id);
+    if (!programa) {
+      return res.status(404).json({ message: 'Programa academico no encontrado.' });
+    }
+
+    if (!nombre && modalidadPeriodo === null && totalPeriodos === null) {
+      return res.status(400).json({ message: 'Proporciona al menos un campo editable.' });
+    }
+
+    if (modalidadPeriodo !== null && !MODALIDADES_PERIODO_VALIDAS.has(modalidadPeriodo)) {
+      return res.status(400).json({ message: 'modalidad_periodo invalida.' });
+    }
+
+    if (totalPeriodos !== null && (!Number.isInteger(totalPeriodos) || totalPeriodos < 1 || totalPeriodos > 20)) {
+      return res.status(400).json({ message: 'total_periodos invalido. Usa un entero entre 1 y 20.' });
+    }
+
+    if (nombre) programa.nombre = nombre;
+    if (modalidadPeriodo !== null) programa.modalidad_periodo = modalidadPeriodo;
+    if (totalPeriodos !== null) programa.total_periodos = totalPeriodos;
+    await programa.save();
+
+    const materias = await Materia.findAll({ where: { programa_academico_id: programa.id, activa: true } });
+    return res.json(serializeProgramaAcademico(programa, materias));
+  } catch (error) {
+    console.error('[Error coordinacion/programas:update]:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error al actualizar programa academico',
+      error: error.message,
+    });
+  }
+}
+
+async function eliminarProgramaAcademico(req, res) {
+  try {
+    const id = toInt(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ message: 'id invalido.' });
+    }
+
+    const programa = await ProgramaAcademico.findByPk(id);
+    if (!programa) {
+      return res.status(404).json({ message: 'Programa academico no encontrado.' });
+    }
+
+    programa.estatus = 'inactivo';
+    await programa.save();
+
+    return res.json({ id: programa.id, estatus: programa.estatus });
+  } catch (error) {
+    console.error('[Error coordinacion/programas:delete]:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error al desactivar programa academico',
+      error: error.message,
+    });
+  }
+}
+
+async function materiasPorPrograma(req, res) {
+  try {
+    const id = toInt(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ message: 'id invalido.' });
+    }
+
+    const programa = await ProgramaAcademico.findByPk(id);
+    if (!programa || programa.estatus !== 'activo') {
+      return res.status(404).json({ message: 'Programa academico no encontrado o inactivo.' });
+    }
+
+    const materias = await Materia.findAll({
+      where: {
+        programa_academico_id: id,
+        activa: true,
+      },
+      order: [['periodo_numero', 'ASC'], ['nombre_materia', 'ASC']],
+    });
+
+    const byPeriodo = new Map();
+    for (let i = 1; i <= programa.total_periodos; i += 1) {
+      byPeriodo.set(i, []);
+    }
+
+    materias.forEach((materia) => {
+      const numero = Number(materia.periodo_numero || materia.bimestre_pertenece);
+      if (!Number.isInteger(numero) || numero < 1) return;
+      if (!byPeriodo.has(numero)) byPeriodo.set(numero, []);
+      byPeriodo.get(numero).push(serializeMateria(materia));
+    });
+
+    const periodos = [...byPeriodo.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([numero, items]) => ({
+        numero,
+        label: getPeriodoLabel(programa.modalidad_periodo, numero),
+        materias: items,
+      }));
+
+    return res.json({
+      programa: serializeProgramaAcademico(programa, materias),
+      periodos,
+    });
+  } catch (error) {
+    console.error('[Error coordinacion/programas/:id/materias]:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error al obtener materias por programa',
+      error: error.message,
+    });
+  }
+}
+
+async function crearMateriaPrograma(req, res) {
+  try {
+    const programaAcademicoId = toInt(req.body.programa_academico_id);
+    const periodoNumero = toInt(req.body.periodo_numero);
+    const codigoMateria = normalizeText(req.body.codigo_materia);
+    const nombreMateria = normalizeText(req.body.nombre_materia);
+    const creditos = req.body.creditos !== undefined ? toInt(req.body.creditos) : null;
+    const horasSemanales = req.body.horas_semanales !== undefined ? toInt(req.body.horas_semanales) : null;
+
+    if (!Number.isInteger(programaAcademicoId) || !Number.isInteger(periodoNumero) || !codigoMateria || !nombreMateria) {
+      return res.status(400).json({ message: 'programa_academico_id, periodo_numero, codigo_materia y nombre_materia son obligatorios.' });
+    }
+
+    const programa = await ProgramaAcademico.findByPk(programaAcademicoId);
+    if (!programa || programa.estatus !== 'activo') {
+      return res.status(404).json({ message: 'Programa academico no encontrado o inactivo.' });
+    }
+
+    if (periodoNumero < 1 || periodoNumero > programa.total_periodos) {
+      return res.status(400).json({ message: `periodo_numero fuera de rango. Debe ser 1..${programa.total_periodos}.` });
+    }
+
+    const created = await Materia.create({
+      programa_academico_id: programaAcademicoId,
+      periodo_numero: periodoNumero,
+      bimestre_pertenece: periodoNumero,
+      codigo_materia: codigoMateria,
+      nombre_materia: nombreMateria,
+      creditos: Number.isInteger(creditos) ? creditos : null,
+      horas_semanales: Number.isInteger(horasSemanales) ? horasSemanales : null,
+      carrera: programa.nombre,
+      activa: true,
+    });
+
+    return res.status(201).json(serializeMateria(created));
+  } catch (error) {
+    console.error('[Error coordinacion/materias:create]:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error al crear materia',
+      error: error.message,
+    });
+  }
+}
+
+async function actualizarMateriaPrograma(req, res) {
+  try {
+    const id = toInt(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ message: 'id invalido.' });
+    }
+
+    const materia = await Materia.findByPk(id);
+    if (!materia) {
+      return res.status(404).json({ message: 'Materia no encontrada.' });
+    }
+
+    const nombreMateria = req.body.nombre_materia !== undefined ? normalizeText(req.body.nombre_materia) : null;
+    const codigoMateria = req.body.codigo_materia !== undefined ? normalizeText(req.body.codigo_materia) : null;
+    const periodoNumero = req.body.periodo_numero !== undefined ? toInt(req.body.periodo_numero) : null;
+    const creditos = req.body.creditos !== undefined ? toInt(req.body.creditos) : null;
+    const horasSemanales = req.body.horas_semanales !== undefined ? toInt(req.body.horas_semanales) : null;
+
+    if (
+      nombreMateria === null
+      && codigoMateria === null
+      && periodoNumero === null
+      && creditos === null
+      && horasSemanales === null
+    ) {
+      return res.status(400).json({ message: 'Proporciona al menos un campo editable.' });
+    }
+
+    const programa = await ProgramaAcademico.findByPk(materia.programa_academico_id);
+    if (periodoNumero !== null) {
+      if (!Number.isInteger(periodoNumero) || periodoNumero < 1) {
+        return res.status(400).json({ message: 'periodo_numero invalido.' });
+      }
+      if (programa && periodoNumero > programa.total_periodos) {
+        return res.status(400).json({ message: `periodo_numero fuera de rango. Debe ser 1..${programa.total_periodos}.` });
+      }
+      materia.periodo_numero = periodoNumero;
+      materia.bimestre_pertenece = periodoNumero;
+    }
+
+    if (nombreMateria !== null) materia.nombre_materia = nombreMateria;
+    if (codigoMateria !== null) materia.codigo_materia = codigoMateria;
+    if (creditos !== null) materia.creditos = Number.isInteger(creditos) ? creditos : null;
+    if (horasSemanales !== null) materia.horas_semanales = Number.isInteger(horasSemanales) ? horasSemanales : null;
+
+    await materia.save();
+
+    return res.json(serializeMateria(materia));
+  } catch (error) {
+    console.error('[Error coordinacion/materias:update]:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error al actualizar materia',
+      error: error.message,
+    });
+  }
+}
+
+async function eliminarMateriaPrograma(req, res) {
+  try {
+    const id = toInt(req.params.id);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ message: 'id invalido.' });
+    }
+
+    const materia = await Materia.findByPk(id);
+    if (!materia) {
+      return res.status(404).json({ message: 'Materia no encontrada.' });
+    }
+
+    await materia.destroy();
+    return res.json({ id_materia: id, eliminado: true });
+  } catch (error) {
+    console.error('[Error coordinacion/materias:delete]:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error al eliminar materia',
+      error: error.message,
+    });
+  }
+}
+
 module.exports = {
   docentesAsignaciones,
   asignarMateriaDocente,
@@ -674,6 +1049,14 @@ module.exports = {
   programarExtraordinario,
   programasExternos,
   actualizarEstatusProgramaExterno,
+  listarProgramasAcademicos,
+  crearProgramaAcademico,
+  actualizarProgramaAcademico,
+  eliminarProgramaAcademico,
+  materiasPorPrograma,
+  crearMateriaPrograma,
+  actualizarMateriaPrograma,
+  eliminarMateriaPrograma,
   alumnosProgreso,
   asignarMerito,
 };
