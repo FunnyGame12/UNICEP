@@ -415,12 +415,20 @@ export default function AlumnoPage() {
                     <p>{item.materia?.nombre_materia || 'Materia'} · Grupo {item.grupo_id || '-'}</p>
                     <p>{formatDate(item.fecha_limite, true)}</p>
                     <div className="alumno-inline-form">
-                      <input
-                        type="file"
-                        accept=".pdf, .jpg, .jpeg, .png"
-                        className="form-control"
-                        onChange={(event) => handleEntregaFileChange(item.id_tarea, event)}
-                      />
+                      <div className="file-upload-wrapper">
+                        <label className="btn-file-custom">
+                          <input
+                            type="file"
+                            accept=".pdf, .jpg, .jpeg, .png"
+                            onChange={(event) => handleEntregaFileChange(item.id_tarea, event)}
+                            style={{ display: 'none' }}
+                          />
+                          📎 {entregaDrafts[item.id_tarea]?.archivo ? 'Cambiar archivo' : 'Seleccionar archivo'}
+                        </label>
+                        <span className="file-name-display">
+                          {entregaDrafts[item.id_tarea]?.archivo?.name || 'Ningun archivo seleccionado'}
+                        </span>
+                      </div>
                       <button type="button" className="btn-primary" onClick={() => entregarTarea(item.id_tarea)} disabled={sending}>
                         Entregar tarea
                       </button>
@@ -532,13 +540,21 @@ export default function AlumnoPage() {
                 <input id="pago-monto" type="number" min="0" step="0.01" {...pagoForm.register('monto_pagado')} />
 
                 <label htmlFor="pago-adjunto">Comprobante (PDF o imagen)</label>
-                <input
-                  id="pago-adjunto"
-                  type="file"
-                  accept=".pdf, .jpg, .jpeg, .png"
-                  className="form-control"
-                  onChange={handlePagoFileChange}
-                />
+                <div className="file-upload-wrapper">
+                  <label className="btn-file-custom" htmlFor="pago-adjunto">
+                    <input
+                      id="pago-adjunto"
+                      type="file"
+                      accept=".pdf, .jpg, .jpeg, .png"
+                      onChange={handlePagoFileChange}
+                      style={{ display: 'none' }}
+                    />
+                    📎 {pagoArchivo ? 'Cambiar archivo' : 'Seleccionar archivo'}
+                  </label>
+                  <span className="file-name-display">
+                    {pagoArchivo?.name || 'Ningun archivo seleccionado'}
+                  </span>
+                </div>
 
                 <button type="submit" className="btn-primary" disabled={sending}>Subir comprobante</button>
               </form>
@@ -566,13 +582,21 @@ export default function AlumnoPage() {
                 <textarea id="tramite-descripcion" rows="3" {...tramiteForm.register('descripcion')} />
 
                 <label htmlFor="tramite-adjunto">Adjunto (PDF o imagen)</label>
-                <input
-                  id="tramite-adjunto"
-                  type="file"
-                  accept=".pdf, .jpg, .jpeg, .png"
-                  className="form-control"
-                  onChange={handleTramiteFileChange}
-                />
+                <div className="file-upload-wrapper">
+                  <label className="btn-file-custom" htmlFor="tramite-adjunto">
+                    <input
+                      id="tramite-adjunto"
+                      type="file"
+                      accept=".pdf, .jpg, .jpeg, .png"
+                      onChange={handleTramiteFileChange}
+                      style={{ display: 'none' }}
+                    />
+                    📎 {tramiteArchivo ? 'Cambiar archivo' : 'Seleccionar archivo'}
+                  </label>
+                  <span className="file-name-display">
+                    {tramiteArchivo?.name || 'Ningun archivo seleccionado'}
+                  </span>
+                </div>
 
                 <button type="submit" className="btn-secondary" disabled={sending}>Enviar solicitud</button>
               </form>
