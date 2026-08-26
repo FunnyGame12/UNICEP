@@ -14,6 +14,14 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      id_materia: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      grupo_id: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
       titulo: {
         type: DataTypes.STRING(160),
         allowNull: false,
@@ -42,6 +50,12 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   SalaVideoDocente.associate = (models) => {
+    SalaVideoDocente.belongsTo(models.Materia, {
+      foreignKey: 'id_materia',
+      targetKey: 'id_materia',
+      as: 'materia',
+    });
+
     SalaVideoDocente.belongsTo(models.DocentePerfil, {
       foreignKey: 'id_docente',
       targetKey: 'id_docente',

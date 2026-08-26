@@ -26,6 +26,15 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DATE,
         allowNull: false,
       },
+      puntaje_maximo: {
+        type: DataTypes.DECIMAL(6, 2),
+        allowNull: false,
+        defaultValue: 10,
+      },
+      grupo_id: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
       archivo_adjunto_url: {
         type: DataTypes.STRING(255),
         allowNull: true,

@@ -1,5 +1,90 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 import api from '../services/api';
+import './DocentePage.css';
+
+const tabs = [
+  { id: 'aula', label: 'Aula Virtual' },
+  { id: 'vivo', label: 'Clases en Vivo' },
+  { id: 'registro', label: 'Registro y Asistencia' },
+  { id: 'avisos', label: 'Avisos y Justificantes' },
+];
+
+const tareaSchema = z.object({
+  titulo: z.string().trim().min(3, 'Ingresa un titulo.'),
+  descripcion: z.string().trim().min(8, 'Ingresa una descripcion mas completa.'),
+  fecha_limite: z.string().min(1, 'Selecciona fecha limite.'),
+  puntaje_maximo: z.preprocess(
+    (value) => (value === '' || value == null ? NaN : Number(value)),
+    z.number().positive('El puntaje debe ser mayor a 0.').min(1, 'El puntaje minimo es 1.'),
+  ),
+  archivo_adjunto_url: z.string().trim().optional(),
+}).superRefine((data, ctx) => {
+  const date = new Date(data.fecha_limite);
+  if (Number.isNaN(date.getTime()) || date.getTime() <= Date.now()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['fecha_limite'],
+      message: 'La fecha limite debe ser futura.',
+    });
+  }
+});
+
+const materialSchema = z.object({
+  titulo: z.string().trim().min(3, 'Ingresa titulo de recurso.'),
+  descripcion: z.string().trim().optional(),
+  tipo_recurso: z.enum(['pdf', 'enlace', 'diapositivas', 'libro', 'resumen']),
+  recurso_url: z.string().url('Ingresa una URL valida.'),
+});
+
+const calificacionSchema = z.object({
+  calificacion: z.preprocess(
+    (value) => (value === '' || value == null ? NaN : Number(value)),
+    z.number().min(0, 'Minimo 0.00').max(10, 'Maximo 10.00'),
+  ),
+  retroalimentacion: z.string().trim().optional(),
+});
+
+const sesionSchema = z.object({
+  titulo: z.string().trim().min(3, 'Ingresa titulo de la sesion.'),
+  fecha_hora: z.string().min(1, 'Selecciona fecha y hora.'),
+  enlace_reunion: z.string().url('Ingresa un enlace valido.'),
+  plataforma: z.string().trim().min(2, 'Indica la plataforma.'),
+}).superRefine((data, ctx) => {
+  const date = new Date(data.fecha_hora);
+  if (Number.isNaN(date.getTime()) || date.getTime() <= Date.now()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['fecha_hora'],
+      message: 'La fecha de sesion debe ser futura.',
+    });
+  }
+});
+
+const asistenciaSchema = z.object({
+  alumno_id: z.string().min(1, 'Selecciona un alumno.'),
+  fecha: z.string().min(1, 'Selecciona fecha de clase.'),
+  estatus: z.enum(['presente', 'falta', 'retardo', 'justificado']),
+});
+
+const parcialSchema = z.object({
+  parcial_numero: z.preprocess(
+    (value) => (value === '' || value == null ? NaN : Number(value)),
+    z.number().int().min(1, 'Parcial minimo 1').max(10, 'Parcial maximo 10'),
+  ),
+  calificacion: z.preprocess(
+    (value) => (value === '' || value == null ? NaN : Number(value)),
+    z.number().min(0, 'Minimo 0').max(10, 'Maximo 10'),
+  ),
+  retroalimentacion: z.string().trim().optional(),
+});
+
+const avisoSchema = z.object({
+  titulo: z.string().trim().min(3, 'Ingresa un titulo.'),
+  descripcion: z.string().trim().min(6, 'Escribe el aviso para el grupo.'),
+});
 
 function formatDate(value, withTime = false) {
   if (!value) return 'Sin fecha';
@@ -9,606 +94,736 @@ function formatDate(value, withTime = false) {
   }).format(new Date(value));
 }
 
-function CustomDropdown({ label, value, options, onChange, placeholder }) {
-  const dropdownRef = useRef(null);
-  const [open, setOpen] = useState(false);
-  const fieldId = `docente-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-
-  useEffect(() => {
-    function handleOutsideClick(event) {
-      if (!dropdownRef.current?.contains(event.target)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, []);
-
-  const selectedOption = options.find((option) => String(option.value) === String(value));
-
-  return (
-    <label>
-      {label}
-      <div className="teacher-custom-select" ref={dropdownRef}>
-        <button
-          type="button"
-          id={fieldId}
-          name={fieldId}
-          className={`teacher-custom-select-trigger ${open ? 'open' : ''}`}
-          onClick={() => setOpen((current) => !current)}
-          aria-haspopup="listbox"
-          aria-expanded={open ? 'true' : 'false'}
-        >
-          <span>{selectedOption?.label || placeholder}</span>
-        </button>
-
-        {open ? (
-          <div className="teacher-custom-select-menu" role="listbox" aria-label={label}>
-            {options.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={`teacher-custom-select-option ${String(value) === String(option.value) ? 'selected' : ''}`}
-                onClick={() => {
-                  onChange(option.value);
-                  setOpen(false);
-                }}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    </label>
-  );
+function countdownLabel(target) {
+  if (!target) return 'Sin fecha programada';
+  const ms = new Date(target).getTime() - Date.now();
+  if (Number.isNaN(ms)) return 'Fecha invalida';
+  if (ms <= 0) return 'Inicia en breve';
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  return `${hours}h ${minutes}m restantes`;
 }
 
 export default function DocentePage() {
+  const [activeTab, setActiveTab] = useState('aula');
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [dashboard, setDashboard] = useState({ resumen: {}, anuncios: [], salas_video: [] });
-  const [grupos, setGrupos] = useState([]);
+
+  const [misMaterias, setMisMaterias] = useState([]);
+  const [selectedAsignacionId, setSelectedAsignacionId] = useState('');
+
   const [tareas, setTareas] = useState([]);
-  const [entregas, setEntregas] = useState([]);
-  const [materiales, setMateriales] = useState([]);
-  const [portafolios, setPortafolios] = useState([]);
-  const [finales, setFinales] = useState([]);
-  const [asistencias, setAsistencias] = useState([]);
-  const [aprovechamiento, setAprovechamiento] = useState([]);
+  const [sesiones, setSesiones] = useState([]);
+  const [alumnos, setAlumnos] = useState([]);
   const [justificantes, setJustificantes] = useState([]);
+  const [avisos, setAvisos] = useState([]);
+  const [entregasByTarea, setEntregasByTarea] = useState({});
+  const [gradingDrafts, setGradingDrafts] = useState({});
 
-  const [anuncioForm, setAnuncioForm] = useState({ titulo: '', descripcion: '', id_materia: '' });
-  const [tareaForm, setTareaForm] = useState({ id_materia: '', titulo: '', descripcion: '', fecha_limite: '', archivo_adjunto_url: '' });
-  const [materialForm, setMaterialForm] = useState({ id_materia: '', tema_semana: '', tipo_archivo: 'pdf', archivo_url: '' });
-  const [salaForm, setSalaForm] = useState({ titulo: '', plataforma: 'Google Meet', enlace: '', fecha_programada: '' });
-  const [asistenciaForm, setAsistenciaForm] = useState({
-    id_materia: '',
-    id_alumno: '',
-    fecha_clase: '',
-    estatus_asistencia: 'presente',
-    aprovechamiento: 'medio',
-    observaciones: '',
+  const [selectedTareaId, setSelectedTareaId] = useState('');
+  const [asistenciaPorAlumno, setAsistenciaPorAlumno] = useState({});
+  const [parcialPorAlumno, setParcialPorAlumno] = useState({});
+
+  const tareaForm = useForm({
+    resolver: zodResolver(tareaSchema),
+    defaultValues: {
+      titulo: '',
+      descripcion: '',
+      fecha_limite: '',
+      puntaje_maximo: 10,
+      archivo_adjunto_url: '',
+    },
   });
-  const [grading, setGrading] = useState({});
 
-  async function loadDocenteData() {
+  const materialForm = useForm({
+    resolver: zodResolver(materialSchema),
+    defaultValues: {
+      titulo: '',
+      descripcion: '',
+      tipo_recurso: 'pdf',
+      recurso_url: '',
+    },
+  });
+
+  const sesionForm = useForm({
+    resolver: zodResolver(sesionSchema),
+    defaultValues: {
+      titulo: '',
+      fecha_hora: '',
+      enlace_reunion: '',
+      plataforma: 'Google Meet',
+    },
+  });
+
+  const avisoForm = useForm({
+    resolver: zodResolver(avisoSchema),
+    defaultValues: {
+      titulo: '',
+      descripcion: '',
+    },
+  });
+
+  const selectedAsignacion = useMemo(
+    () => misMaterias.find((item) => String(item.id_asignacion) === String(selectedAsignacionId)) || null,
+    [misMaterias, selectedAsignacionId],
+  );
+
+  async function loadMisMaterias() {
+    const response = await api.get('/docente/mis-materias');
+    const items = response?.data?.items || [];
+    setMisMaterias(items);
+    if (!selectedAsignacionId && items[0]) {
+      setSelectedAsignacionId(String(items[0].id_asignacion));
+    }
+    return items;
+  }
+
+  async function loadContextData(asignacion) {
+    if (!asignacion) {
+      setTareas([]);
+      setSesiones([]);
+      setAlumnos([]);
+      setJustificantes([]);
+      setAvisos([]);
+      setSelectedTareaId('');
+      return;
+    }
+
+    const materiaId = Number(asignacion.materia_id);
+    const grupoId = String(asignacion.grupo_id);
+
+    const [tareasResp, sesionesResp, alumnosResp, justificantesResp, avisosResp] = await Promise.all([
+      api.get(`/docente/materias/${materiaId}/tareas`),
+      api.get(`/docente/materias/${materiaId}/sesiones-en-vivo`),
+      api.get(`/docente/grupos/${encodeURIComponent(grupoId)}/materias/${materiaId}/alumnos`),
+      api.get('/docente/justificantes-recibidos'),
+      api.get('/docente/avisos-grupales'),
+    ]);
+
+    const tareasItems = tareasResp?.data?.items || [];
+    setTareas(tareasItems);
+    setSesiones(sesionesResp?.data?.items || []);
+    setAlumnos(alumnosResp?.data?.items || []);
+    setJustificantes(justificantesResp?.data?.items || []);
+    setAvisos(avisosResp?.data?.items || []);
+
+    const firstTarea = tareasItems[0];
+    setSelectedTareaId(firstTarea ? String(firstTarea.id_tarea) : '');
+  }
+
+  async function loadInitialData() {
     setLoading(true);
     setError('');
 
     try {
-      const [
-        dashboardResponse,
-        gruposResponse,
-        tareasResponse,
-        entregasResponse,
-        materialesResponse,
-        portafoliosResponse,
-        finalesResponse,
-      ] = await Promise.all([
-        api.get('/docentes/dashboard'),
-        api.get('/docentes/grupos'),
-        api.get('/docentes/tareas'),
-        api.get('/docentes/entregas'),
-        api.get('/docentes/materiales'),
-        api.get('/docentes/portafolios'),
-        api.get('/docentes/calificaciones-finales'),
-      ]);
-
-      const readOptionalItems = async (request) => {
-        try {
-          const response = await request;
-          return response.data?.items || [];
-        } catch (requestError) {
-          if (requestError?.response?.status === 404) {
-            return [];
-          }
-
-          throw requestError;
-        }
-      };
-
-      const [asistenciasItems, aprovechamientoItems, justificantesItems] = await Promise.all([
-        readOptionalItems(api.get('/docentes/asistencias')),
-        readOptionalItems(api.get('/docentes/aprovechamiento')),
-        readOptionalItems(api.get('/docentes/justificantes-preaprobados')),
-      ]);
-
-      setDashboard(dashboardResponse.data || { resumen: {}, anuncios: [], salas_video: [] });
-      setGrupos(gruposResponse.data.items || []);
-      setTareas(tareasResponse.data.items || []);
-      setEntregas(entregasResponse.data.items || []);
-      setMateriales(materialesResponse.data.items || []);
-      setPortafolios(portafoliosResponse.data.items || []);
-      setFinales(finalesResponse.data.items || []);
-      setAsistencias(asistenciasItems);
-      setAprovechamiento(aprovechamientoItems);
-      setJustificantes(justificantesItems);
+      const materiasItems = await loadMisMaterias();
+      const current = materiasItems.find((item) => String(item.id_asignacion) === String(selectedAsignacionId)) || materiasItems[0] || null;
+      await loadContextData(current);
     } catch (requestError) {
-      setError(requestError?.response?.data?.message || 'No se pudo cargar el panel del docente.');
+      setError(requestError?.response?.data?.message || 'No se pudo cargar el panel docente.');
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadDocenteData();
+    loadInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleCreateAnuncio(event) {
-    event.preventDefault();
-    setError('');
-    setMessage('');
+  useEffect(() => {
+    if (!selectedAsignacion) return;
+    loadContextData(selectedAsignacion).catch((requestError) => {
+      setError(requestError?.response?.data?.message || 'No se pudo actualizar el contexto docente.');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAsignacionId]);
 
-    try {
-      await api.post('/docentes/anuncios', {
-        titulo: anuncioForm.titulo.trim(),
-        descripcion: anuncioForm.descripcion.trim(),
-        id_materia: anuncioForm.id_materia ? Number(anuncioForm.id_materia) : undefined,
-      });
-      setMessage('Anuncio publicado correctamente.');
-      setAnuncioForm({ titulo: '', descripcion: '', id_materia: '' });
-      await loadDocenteData();
-    } catch (requestError) {
-      setError(requestError?.response?.data?.message || 'No se pudo publicar el anuncio.');
+  useEffect(() => {
+    async function loadEntregas() {
+      if (!selectedTareaId) return;
+      try {
+        const response = await api.get(`/docente/tareas/${Number(selectedTareaId)}/entregas`);
+        setEntregasByTarea((prev) => ({
+          ...prev,
+          [selectedTareaId]: response?.data?.items || [],
+        }));
+      } catch {
+        setEntregasByTarea((prev) => ({ ...prev, [selectedTareaId]: [] }));
+      }
     }
-  }
 
-  async function handleCreateTarea(event) {
-    event.preventDefault();
+    loadEntregas();
+  }, [selectedTareaId]);
+
+  const entregasActivas = useMemo(
+    () => entregasByTarea[selectedTareaId] || [],
+    [entregasByTarea, selectedTareaId],
+  );
+
+  async function submitTarea(values) {
+    if (!selectedAsignacion) return;
+    setSending(true);
     setError('');
     setMessage('');
 
     try {
-      await api.post(`/docentes/materias/${Number(tareaForm.id_materia)}/tareas`, {
-        titulo: tareaForm.titulo.trim(),
-        descripcion: tareaForm.descripcion.trim(),
-        fecha_limite: tareaForm.fecha_limite,
-        archivo_adjunto_url: tareaForm.archivo_adjunto_url.trim() || undefined,
+      await api.post(`/docente/materias/${Number(selectedAsignacion.materia_id)}/tareas`, {
+        ...values,
+        grupo_id: selectedAsignacion.grupo_id,
       });
-      setMessage('Tarea creada y programada correctamente.');
-      setTareaForm({ id_materia: '', titulo: '', descripcion: '', fecha_limite: '', archivo_adjunto_url: '' });
-      await loadDocenteData();
+      tareaForm.reset({ titulo: '', descripcion: '', fecha_limite: '', puntaje_maximo: 10, archivo_adjunto_url: '' });
+      setMessage('Tarea publicada correctamente.');
+      await loadContextData(selectedAsignacion);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo crear la tarea.');
+    } finally {
+      setSending(false);
     }
   }
 
-  async function handleCreateMaterial(event) {
-    event.preventDefault();
+  async function submitMaterial(values) {
+    if (!selectedAsignacion) return;
+    setSending(true);
     setError('');
     setMessage('');
 
     try {
-      await api.post(`/docentes/materias/${Number(materialForm.id_materia)}/materiales`, {
-        tema_semana: materialForm.tema_semana.trim(),
-        tipo_archivo: materialForm.tipo_archivo,
-        archivo_url: materialForm.archivo_url.trim(),
+      await api.post(`/docente/materias/${Number(selectedAsignacion.materia_id)}/materiales`, {
+        ...values,
+        grupo_id: selectedAsignacion.grupo_id,
       });
-      setMessage('Material publicado correctamente.');
-      setMaterialForm({ id_materia: '', tema_semana: '', tipo_archivo: 'pdf', archivo_url: '' });
-      await loadDocenteData();
+      materialForm.reset({ titulo: '', descripcion: '', tipo_recurso: 'pdf', recurso_url: '' });
+      setMessage('Material didactico publicado.');
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo publicar el material.');
+    } finally {
+      setSending(false);
     }
   }
 
-  async function handleCreateSala(event) {
-    event.preventDefault();
-    setError('');
-    setMessage('');
-
-    try {
-      await api.post('/docentes/salas-video', {
-        titulo: salaForm.titulo.trim(),
-        plataforma: salaForm.plataforma.trim(),
-        enlace: salaForm.enlace.trim() || undefined,
-        fecha_programada: salaForm.fecha_programada,
-      });
-      setMessage('Sala de videoconferencia creada correctamente.');
-      setSalaForm({ titulo: '', plataforma: 'Google Meet', enlace: '', fecha_programada: '' });
-      await loadDocenteData();
-    } catch (requestError) {
-      setError(requestError?.response?.data?.message || 'No se pudo crear la sala de videoconferencia.');
+  async function submitCalificacion(entregaId, payload) {
+    const parsed = calificacionSchema.safeParse(payload);
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message || 'Calificacion invalida.');
+      return;
     }
-  }
 
-  async function handleRegistroAsistencia(event) {
-    event.preventDefault();
     setError('');
     setMessage('');
-
     try {
-      await api.post('/docentes/asistencias', {
-        id_materia: Number(asistenciaForm.id_materia),
-        id_alumno: asistenciaForm.id_alumno ? Number(asistenciaForm.id_alumno) : undefined,
-        fecha_clase: asistenciaForm.fecha_clase || undefined,
-        estatus_asistencia: asistenciaForm.estatus_asistencia,
-        aprovechamiento: asistenciaForm.aprovechamiento,
-        observaciones: asistenciaForm.observaciones.trim() || undefined,
-      });
-
-      setMessage('Asistencia y aprovechamiento registrados correctamente.');
-      setAsistenciaForm({
-        id_materia: '',
-        id_alumno: '',
-        fecha_clase: '',
-        estatus_asistencia: 'presente',
-        aprovechamiento: 'medio',
-        observaciones: '',
-      });
-      await loadDocenteData();
-    } catch (requestError) {
-      setError(requestError?.response?.data?.message || 'No se pudo registrar asistencia/aprovechamiento.');
-    }
-  }
-
-  async function handleCalificar(idEntrega) {
-    setError('');
-    setMessage('');
-    const data = grading[idEntrega] || { calificacion: '', retroalimentacion: '' };
-
-    try {
-      await api.patch(`/docentes/entregas/${idEntrega}/calificar`, {
-        calificacion: Number(data.calificacion),
-        retroalimentacion: data.retroalimentacion?.trim() || undefined,
-      });
+      await api.put(`/docente/entregas/${Number(entregaId)}/calificar`, parsed.data);
       setMessage('Entrega calificada correctamente.');
-      await loadDocenteData();
+      const response = await api.get(`/docente/tareas/${Number(selectedTareaId)}/entregas`);
+      setEntregasByTarea((prev) => ({ ...prev, [selectedTareaId]: response?.data?.items || [] }));
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo calificar la entrega.');
     }
   }
 
-  const materiaOptions = grupos.map((item) => ({
-    value: String(item.id_materia),
-    label: `${item.materia?.nombre_materia || 'Materia'} · Grupo ${item.grupo}`,
-  }));
-  const anuncioOptions = [
-    { value: '', label: 'Anuncio general para todos mis grupos' },
-    ...materiaOptions,
-  ];
-  const tipoMaterialOptions = [
-    { value: 'diapositivas', label: 'Diapositivas' },
-    { value: 'libro', label: 'Libro digital' },
-    { value: 'resumen', label: 'Resumen' },
-    { value: 'pdf', label: 'PDF' },
-    { value: 'enlace', label: 'Enlace externo' },
-  ];
-  const estatusAsistenciaOptions = [
-    { value: 'presente', label: 'Presente' },
-    { value: 'ausente', label: 'Ausente' },
-    { value: 'retardo', label: 'Retardo' },
-    { value: 'justificado', label: 'Justificado' },
-  ];
-  const aprovechamientoOptions = [
-    { value: 'alto', label: 'Alto' },
-    { value: 'medio', label: 'Medio' },
-    { value: 'bajo', label: 'Bajo' },
-  ];
+  async function submitSesion(values) {
+    if (!selectedAsignacion) return;
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      await api.post(`/docente/materias/${Number(selectedAsignacion.materia_id)}/sesiones-en-vivo`, {
+        ...values,
+        grupo_id: selectedAsignacion.grupo_id,
+      });
+      sesionForm.reset({ titulo: '', fecha_hora: '', enlace_reunion: '', plataforma: 'Google Meet' });
+      setMessage('Sesion en vivo programada.');
+      await loadContextData(selectedAsignacion);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo programar la sesion.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function submitAsistencia(alumnoId) {
+    if (!selectedAsignacion) return;
+
+    const draft = asistenciaPorAlumno[alumnoId] || {
+      alumno_id: String(alumnoId),
+      fecha: new Date().toISOString().slice(0, 10),
+      estatus: 'presente',
+    };
+
+    const parsed = asistenciaSchema.safeParse(draft);
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message || 'Asistencia invalida.');
+      return;
+    }
+
+    setError('');
+    setMessage('');
+    try {
+      await api.post('/docente/asistencia', {
+        ...parsed.data,
+        materia_id: Number(selectedAsignacion.materia_id),
+      });
+      setMessage('Asistencia registrada.');
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo registrar la asistencia.');
+    }
+  }
+
+  async function submitParcial(alumnoId) {
+    if (!selectedAsignacion) return;
+
+    const draft = parcialPorAlumno[alumnoId] || { parcial_numero: 1, calificacion: '', retroalimentacion: '' };
+    const parsed = parcialSchema.safeParse(draft);
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message || 'Calificacion parcial invalida.');
+      return;
+    }
+
+    setError('');
+    setMessage('');
+    try {
+      await api.put('/docente/calificaciones/parcial', {
+        materia_id: Number(selectedAsignacion.materia_id),
+        grupo_id: selectedAsignacion.grupo_id,
+        parcial_numero: parsed.data.parcial_numero,
+        alumno_id: Number(alumnoId),
+        calificacion: parsed.data.calificacion,
+        retroalimentacion: parsed.data.retroalimentacion || undefined,
+      });
+      setMessage('Calificacion parcial guardada.');
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo guardar la calificacion parcial.');
+    }
+  }
+
+  async function enviarActaCoordinacion() {
+    if (!selectedAsignacion) return;
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      await api.post('/docente/actas/enviar-a-coordinacion', {
+        materia_id: Number(selectedAsignacion.materia_id),
+        grupo_id: selectedAsignacion.grupo_id,
+      });
+      setMessage('Acta enviada a Coordinacion Academica.');
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo enviar el acta.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function submitAviso(values) {
+    if (!selectedAsignacion) return;
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      await api.post('/docente/avisos-grupales', {
+        ...values,
+        materia_id: Number(selectedAsignacion.materia_id),
+        grupo_id: selectedAsignacion.grupo_id,
+      });
+      avisoForm.reset({ titulo: '', descripcion: '' });
+      setMessage('Aviso grupal publicado.');
+      await loadContextData(selectedAsignacion);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo publicar el aviso grupal.');
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
-    <section className="teacher-page">
-      {error ? <p className="error-box teacher-feedback">{error}</p> : null}
-      {message ? <p className="ok-box teacher-feedback">{message}</p> : null}
+    <section className="docente-page">
+      <header className="docente-header">
+        <p className="docente-eyebrow">Cuerpo Docente UNICEP</p>
+        <h2>Panel Operativo del Docente</h2>
+        <p>Administra tareas, sesiones, asistencia, parciales, actas y avisos de tus grupos asignados.</p>
+      </header>
 
-      <section className="teacher-hero card-panel">
-        <div>
-          <p className="student-eyebrow">Panel docente</p>
-          <h2>Gestión académica del docente</h2>
-          <p className="teacher-subtitle">Supervisa grupos, publica recursos, programa tareas, califica entregas y da seguimiento al portafolio del alumnado.</p>
-        </div>
-        <div className="teacher-summary-grid">
-          <article className="summary-card"><span>Grupos</span><strong>{dashboard.resumen?.grupos || 0}</strong></article>
-          <article className="summary-card"><span>Materias</span><strong>{dashboard.resumen?.materias || 0}</strong></article>
-          <article className="summary-card"><span>Tareas</span><strong>{dashboard.resumen?.tareas || 0}</strong></article>
-          <article className="summary-card"><span>Entregas por revisar</span><strong>{dashboard.resumen?.entregas_por_revisar || 0}</strong></article>
-        </div>
-      </section>
-
-      <section id="docente-grupos" className="card-panel teacher-section">
-        <div className="section-heading"><h3>Grupos y materias asignadas</h3><p>Consulta las asignaciones activas por grupo y materia.</p></div>
-        <div className="teacher-card-grid">
-          {grupos.length > 0 ? grupos.map((item) => (
-            <article key={item.id_asignacion} className="teacher-card">
-              <strong>{item.materia?.nombre_materia}</strong>
-              <span>Código: {item.materia?.codigo_materia}</span>
-              <span>Grupo: {item.grupo}</span>
-              <span>Bimestre: {item.materia?.bimestre_pertenece}</span>
-            </article>
-          )) : <p className="empty-state">No hay grupos asignados todavía.</p>}
-        </div>
-      </section>
-
-      <section id="docente-anuncios" className="card-panel teacher-section">
-        <div className="section-heading"><h3>Publicar anuncios</h3><p>Genera avisos rápidos para tus grupos o para una materia específica.</p></div>
-        <form className="form-grid teacher-form" onSubmit={handleCreateAnuncio}>
-          <label>Título<input id="anuncio-titulo" name="titulo" type="text" value={anuncioForm.titulo} onChange={(event) => setAnuncioForm((prev) => ({ ...prev, titulo: event.target.value }))} required /></label>
-          <label>Descripción<textarea id="anuncio-descripcion" name="descripcion" value={anuncioForm.descripcion} onChange={(event) => setAnuncioForm((prev) => ({ ...prev, descripcion: event.target.value }))} rows="4" required /></label>
-          <CustomDropdown
-            label="Dirigidos a la materia..."
-            value={anuncioForm.id_materia}
-            options={anuncioOptions}
-            onChange={(nextValue) => setAnuncioForm((prev) => ({ ...prev, id_materia: nextValue }))}
-            placeholder="Anuncio general para todos mis grupos"
-          />
-          <button type="submit" className="btn-primary mini-action-button teacher-action-button">Publicar anuncio</button>
-        </form>
-        <div className="teacher-list">
-          {dashboard.anuncios?.map((item) => (
-            <article key={item.id_anuncio} className="teacher-list-item">
-              <strong>{item.titulo}</strong>
-              <p>{item.descripcion}</p>
-              <span>{formatDate(item.fecha_publicacion, true)}</span>
-            </article>
+      <article className="docente-card docente-context-card">
+        <label htmlFor="docente-contexto">Materia y Grupo Activo</label>
+        <select
+          id="docente-contexto"
+          value={selectedAsignacionId}
+          onChange={(event) => setSelectedAsignacionId(event.target.value)}
+        >
+          {misMaterias.length === 0 ? <option value="">Sin materias asignadas</option> : null}
+          {misMaterias.map((item) => (
+            <option key={item.id_asignacion} value={String(item.id_asignacion)}>
+              [{item.materia?.carrera || 'Programa'}] {item.materia?.nombre_materia} · Grupo {item.grupo_id}
+            </option>
           ))}
-        </div>
-      </section>
+        </select>
+      </article>
 
-      <section id="docente-tareas" className="card-panel teacher-section">
-        <div className="section-heading"><h3>Crear y programar tareas</h3><p>Define actividades por materia con fecha límite y adjuntos opcionales.</p></div>
-        <form className="form-grid teacher-form" onSubmit={handleCreateTarea}>
-          <CustomDropdown
-            label="Materia"
-            value={tareaForm.id_materia}
-            options={[{ value: '', label: 'Selecciona una materia' }, ...materiaOptions]}
-            onChange={(nextValue) => setTareaForm((prev) => ({ ...prev, id_materia: nextValue }))}
-            placeholder="Selecciona una materia"
-          />
-          <label>Título<input id="tarea-titulo" name="titulo" type="text" value={tareaForm.titulo} onChange={(event) => setTareaForm((prev) => ({ ...prev, titulo: event.target.value }))} required /></label>
-          <label>Descripción<textarea id="tarea-descripcion" name="descripcion" rows="4" value={tareaForm.descripcion} onChange={(event) => setTareaForm((prev) => ({ ...prev, descripcion: event.target.value }))} required /></label>
-          <label className="teacher-datetime-field">Fecha y hora límite<input id="tarea-fecha-limite" name="fecha_limite" className="teacher-datetime-input" type="datetime-local" value={tareaForm.fecha_limite} onChange={(event) => setTareaForm((prev) => ({ ...prev, fecha_limite: event.target.value }))} required /></label>
-          <label>Archivo adjunto opcional<input id="tarea-archivo-url" name="archivo_adjunto_url" type="url" value={tareaForm.archivo_adjunto_url} onChange={(event) => setTareaForm((prev) => ({ ...prev, archivo_adjunto_url: event.target.value }))} placeholder="https://..." /></label>
-          <button type="submit" className="btn-primary mini-action-button teacher-action-button">Crear tarea</button>
-        </form>
-        <div className="teacher-card-grid">
-          {tareas.length > 0 ? tareas.map((item) => (
-            <article key={item.id_tarea} className="teacher-card">
-              <strong>{item.titulo}</strong>
-              <span>{item.materia?.nombre_materia}</span>
-              <p>{item.descripcion}</p>
-              <span>Límite: {formatDate(item.fecha_limite, true)}</span>
-            </article>
-          )) : <p className="empty-state">Aún no hay tareas publicadas.</p>}
-        </div>
-      </section>
+      <div className="docente-tabs" role="tablist" aria-label="Secciones operativas">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={activeTab === tab.id ? 'is-active' : ''}
+            onClick={() => setActiveTab(tab.id)}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-      <section id="docente-entregas" className="card-panel teacher-section">
-        <div className="section-heading"><h3>Calificar tareas</h3><p>Revisa entregas, retroalimenta y asigna calificaciones.</p></div>
-        <div className="teacher-list">
-          {entregas.length > 0 ? entregas.map((item) => (
-            <article key={item.id_entrega} className="teacher-list-item teacher-evaluation-card">
-              <div className="card-topline">
-                <strong>{item.alumno?.usuario?.nombre_completo || 'Alumno'}</strong>
-                <span className={`status-pill status-${item.estatus}`}>{item.estatus}</span>
+      {error ? <p className="error-box">{error}</p> : null}
+      {message ? <p className="ok-box">{message}</p> : null}
+      {loading ? <p className="docente-loading">Cargando modulo docente...</p> : null}
+
+      {activeTab === 'aula' ? (
+        <div className="docente-grid-2">
+          <article className="docente-card">
+            <h3>Nueva Tarea</h3>
+            <form className="docente-form" onSubmit={tareaForm.handleSubmit(submitTarea)}>
+              <label htmlFor="doc-titulo">Titulo</label>
+              <input id="doc-titulo" {...tareaForm.register('titulo')} />
+
+              <label htmlFor="doc-desc">Descripcion</label>
+              <textarea id="doc-desc" rows="3" {...tareaForm.register('descripcion')} />
+
+              <label htmlFor="doc-fecha">Fecha limite</label>
+              <input id="doc-fecha" type="datetime-local" {...tareaForm.register('fecha_limite')} />
+
+              <label htmlFor="doc-puntaje">Puntaje maximo</label>
+              <input id="doc-puntaje" type="number" step="0.1" min="1" {...tareaForm.register('puntaje_maximo')} />
+
+              <label htmlFor="doc-adjunto">Archivo adjunto (opcional)</label>
+              <input id="doc-adjunto" type="url" placeholder="https://..." {...tareaForm.register('archivo_adjunto_url')} />
+
+              <button type="submit" className="btn-primary" disabled={!selectedAsignacion || sending}>Publicar tarea</button>
+            </form>
+
+            <h3>Nuevo Material</h3>
+            <form className="docente-form" onSubmit={materialForm.handleSubmit(submitMaterial)}>
+              <label htmlFor="doc-material-titulo">Titulo del recurso</label>
+              <input id="doc-material-titulo" {...materialForm.register('titulo')} />
+
+              <label htmlFor="doc-material-desc">Descripcion</label>
+              <textarea id="doc-material-desc" rows="2" {...materialForm.register('descripcion')} />
+
+              <label htmlFor="doc-material-tipo">Tipo</label>
+              <select id="doc-material-tipo" {...materialForm.register('tipo_recurso')}>
+                <option value="pdf">PDF</option>
+                <option value="enlace">Enlace</option>
+                <option value="diapositivas">Diapositivas</option>
+                <option value="libro">Libro</option>
+                <option value="resumen">Resumen</option>
+              </select>
+
+              <label htmlFor="doc-material-url">URL</label>
+              <input id="doc-material-url" type="url" placeholder="https://..." {...materialForm.register('recurso_url')} />
+
+              <button type="submit" className="btn-secondary" disabled={!selectedAsignacion || sending}>Publicar material</button>
+            </form>
+          </article>
+
+          <article className="docente-card">
+            <h3>Tareas Activas</h3>
+            {tareas.length === 0 ? (
+              <p className="docente-empty">Sin tareas asignadas para este contexto.</p>
+            ) : (
+              <div className="docente-list">
+                {tareas.map((tarea) => (
+                  <button
+                    type="button"
+                    key={tarea.id_tarea}
+                    className={`docente-list-item ${String(selectedTareaId) === String(tarea.id_tarea) ? 'is-selected' : ''}`}
+                    onClick={() => setSelectedTareaId(String(tarea.id_tarea))}
+                  >
+                    <strong>{tarea.titulo}</strong>
+                    <span>{`Grupo ${tarea.grupo_id || selectedAsignacion?.grupo_id} · Puntaje ${tarea.puntaje_maximo}`}</span>
+                    <span>{`Pendientes por revisar: ${tarea.entregas_pendientes || 0}`}</span>
+                  </button>
+                ))}
               </div>
-              <p>{item.tarea?.titulo} · {item.tarea?.materia?.nombre_materia}</p>
-              <span>Entrega: {formatDate(item.fecha_entrega, true)}</span>
-              <a href={item.archivo_entrega_url} target="_blank" rel="noreferrer">Abrir evidencia</a>
-              <div className="teacher-grade-grid">
-                <input id={`calificacion-${item.id_entrega}`} name={`calificacion_${item.id_entrega}`} type="number" min="0" max="10" step="0.1" placeholder="Calificación" value={grading[item.id_entrega]?.calificacion || ''} onChange={(event) => setGrading((prev) => ({ ...prev, [item.id_entrega]: { ...prev[item.id_entrega], calificacion: event.target.value } }))} />
-                <textarea id={`retroalimentacion-${item.id_entrega}`} name={`retroalimentacion_${item.id_entrega}`} rows="3" placeholder="Retroalimentación" value={grading[item.id_entrega]?.retroalimentacion || ''} onChange={(event) => setGrading((prev) => ({ ...prev, [item.id_entrega]: { ...prev[item.id_entrega], retroalimentacion: event.target.value } }))} />
-                <button type="button" className="btn-secondary alumno-inline-button teacher-secondary-action" onClick={() => handleCalificar(item.id_entrega)}>Guardar calificación</button>
+            )}
+
+            <h3>Entregas</h3>
+            {entregasActivas.length === 0 ? (
+              <p className="docente-empty">Sin entregas pendientes para la tarea seleccionada.</p>
+            ) : (
+              <div className="docente-list">
+                {entregasActivas.map((item) => (
+                  <article key={item.id_entrega} className="docente-list-item docente-delivery-item">
+                    <strong>{item.alumno?.usuario?.nombre_completo || `Alumno ${item.id_alumno}`}</strong>
+                    <span>{`Estatus: ${item.estatus} · Entrega: ${formatDate(item.fecha_entrega, true)}`}</span>
+                    <a href={item.archivo_entrega_url} target="_blank" rel="noreferrer">Abrir evidencia</a>
+                    <div className="docente-inline-grid">
+                      <input
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="0.01"
+                        placeholder="Calificacion"
+                        value={gradingDrafts[item.id_entrega]?.calificacion || ''}
+                        onChange={(event) => {
+                          setGradingDrafts((prev) => ({
+                            ...prev,
+                            [item.id_entrega]: {
+                              ...prev[item.id_entrega],
+                              calificacion: event.target.value,
+                            },
+                          }));
+                        }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Retroalimentacion"
+                        value={gradingDrafts[item.id_entrega]?.retroalimentacion || ''}
+                        onChange={(event) => {
+                          setGradingDrafts((prev) => ({
+                            ...prev,
+                            [item.id_entrega]: {
+                              ...prev[item.id_entrega],
+                              retroalimentacion: event.target.value,
+                            },
+                          }));
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => submitCalificacion(item.id_entrega, {
+                          calificacion: gradingDrafts[item.id_entrega]?.calificacion,
+                          retroalimentacion: gradingDrafts[item.id_entrega]?.retroalimentacion,
+                        })}
+                      >
+                        Guardar
+                      </button>
+                    </div>
+                  </article>
+                ))}
               </div>
-            </article>
-          )) : <p className="empty-state">No hay entregas registradas para revisar.</p>}
+            )}
+          </article>
         </div>
-      </section>
+      ) : null}
 
-      <section id="docente-asistencia" className="card-panel teacher-section">
-        <div className="section-heading"><h3>Asistencia y aprovechamiento diario</h3><p>Registra control de clase dentro de la ventana reglamentaria institucional.</p></div>
-        <form className="form-grid teacher-form" onSubmit={handleRegistroAsistencia}>
-          <CustomDropdown
-            label="Materia"
-            value={asistenciaForm.id_materia}
-            options={[{ value: '', label: 'Selecciona una materia' }, ...materiaOptions]}
-            onChange={(nextValue) => setAsistenciaForm((prev) => ({ ...prev, id_materia: nextValue }))}
-            placeholder="Selecciona una materia"
-          />
-          <label>ID alumno (opcional)<input id="asistencia-id-alumno" name="id_alumno" type="number" min="1" value={asistenciaForm.id_alumno} onChange={(event) => setAsistenciaForm((prev) => ({ ...prev, id_alumno: event.target.value }))} /></label>
-          <label className="teacher-datetime-field">Fecha clase<input id="asistencia-fecha-clase" name="fecha_clase" className="teacher-datetime-input" type="datetime-local" value={asistenciaForm.fecha_clase} onChange={(event) => setAsistenciaForm((prev) => ({ ...prev, fecha_clase: event.target.value }))} /></label>
-          <CustomDropdown
-            label="Asistencia"
-            value={asistenciaForm.estatus_asistencia}
-            options={estatusAsistenciaOptions}
-            onChange={(nextValue) => setAsistenciaForm((prev) => ({ ...prev, estatus_asistencia: nextValue }))}
-            placeholder="Selecciona asistencia"
-          />
-          <CustomDropdown
-            label="Aprovechamiento"
-            value={asistenciaForm.aprovechamiento}
-            options={aprovechamientoOptions}
-            onChange={(nextValue) => setAsistenciaForm((prev) => ({ ...prev, aprovechamiento: nextValue }))}
-            placeholder="Selecciona nivel"
-          />
-          <label>Observaciones<textarea id="asistencia-observaciones" name="observaciones" rows="3" value={asistenciaForm.observaciones} onChange={(event) => setAsistenciaForm((prev) => ({ ...prev, observaciones: event.target.value }))} /></label>
-          <button type="submit" className="btn-primary mini-action-button teacher-action-button">Registrar control diario</button>
-        </form>
+      {activeTab === 'vivo' ? (
+        <div className="docente-grid-2">
+          <article className="docente-card">
+            <h3>Programar Sesion</h3>
+            <form className="docente-form" onSubmit={sesionForm.handleSubmit(submitSesion)}>
+              <label htmlFor="doc-ses-titulo">Titulo</label>
+              <input id="doc-ses-titulo" {...sesionForm.register('titulo')} />
 
-        <div className="table-wrap dark-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Materia</th>
-                <th>Total</th>
-                <th>Alto</th>
-                <th>Medio</th>
-                <th>Bajo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {aprovechamiento.length > 0 ? aprovechamiento.map((item) => (
-                <tr key={`apr-${item.id_materia}`}>
-                  <td>{item.id_materia}</td>
-                  <td>{item.total}</td>
-                  <td>{item.alto}</td>
-                  <td>{item.medio}</td>
-                  <td>{item.bajo}</td>
-                </tr>
-              )) : <tr><td colSpan="5">Sin métricas de aprovechamiento registradas.</td></tr>}
-            </tbody>
-          </table>
+              <label htmlFor="doc-ses-fecha">Fecha y hora</label>
+              <input id="doc-ses-fecha" type="datetime-local" {...sesionForm.register('fecha_hora')} />
+
+              <label htmlFor="doc-ses-link">Enlace de reunion</label>
+              <input id="doc-ses-link" type="url" placeholder="https://..." {...sesionForm.register('enlace_reunion')} />
+
+              <label htmlFor="doc-ses-plat">Plataforma</label>
+              <input id="doc-ses-plat" {...sesionForm.register('plataforma')} />
+
+              <button type="submit" className="btn-primary" disabled={!selectedAsignacion || sending}>Programar</button>
+            </form>
+          </article>
+
+          <article className="docente-card">
+            <h3>Proximas Videoconferencias</h3>
+            {sesiones.length === 0 ? (
+              <p className="docente-empty">Sin clases en vivo programadas.</p>
+            ) : (
+              <div className="docente-list">
+                {sesiones.map((item) => (
+                  <article key={item.id_sala} className="docente-list-item">
+                    <strong>{item.titulo}</strong>
+                    <span>{`${item.plataforma} · ${formatDate(item.fecha_programada, true)}`}</span>
+                    <span>{countdownLabel(item.fecha_programada)}</span>
+                    <div className="docente-session-actions">
+                      <a href={item.enlace} target="_blank" rel="noreferrer" className="btn-secondary">Abrir</a>
+                      <button type="button" className="btn-secondary" onClick={() => navigator.clipboard.writeText(item.enlace)}>Copiar enlace</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </article>
         </div>
+      ) : null}
 
-        <div className="table-wrap dark-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Materia</th>
-                <th>Alumno</th>
-                <th>Fecha</th>
-                <th>Asistencia</th>
-                <th>Aprovechamiento</th>
-              </tr>
-            </thead>
-            <tbody>
-              {asistencias.length > 0 ? asistencias.map((item) => (
-                <tr key={`asis-${item.id_registro}`}>
-                  <td>{item.id_materia}</td>
-                  <td>{item.id_alumno || 'General'}</td>
-                  <td>{formatDate(item.fecha_clase, true)}</td>
-                  <td>{item.estatus_asistencia}</td>
-                  <td>{item.aprovechamiento}</td>
-                </tr>
-              )) : <tr><td colSpan="5">Sin registros de asistencia.</td></tr>}
-            </tbody>
-          </table>
+      {activeTab === 'registro' ? (
+        <article className="docente-card">
+          <h3>Lista de Alumnos · Asistencia y Parciales</h3>
+          {alumnos.length === 0 ? (
+            <p className="docente-empty">Sin alumnos inscritos en este grupo/materia.</p>
+          ) : (
+            <div className="table-wrap dark-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Alumno</th>
+                    <th>Asistencia</th>
+                    <th>Calificacion Parcial</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {alumnos.map((row) => {
+                    const alumno = row.alumno?.usuario;
+                    const asist = asistenciaPorAlumno[row.id_alumno] || {
+                      alumno_id: String(row.id_alumno),
+                      fecha: new Date().toISOString().slice(0, 10),
+                      estatus: 'presente',
+                    };
+                    const parcial = parcialPorAlumno[row.id_alumno] || {
+                      parcial_numero: 1,
+                      calificacion: '',
+                      retroalimentacion: '',
+                    };
+
+                    return (
+                      <tr key={row.id_alumno_grupo}>
+                        <td>
+                          <strong>{alumno?.nombre_completo || `Alumno ${row.id_alumno}`}</strong>
+                          <p>{alumno?.folio_matricula || 'SIN-FOLIO'}</p>
+                        </td>
+                        <td>
+                          <div className="docente-inline-grid">
+                            <input
+                              type="date"
+                              value={asist.fecha}
+                              onChange={(event) => setAsistenciaPorAlumno((prev) => ({
+                                ...prev,
+                                [row.id_alumno]: { ...asist, fecha: event.target.value },
+                              }))}
+                            />
+                            <select
+                              value={asist.estatus}
+                              onChange={(event) => setAsistenciaPorAlumno((prev) => ({
+                                ...prev,
+                                [row.id_alumno]: { ...asist, estatus: event.target.value },
+                              }))}
+                            >
+                              <option value="presente">Presente</option>
+                              <option value="falta">Falta</option>
+                              <option value="retardo">Retardo</option>
+                              <option value="justificado">Justificado</option>
+                            </select>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="docente-inline-grid">
+                            <input
+                              type="number"
+                              min="1"
+                              max="10"
+                              step="1"
+                              value={parcial.parcial_numero}
+                              onChange={(event) => setParcialPorAlumno((prev) => ({
+                                ...prev,
+                                [row.id_alumno]: { ...parcial, parcial_numero: event.target.value },
+                              }))}
+                              placeholder="Parcial"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              max="10"
+                              step="0.01"
+                              value={parcial.calificacion}
+                              onChange={(event) => setParcialPorAlumno((prev) => ({
+                                ...prev,
+                                [row.id_alumno]: { ...parcial, calificacion: event.target.value },
+                              }))}
+                              placeholder="0.00 - 10.00"
+                            />
+                            <input
+                              type="text"
+                              value={parcial.retroalimentacion}
+                              onChange={(event) => setParcialPorAlumno((prev) => ({
+                                ...prev,
+                                [row.id_alumno]: { ...parcial, retroalimentacion: event.target.value },
+                              }))}
+                              placeholder="Retroalimentacion"
+                            />
+                          </div>
+                        </td>
+                        <td>
+                          <div className="docente-inline-grid">
+                            <button type="button" className="btn-secondary" onClick={() => submitAsistencia(row.id_alumno)}>Guardar asistencia</button>
+                            <button type="button" className="btn-secondary" onClick={() => submitParcial(row.id_alumno)}>Guardar parcial</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="docente-actions-row">
+            <button type="button" className="btn-primary" onClick={enviarActaCoordinacion} disabled={!selectedAsignacion || sending}>
+              Enviar Acta a Coordinacion
+            </button>
+          </div>
+        </article>
+      ) : null}
+
+      {activeTab === 'avisos' ? (
+        <div className="docente-grid-2">
+          <article className="docente-card">
+            <h3>Publicar Aviso Grupal</h3>
+            <form className="docente-form" onSubmit={avisoForm.handleSubmit(submitAviso)}>
+              <label htmlFor="doc-aviso-title">Titulo</label>
+              <input id="doc-aviso-title" {...avisoForm.register('titulo')} />
+
+              <label htmlFor="doc-aviso-desc">Mensaje</label>
+              <textarea id="doc-aviso-desc" rows="3" {...avisoForm.register('descripcion')} />
+
+              <button type="submit" className="btn-primary" disabled={!selectedAsignacion || sending}>Publicar aviso</button>
+            </form>
+
+            <h3>Avisos recientes</h3>
+            {avisos.length === 0 ? (
+              <p className="docente-empty">Sin avisos grupales recientes.</p>
+            ) : (
+              <div className="docente-list">
+                {avisos.map((item) => (
+                  <article key={item.id_anuncio} className="docente-list-item">
+                    <strong>{item.titulo}</strong>
+                    <span>{item.materia?.nombre_materia || 'General'} · {formatDate(item.fecha_publicacion, true)}</span>
+                    <p>{item.descripcion}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </article>
+
+          <article className="docente-card">
+            <h3>Justificantes Recibidos</h3>
+            {justificantes.length === 0 ? (
+              <p className="docente-empty">Sin justificantes institucionales vinculados a tus alumnos.</p>
+            ) : (
+              <div className="docente-list">
+                {justificantes.map((item) => (
+                  <article key={item.id_tramite} className="docente-list-item">
+                    <strong>{item.alumno?.usuario?.nombre_completo || `Alumno ${item.id_alumno}`}</strong>
+                    <span>{`Tipo: ${item.tipo} · Estatus: ${item.estatus}`}</span>
+                    <p>{item.descripcion || 'Sin descripcion'}</p>
+                    <span>{`Resuelto: ${formatDate(item.fecha_resolucion, true)}`}</span>
+                  </article>
+                ))}
+              </div>
+            )}
+          </article>
         </div>
-      </section>
-
-      <section id="docente-materiales" className="card-panel teacher-section">
-        <div className="section-heading"><h3>Subir material de clase</h3><p>Publica diapositivas, libros digitales, resúmenes, PDFs y enlaces.</p></div>
-        <form className="form-grid teacher-form" onSubmit={handleCreateMaterial}>
-          <CustomDropdown
-            label="Materia"
-            value={materialForm.id_materia}
-            options={[{ value: '', label: 'Selecciona una materia' }, ...materiaOptions]}
-            onChange={(nextValue) => setMaterialForm((prev) => ({ ...prev, id_materia: nextValue }))}
-            placeholder="Selecciona una materia"
-          />
-          <label>Tema o semana<input id="material-tema" name="tema_semana" type="text" value={materialForm.tema_semana} onChange={(event) => setMaterialForm((prev) => ({ ...prev, tema_semana: event.target.value }))} required /></label>
-          <CustomDropdown
-            label="Tipo de recurso"
-            value={materialForm.tipo_archivo}
-            options={tipoMaterialOptions}
-            onChange={(nextValue) => setMaterialForm((prev) => ({ ...prev, tipo_archivo: nextValue }))}
-            placeholder="Selecciona un tipo de recurso"
-          />
-          <label>URL del recurso<input id="material-url" name="archivo_url" type="url" value={materialForm.archivo_url} onChange={(event) => setMaterialForm((prev) => ({ ...prev, archivo_url: event.target.value }))} required /></label>
-          <button type="submit" className="btn-primary mini-action-button teacher-action-button">Publicar material</button>
-        </form>
-        <div className="teacher-card-grid">
-          {materiales.length > 0 ? materiales.map((item) => (
-            <article key={item.id_material} className="teacher-card">
-              <strong>{item.materia?.nombre_materia}</strong>
-              <span>{item.tema_semana}</span>
-              <span>{item.tipo_archivo}</span>
-              <a href={item.archivo_url} target="_blank" rel="noreferrer">Abrir recurso</a>
-            </article>
-          )) : <p className="empty-state">No hay materiales cargados todavía.</p>}
-        </div>
-      </section>
-
-      <section id="docente-portafolios" className="card-panel teacher-section">
-        <div className="section-heading"><h3>Revisar portafolios de evidencia</h3><p>Consulta archivos finales por materia y bimestre enviados por el alumnado.</p></div>
-        <div className="teacher-card-grid">
-          {portafolios.length > 0 ? portafolios.map((item) => (
-            <article key={item.id_evidencia} className="teacher-card">
-              <strong>{item.alumno?.usuario?.nombre_completo || 'Alumno'}</strong>
-              <span>{item.materia?.nombre_materia}</span>
-              <span>Periodo {item.periodo_bimestre}</span>
-              <a href={item.archivo_url} target="_blank" rel="noreferrer">Abrir evidencia</a>
-            </article>
-          )) : <p className="empty-state">No hay portafolios registrados para tus materias.</p>}
-        </div>
-      </section>
-
-      <section id="docente-finales" className="card-panel teacher-section">
-        <div className="section-heading"><h3>Calificaciones finales</h3><p>Resumen por alumno y materia para apoyo en el cierre del bimestre.</p></div>
-        <div className="table-wrap dark-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Alumno</th>
-                <th>Folio</th>
-                <th>Materia</th>
-                <th>Promedio</th>
-                <th>Estatus</th>
-              </tr>
-            </thead>
-            <tbody>
-              {finales.length > 0 ? finales.map((item) => (
-                <tr key={`${item.folio}-${item.materia}`}>
-                  <td>{item.alumno}</td>
-                  <td>{item.folio}</td>
-                  <td>{item.materia}</td>
-                  <td>{item.promedio}</td>
-                  <td>{item.estatus}</td>
-                </tr>
-              )) : <tr><td colSpan="5">No hay calificaciones finales disponibles.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section id="docente-salas" className="card-panel teacher-section">
-        <div className="section-heading"><h3>Clases en vivo</h3><p>Crea sesiones y, si no defines enlace, se genera automáticamente por plataforma.</p></div>
-        <form className="form-grid teacher-form" onSubmit={handleCreateSala}>
-          <label>Título<input id="sala-titulo" name="titulo" type="text" value={salaForm.titulo} onChange={(event) => setSalaForm((prev) => ({ ...prev, titulo: event.target.value }))} required /></label>
-          <label>Plataforma<input id="sala-plataforma" name="plataforma" type="text" value={salaForm.plataforma} onChange={(event) => setSalaForm((prev) => ({ ...prev, plataforma: event.target.value }))} required /></label>
-          <label>Enlace (opcional)<input id="sala-enlace" name="enlace" type="url" value={salaForm.enlace} onChange={(event) => setSalaForm((prev) => ({ ...prev, enlace: event.target.value }))} placeholder="Si lo dejas vacío, se autogenera" /></label>
-          <label className="teacher-datetime-field">Fecha programada<input id="sala-fecha-programada" name="fecha_programada" className="teacher-datetime-input" type="datetime-local" value={salaForm.fecha_programada} onChange={(event) => setSalaForm((prev) => ({ ...prev, fecha_programada: event.target.value }))} required /></label>
-          <button type="submit" className="btn-primary mini-action-button teacher-action-button">Crear sala</button>
-        </form>
-        <div className="teacher-list">
-          {dashboard.salas_video?.map((item) => (
-            <article key={item.id_sala} className="teacher-list-item">
-              <strong>{item.titulo}</strong>
-              <p>{item.plataforma} · {formatDate(item.fecha_programada, true)}</p>
-              <a href={item.enlace} target="_blank" rel="noreferrer">Entrar a la sala</a>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section id="docente-justificantes" className="card-panel teacher-section">
-        <div className="section-heading"><h3>Notificaciones y justificantes preaprobados</h3><p>Consulta justificantes médicos o personales previamente resueltos por la institución.</p></div>
-        <div className="teacher-list">
-          {justificantes.length > 0 ? justificantes.map((item) => (
-            <article key={`jus-${item.id_tramite}`} className="teacher-list-item">
-              <strong>{item.alumno?.usuario?.nombre_completo || `Alumno ${item.id_alumno}`}</strong>
-              <p>{item.descripcion}</p>
-              <span>Estatus: {item.estatus} · Tipo: {item.tipo}</span>
-              <span>Resolución: {formatDate(item.fecha_resolucion, true)}</span>
-              <span>Respuesta: {item.respuesta || 'Sin respuesta institucional'}</span>
-            </article>
-          )) : <p className="empty-state">No hay justificantes preaprobados para tus grupos.</p>}
-        </div>
-      </section>
-
-      {loading ? <p className="student-loading">Cargando panel docente...</p> : null}
+      ) : null}
     </section>
   );
 }

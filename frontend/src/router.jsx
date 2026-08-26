@@ -38,7 +38,15 @@ const router = createBrowserRouter([
       {
         path: 'docente',
         element: (
-          <ProtectedRoute roles={['maestro']}>
+          <ProtectedRoute roles={['maestro', 'docente']}>
+            <DocentePage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'maestro',
+        element: (
+          <ProtectedRoute roles={['maestro', 'docente']}>
             <DocentePage />
           </ProtectedRoute>
         ),

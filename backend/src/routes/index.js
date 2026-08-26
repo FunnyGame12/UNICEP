@@ -24,6 +24,8 @@ router.post('/docentes/asistencias', authMaestro, requirePermission(PERMISSIONS.
 router.get('/docentes/aprovechamiento', authMaestro, requirePermission(PERMISSIONS.MAESTRO_APROVECHAMIENTO_READ), docenteController.aprovechamiento);
 router.get('/docentes/justificantes-preaprobados', authMaestro, requirePermission(PERMISSIONS.MAESTRO_JUSTIFICANTES_READ), docenteController.justificantesPreaprobados);
 router.use('/docentes', docenteRoutes);
+router.use('/docente', docenteRoutes);
+router.use('/maestro', docenteRoutes);
 router.use('/admin', adminRoutes);
 router.use('/control-escolar', controlEscolarRoutes);
 router.use('/coordinacion', coordinacionRoutes);

@@ -12,12 +12,19 @@ const {
   AlumnoPerfil,
   Usuario,
   TramiteSolicitud,
+  CalificacionParcialDocente,
+  ActaCalificacion,
+  PeriodoAcademico,
 } = require('../../models');
 const { Op } = require('sequelize');
 const { registrarEventoAuditoria } = require('../services/auditService');
 
 function sanitizeText(value) {
   return String(value || '').trim();
+}
+
+function normalizeGrupo(value) {
+  return String(value || '').trim().toUpperCase();
 }
 
 function normalizaFecha(value, fallback = new Date()) {
@@ -49,6 +56,32 @@ async function obtenerMateriasDocente(idDocente) {
 
   const materiasIds = [...new Set(asignaciones.map((item) => Number(item.id_materia)).filter(Number.isInteger))];
   return { asignaciones, materiasIds };
+}
+
+function buildAssignmentSet(asignaciones) {
+  return new Set(
+    (asignaciones || []).map((item) => `${Number(item.id_materia)}::${normalizeGrupo(item.grupo)}`),
+  );
+}
+
+async function obtenerContextoDocente(idDocente) {
+  const asignaciones = await AsignacionGrupo.findAll({
+    where: { id_docente: idDocente },
+    include: [{ model: Materia, as: 'materia' }],
+    order: [['id_asignacion', 'DESC']],
+  });
+
+  const materiasIds = [...new Set(asignaciones.map((item) => Number(item.id_materia)).filter(Number.isInteger))];
+  return {
+    asignaciones,
+    materiasIds,
+    asignacionesSet: buildAssignmentSet(asignaciones),
+  };
+}
+
+function docenteAsignadoMateriaGrupo(asignacionesSet, idMateria, grupoId) {
+  if (!grupoId) return false;
+  return asignacionesSet.has(`${Number(idMateria)}::${normalizeGrupo(grupoId)}`);
 }
 
 async function docenteTieneMateria(idDocente, idMateria) {
@@ -673,7 +706,583 @@ async function justificantesPreaprobados(req, res) {
   return res.json({ items });
 }
 
+async function misMaterias(req, res) {
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+
+  const items = contexto.asignaciones.map((item) => ({
+    id_asignacion: item.id_asignacion,
+    docente_id: item.id_docente,
+    materia_id: item.id_materia,
+    grupo_id: normalizeGrupo(item.grupo),
+    horas_semanales: Number(item.horas_semanales || 0),
+    materia: {
+      id_materia: item.materia?.id_materia,
+      nombre_materia: item.materia?.nombre_materia,
+      codigo_materia: item.materia?.codigo_materia,
+      programa_academico_id: item.materia?.programa_academico_id || null,
+      periodo_numero: item.materia?.periodo_numero || item.materia?.bimestre_pertenece || null,
+      carrera: item.materia?.carrera || null,
+    },
+  }));
+
+  return res.json({ items });
+}
+
+async function materiasTareas(req, res) {
+  const materiaId = Number(req.params.materiaId);
+  if (!Number.isInteger(materiaId)) {
+    return res.status(400).json({ message: 'materiaId invalido.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  const gruposMateria = contexto.asignaciones
+    .filter((item) => Number(item.id_materia) === materiaId)
+    .map((item) => normalizeGrupo(item.grupo));
+
+  if (gruposMateria.length === 0) {
+    return res.status(403).json({ message: 'No tienes asignacion para esta materia.' });
+  }
+
+  const rows = await Tarea.findAll({
+    where: {
+      id_materia: materiaId,
+      [Op.or]: [
+        { grupo_id: { [Op.in]: gruposMateria } },
+        { grupo_id: null },
+      ],
+    },
+    order: [['fecha_limite', 'ASC'], ['id_tarea', 'DESC']],
+  });
+
+  const items = await Promise.all(rows.map(async (tarea) => {
+    const pendientes = await EntregaTarea.count({
+      where: {
+        id_tarea: tarea.id_tarea,
+        estatus: { [Op.in]: ['entregada', 'fuera_de_tiempo', 'pendiente'] },
+      },
+    });
+
+    return {
+      id_tarea: tarea.id_tarea,
+      id_materia: tarea.id_materia,
+      grupo_id: tarea.grupo_id,
+      titulo: tarea.titulo,
+      descripcion: tarea.descripcion,
+      fecha_limite: tarea.fecha_limite,
+      puntaje_maximo: Number(tarea.puntaje_maximo || 10),
+      archivo_adjunto_url: tarea.archivo_adjunto_url,
+      entregas_pendientes: pendientes,
+    };
+  }));
+
+  return res.json({ items });
+}
+
+async function crearTareaMateria(req, res) {
+  const materiaId = Number(req.params.materiaId);
+  const titulo = sanitizeText(req.body.titulo);
+  const descripcion = sanitizeText(req.body.descripcion);
+  const fechaLimite = normalizaFecha(req.body.fecha_limite, null);
+  const puntajeMaximo = Number(req.body.puntaje_maximo);
+  const archivoAdjunto = sanitizeText(req.body.archivo_adjunto_url);
+  const grupoId = normalizeGrupo(req.body.grupo_id);
+
+  if (!Number.isInteger(materiaId)) {
+    return res.status(400).json({ message: 'materiaId invalido.' });
+  }
+  if (!titulo || !descripcion || !fechaLimite || Number.isNaN(puntajeMaximo) || puntajeMaximo < 1 || !grupoId) {
+    return res.status(400).json({ message: 'titulo, descripcion, fecha_limite futura, puntaje_maximo >= 1 y grupo_id son obligatorios.' });
+  }
+  if (fechaLimite.getTime() <= Date.now()) {
+    return res.status(400).json({ message: 'fecha_limite debe ser posterior al momento actual.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
+    return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+  }
+
+  const created = await Tarea.create({
+    id_materia: materiaId,
+    grupo_id: grupoId,
+    titulo,
+    descripcion,
+    fecha_limite: fechaLimite,
+    puntaje_maximo: puntajeMaximo,
+    archivo_adjunto_url: archivoAdjunto || null,
+  });
+
+  await registrarEventoAuditoria({
+    idUsuario: req.user.id_usuario,
+    rolActor: req.user.rol,
+    accion: 'crear_tarea_docente_grupo',
+    modulo: 'docentes',
+    entidad: 'tareas',
+    idEntidad: created.id_tarea,
+    detalle: { materia_id: materiaId, grupo_id: grupoId, puntaje_maximo: puntajeMaximo },
+  });
+
+  return res.status(201).json(created);
+}
+
+async function tareaEntregas(req, res) {
+  const tareaId = Number(req.params.tareaId);
+  if (!Number.isInteger(tareaId)) {
+    return res.status(400).json({ message: 'tareaId invalido.' });
+  }
+
+  const tarea = await Tarea.findByPk(tareaId);
+  if (!tarea) {
+    return res.status(404).json({ message: 'Tarea no encontrada.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, tarea.id_materia, tarea.grupo_id)) {
+    return res.status(403).json({ message: 'No tienes acceso a esta tarea.' });
+  }
+
+  const items = await EntregaTarea.findAll({
+    where: { id_tarea: tareaId },
+    include: [{
+      model: AlumnoPerfil,
+      as: 'alumno',
+      include: [{ model: Usuario, as: 'usuario', attributes: ['id_usuario', 'nombre_completo', 'folio_matricula'] }],
+    }],
+    order: [['fecha_entrega', 'DESC']],
+  });
+
+  return res.json({
+    tarea: {
+      id_tarea: tarea.id_tarea,
+      titulo: tarea.titulo,
+      grupo_id: tarea.grupo_id,
+      puntaje_maximo: Number(tarea.puntaje_maximo || 10),
+    },
+    items,
+  });
+}
+
+async function calificarEntregaMateria(req, res) {
+  const entregaId = Number(req.params.entregaId);
+  const calificacion = Number(req.body.calificacion);
+  const retroalimentacion = sanitizeText(req.body.retroalimentacion) || null;
+
+  if (!Number.isInteger(entregaId)) {
+    return res.status(400).json({ message: 'entregaId invalido.' });
+  }
+  if (Number.isNaN(calificacion) || calificacion < 0 || calificacion > 10) {
+    return res.status(400).json({ message: 'calificacion debe estar en rango 0..10.' });
+  }
+
+  const entrega = await EntregaTarea.findByPk(entregaId, {
+    include: [{ model: Tarea, as: 'tarea', attributes: ['id_tarea', 'id_materia', 'grupo_id'] }],
+  });
+  if (!entrega) {
+    return res.status(404).json({ message: 'Entrega no encontrada.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, entrega.tarea?.id_materia, entrega.tarea?.grupo_id)) {
+    return res.status(403).json({ message: 'No tienes acceso a esta entrega.' });
+  }
+
+  entrega.calificacion = calificacion;
+  entrega.retroalimentacion = retroalimentacion;
+  entrega.estatus = 'calificada';
+  await entrega.save();
+
+  return res.json(entrega);
+}
+
+async function publicarMaterialMateria(req, res) {
+  const materiaId = Number(req.params.materiaId);
+  const titulo = sanitizeText(req.body.titulo);
+  const descripcion = sanitizeText(req.body.descripcion);
+  const tipo = sanitizeText(req.body.tipo_recurso || req.body.tipo_archivo).toLowerCase();
+  const recursoUrl = sanitizeText(req.body.recurso_url || req.body.archivo_url);
+  const grupoId = normalizeGrupo(req.body.grupo_id);
+
+  if (!Number.isInteger(materiaId) || !titulo || !recursoUrl || !grupoId) {
+    return res.status(400).json({ message: 'materiaId, titulo, recurso_url y grupo_id son obligatorios.' });
+  }
+
+  const tiposValidos = new Set(['diapositivas', 'libro', 'resumen', 'pdf', 'enlace', 'guia', 'guía']);
+  const tipoArchivo = tiposValidos.has(tipo) ? (tipo === 'guia' || tipo === 'guía' ? 'pdf' : tipo) : null;
+  if (!tipoArchivo) {
+    return res.status(400).json({ message: 'tipo_recurso invalido. Usa diapositivas, libro, resumen, pdf o enlace.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
+    return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+  }
+
+  const material = await MaterialClase.create({
+    id_materia: materiaId,
+    tema_semana: `${titulo}${descripcion ? ` - ${descripcion}` : ''}`.slice(0, 100),
+    tipo_archivo: tipoArchivo,
+    archivo_url: recursoUrl,
+  });
+
+  return res.status(201).json({
+    ...material.toJSON(),
+    grupo_id: grupoId,
+    titulo,
+    descripcion: descripcion || null,
+  });
+}
+
+async function listarSesionesEnVivo(req, res) {
+  const materiaId = Number(req.params.materiaId);
+  if (!Number.isInteger(materiaId)) {
+    return res.status(400).json({ message: 'materiaId invalido.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  const gruposMateria = contexto.asignaciones
+    .filter((item) => Number(item.id_materia) === materiaId)
+    .map((item) => normalizeGrupo(item.grupo));
+  if (gruposMateria.length === 0) {
+    return res.status(403).json({ message: 'No tienes asignacion para esta materia.' });
+  }
+
+  const items = await SalaVideoDocente.findAll({
+    where: {
+      id_docente: req.user.id_usuario,
+      id_materia: materiaId,
+      [Op.or]: [{ grupo_id: { [Op.in]: gruposMateria } }, { grupo_id: null }],
+    },
+    order: [['fecha_programada', 'ASC']],
+  });
+
+  return res.json({ items });
+}
+
+async function programarSesionEnVivo(req, res) {
+  const materiaId = Number(req.params.materiaId);
+  const titulo = sanitizeText(req.body.titulo);
+  const fechaHora = normalizaFecha(req.body.fecha_hora || req.body.fecha_programada, null);
+  const enlace = sanitizeText(req.body.enlace_reunion || req.body.enlace);
+  const plataforma = sanitizeText(req.body.plataforma) || 'Google Meet';
+  const grupoId = normalizeGrupo(req.body.grupo_id);
+
+  if (!Number.isInteger(materiaId) || !titulo || !fechaHora || !grupoId) {
+    return res.status(400).json({ message: 'materiaId, titulo, fecha_hora y grupo_id son obligatorios.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
+    return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+  }
+
+  const item = await SalaVideoDocente.create({
+    id_docente: req.user.id_usuario,
+    id_materia: materiaId,
+    grupo_id: grupoId,
+    titulo,
+    plataforma,
+    fecha_programada: fechaHora,
+    enlace: enlace || crearEnlaceSala(plataforma, titulo),
+    fecha_creacion: new Date(),
+  });
+
+  return res.status(201).json(item);
+}
+
+async function alumnosPorGrupoMateria(req, res) {
+  const materiaId = Number(req.params.materiaId);
+  const grupoId = normalizeGrupo(req.params.grupoId);
+  if (!Number.isInteger(materiaId) || !grupoId) {
+    return res.status(400).json({ message: 'materiaId/grupoId invalidos.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
+    return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+  }
+
+  const items = await AlumnoGrupo.findAll({
+    where: { id_materia: materiaId, grupo: grupoId },
+    include: [{
+      model: AlumnoPerfil,
+      as: 'alumno',
+      include: [{ model: Usuario, as: 'usuario', attributes: ['id_usuario', 'folio_matricula', 'nombre_completo', 'correo'] }],
+    }],
+    order: [['id_alumno_grupo', 'DESC']],
+  });
+
+  return res.json({ items });
+}
+
+async function registrarAsistenciaGrupo(req, res) {
+  const materiaId = Number(req.body.materia_id || req.body.id_materia);
+  const alumnoId = Number(req.body.alumno_id || req.body.id_alumno);
+  const fechaClase = normalizaFecha(req.body.fecha || req.body.fecha_clase, null);
+  const estatusRaw = sanitizeText(req.body.estatus || req.body.estatus_asistencia).toLowerCase();
+  const estatus = estatusRaw === 'falta' ? 'ausente' : estatusRaw;
+
+  if (!Number.isInteger(materiaId) || !Number.isInteger(alumnoId) || !fechaClase || !estatus) {
+    return res.status(400).json({ message: 'alumno_id, materia_id, fecha y estatus son obligatorios.' });
+  }
+
+  const estatusValidos = new Set(['presente', 'ausente', 'retardo', 'justificado']);
+  if (!estatusValidos.has(estatus)) {
+    return res.status(400).json({ message: 'estatus invalido. Usa presente, falta, retardo o justificado.' });
+  }
+
+  const inscripcion = await AlumnoGrupo.findOne({ where: { id_alumno: alumnoId, id_materia: materiaId } });
+  if (!inscripcion) {
+    return res.status(400).json({ message: 'El alumno no pertenece a esa materia/grupo.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, inscripcion.grupo)) {
+    return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+  }
+
+  const item = await AsistenciaDocente.create({
+    id_docente: req.user.id_usuario,
+    id_materia: materiaId,
+    id_alumno: alumnoId,
+    fecha_clase: fechaClase,
+    estatus_asistencia: estatus,
+    aprovechamiento: 'medio',
+    observaciones: sanitizeText(req.body.observaciones) || null,
+    fecha_creacion: new Date(),
+  });
+
+  return res.status(201).json(item);
+}
+
+async function capturarCalificacionesParcial(req, res) {
+  const materiaId = Number(req.body.materia_id);
+  const grupoId = normalizeGrupo(req.body.grupo_id);
+  const parcialNumero = Number(req.body.parcial_numero || 1);
+  const calificaciones = Array.isArray(req.body.calificaciones)
+    ? req.body.calificaciones
+    : [{ alumno_id: req.body.alumno_id, calificacion: req.body.calificacion, retroalimentacion: req.body.retroalimentacion }];
+
+  if (!Number.isInteger(materiaId) || !grupoId || !Number.isInteger(parcialNumero) || parcialNumero < 1) {
+    return res.status(400).json({ message: 'materia_id, grupo_id y parcial_numero son obligatorios.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
+    return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+  }
+
+  const upserts = [];
+  for (const row of calificaciones) {
+    const alumnoId = Number(row?.alumno_id);
+    const calificacion = Number(row?.calificacion);
+    if (!Number.isInteger(alumnoId) || Number.isNaN(calificacion) || calificacion < 0 || calificacion > 10) {
+      return res.status(400).json({ message: 'Cada calificacion debe incluir alumno_id y calificacion en rango 0..10.' });
+    }
+
+    const inscripcion = await AlumnoGrupo.findOne({ where: { id_alumno: alumnoId, id_materia: materiaId, grupo: grupoId } });
+    if (!inscripcion) {
+      return res.status(400).json({ message: `Alumno ${alumnoId} no pertenece al grupo ${grupoId} de la materia.` });
+    }
+
+    // eslint-disable-next-line no-await-in-loop
+    const [item] = await CalificacionParcialDocente.findOrCreate({
+      where: {
+        id_alumno: alumnoId,
+        id_materia: materiaId,
+        grupo_id: grupoId,
+        parcial_numero: parcialNumero,
+      },
+      defaults: {
+        id_docente: req.user.id_usuario,
+        calificacion,
+        retroalimentacion: sanitizeText(row?.retroalimentacion) || null,
+        fecha_captura: new Date(),
+      },
+    });
+
+    if (!item.isNewRecord) {
+      item.id_docente = req.user.id_usuario;
+      item.calificacion = calificacion;
+      item.retroalimentacion = sanitizeText(row?.retroalimentacion) || null;
+      item.fecha_captura = new Date();
+      // eslint-disable-next-line no-await-in-loop
+      await item.save();
+    }
+
+    upserts.push(item);
+  }
+
+  return res.json({
+    parcial_numero: parcialNumero,
+    materia_id: materiaId,
+    grupo_id: grupoId,
+    total_registros: upserts.length,
+  });
+}
+
+async function enviarActaCoordinacion(req, res) {
+  const materiaId = Number(req.body.materia_id);
+  const grupoId = normalizeGrupo(req.body.grupo_id);
+  if (!Number.isInteger(materiaId) || !grupoId) {
+    return res.status(400).json({ message: 'materia_id y grupo_id son obligatorios.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
+    return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+  }
+
+  const materia = await Materia.findByPk(materiaId, { attributes: ['id_materia', 'carrera', 'nombre_materia'] });
+  if (!materia) {
+    return res.status(404).json({ message: 'Materia no encontrada.' });
+  }
+
+  const periodo = await PeriodoAcademico.findOne({ where: { estatus: 'activo' }, order: [['id_periodo', 'DESC']] });
+  if (!periodo) {
+    return res.status(400).json({ message: 'No hay periodo academico activo para generar acta.' });
+  }
+
+  const alumnosGrupo = await AlumnoGrupo.findAll({ where: { id_materia: materiaId, grupo: grupoId }, attributes: ['id_alumno'], raw: true });
+  const alumnosIds = alumnosGrupo.map((item) => Number(item.id_alumno)).filter(Number.isInteger);
+
+  const parciales = alumnosIds.length > 0
+    ? await CalificacionParcialDocente.findAll({ where: { id_materia: materiaId, grupo_id: grupoId, id_alumno: { [Op.in]: alumnosIds } }, raw: true })
+    : [];
+
+  const scoreByAlumno = new Map();
+  parciales.forEach((row) => {
+    const idAlumno = Number(row.id_alumno);
+    const current = scoreByAlumno.get(idAlumno) || { sum: 0, total: 0 };
+    current.sum += Number(row.calificacion || 0);
+    current.total += 1;
+    scoreByAlumno.set(idAlumno, current);
+  });
+
+  const totalAlumnos = alumnosIds.length;
+  const totalReprobados = alumnosIds.reduce((acc, idAlumno) => {
+    const score = scoreByAlumno.get(idAlumno);
+    if (!score || score.total === 0) return acc;
+    const promedio = score.sum / score.total;
+    return promedio < 6 ? acc + 1 : acc;
+  }, 0);
+
+  const observaciones = {
+    origen: 'docente',
+    materia_id: materiaId,
+    materia: materia.nombre_materia,
+    grupo_id: grupoId,
+    parcial_numero: Number(req.body.parcial_numero || 1),
+    enviado_por_docente: req.user.id_usuario,
+    fecha_envio: new Date().toISOString(),
+  };
+
+  const [acta] = await ActaCalificacion.findOrCreate({
+    where: {
+      id_periodo: periodo.id_periodo,
+      carrera: materia.carrera || 'Sin carrera',
+      estatus: 'borrador',
+    },
+    defaults: {
+      id_periodo: periodo.id_periodo,
+      carrera: materia.carrera || 'Sin carrera',
+      estatus: 'borrador',
+      total_alumnos: totalAlumnos,
+      total_reprobados: totalReprobados,
+      observaciones: JSON.stringify(observaciones),
+      fecha_creacion: new Date(),
+    },
+  });
+
+  if (!acta.isNewRecord) {
+    acta.total_alumnos = totalAlumnos;
+    acta.total_reprobados = totalReprobados;
+    acta.observaciones = JSON.stringify(observaciones);
+    await acta.save();
+  }
+
+  return res.status(201).json({
+    id_acta: acta.id_acta,
+    id_periodo: acta.id_periodo,
+    carrera: acta.carrera,
+    estatus: acta.estatus,
+    total_alumnos: acta.total_alumnos,
+    total_reprobados: acta.total_reprobados,
+  });
+}
+
+async function justificantesRecibidos(req, res) {
+  return justificantesPreaprobados(req, res);
+}
+
+async function listarAvisosGrupales(req, res) {
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  const materiasIds = contexto.materiasIds;
+  if (materiasIds.length === 0) return res.json({ items: [] });
+
+  const items = await AnuncioDocente.findAll({
+    where: {
+      id_docente: req.user.id_usuario,
+      [Op.or]: [
+        { id_materia: null },
+        { id_materia: { [Op.in]: materiasIds } },
+      ],
+    },
+    include: [{ model: Materia, as: 'materia' }],
+    order: [['fecha_publicacion', 'DESC']],
+    limit: 50,
+  });
+
+  return res.json({ items });
+}
+
+async function publicarAvisoGrupal(req, res) {
+  const titulo = sanitizeText(req.body.titulo);
+  const descripcion = sanitizeText(req.body.descripcion);
+  const materiaId = req.body.materia_id == null ? null : Number(req.body.materia_id);
+  const grupoId = normalizeGrupo(req.body.grupo_id);
+
+  if (!titulo || !descripcion) {
+    return res.status(400).json({ message: 'titulo y descripcion son obligatorios.' });
+  }
+
+  if (materiaId !== null && !Number.isInteger(materiaId)) {
+    return res.status(400).json({ message: 'materia_id invalido.' });
+  }
+
+  if (materiaId !== null) {
+    const contexto = await obtenerContextoDocente(req.user.id_usuario);
+    if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
+      return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+    }
+  }
+
+  const item = await AnuncioDocente.create({
+    id_docente: req.user.id_usuario,
+    id_materia: materiaId,
+    titulo,
+    descripcion: grupoId ? `[${grupoId}] ${descripcion}` : descripcion,
+    fecha_publicacion: new Date(),
+  });
+
+  return res.status(201).json(item);
+}
+
 module.exports = {
+  misMaterias,
+  materiasTareas,
+  crearTareaMateria,
+  tareaEntregas,
+  calificarEntregaMateria,
+  publicarMaterialMateria,
+  listarSesionesEnVivo,
+  programarSesionEnVivo,
+  alumnosPorGrupoMateria,
+  registrarAsistenciaGrupo,
+  capturarCalificacionesParcial,
+  enviarActaCoordinacion,
+  justificantesRecibidos,
+  listarAvisosGrupales,
+  publicarAvisoGrupal,
   dashboard,
   grupos,
   tareas,

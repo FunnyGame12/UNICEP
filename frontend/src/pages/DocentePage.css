@@ -1,0 +1,196 @@
+.docente-page {
+  display: grid;
+  gap: 1rem;
+  background: #090d16;
+  color: #f9fafb;
+}
+
+.docente-header {
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, #111827, #0f172a);
+  padding: 1rem 1.1rem;
+}
+
+.docente-header h2,
+.docente-header p {
+  margin: 0;
+}
+
+.docente-header p {
+  color: #c7d2fe;
+  margin-top: 0.45rem;
+}
+
+.docente-eyebrow {
+  margin: 0 0 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  color: #93c5fd;
+}
+
+.docente-card {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #111827;
+  padding: 1rem;
+}
+
+.docente-card h3 {
+  margin-top: 0;
+  margin-bottom: 0.7rem;
+}
+
+.docente-context-card {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.docente-context-card label {
+  color: #d1d5db;
+  font-weight: 600;
+}
+
+.docente-context-card select,
+.docente-form input,
+.docente-form select,
+.docente-form textarea,
+.docente-inline-grid input,
+.docente-inline-grid select {
+  background: #1f2937;
+  color: #f9fafb;
+  border: 1px solid #374151;
+  border-radius: 12px;
+  padding: 0.68rem 0.8rem;
+  font: inherit;
+}
+
+.docente-tabs {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.docente-tabs button {
+  border: 1px solid #374151;
+  background: transparent;
+  color: #9ca3af;
+  border-radius: 999px;
+  padding: 0.6rem 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.docente-tabs button.is-active {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.docente-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.docente-form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.docente-form label {
+  color: #d1d5db;
+  font-size: 0.94rem;
+}
+
+.docente-form button {
+  margin-top: 0.3rem;
+}
+
+.docente-list {
+  display: grid;
+  gap: 0.55rem;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.docente-list-item {
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #f9fafb;
+  text-align: left;
+  display: grid;
+  gap: 0.26rem;
+  padding: 0.7rem;
+}
+
+.docente-list-item span,
+.docente-list-item p {
+  margin: 0;
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+.docente-list-item.is-selected {
+  border-color: rgba(37, 99, 235, 0.65);
+  background: rgba(37, 99, 235, 0.2);
+}
+
+.docente-delivery-item a,
+.docente-session-actions a {
+  color: #93c5fd;
+  text-decoration: none;
+}
+
+.docente-inline-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.docente-session-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.docente-actions-row {
+  margin-top: 0.9rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.docente-empty {
+  margin: 0;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  color: #9ca3af;
+  min-height: 110px;
+  display: grid;
+  place-items: center;
+  padding: 0.9rem;
+  text-align: center;
+}
+
+.docente-loading {
+  margin: 0;
+  color: #9ca3af;
+}
+
+@media (max-width: 980px) {
+  .docente-grid-2,
+  .docente-inline-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .docente-actions-row {
+    justify-content: stretch;
+  }
+
+  .docente-actions-row .btn-primary {
+    width: 100%;
+  }
+}

@@ -1,12 +1,33 @@
 const express = require('express');
 const auth = require('../middlewares/auth');
+const { authorizeRoles } = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/permissions');
 const docenteController = require('../controllers/docenteController');
 const { PERMISSIONS } = require('../constants/rbac');
 
 const router = express.Router();
 
-router.use(auth(['maestro']));
+router.use(auth());
+router.use(authorizeRoles('docente', 'maestro', 'director'));
+
+router.get('/mis-materias', docenteController.misMaterias);
+router.get('/materias/:materiaId/tareas', docenteController.materiasTareas);
+router.post('/materias/:materiaId/tareas', docenteController.crearTareaMateria);
+router.get('/tareas/:tareaId/entregas', docenteController.tareaEntregas);
+router.put('/entregas/:entregaId/calificar', docenteController.calificarEntregaMateria);
+router.post('/materias/:materiaId/materiales', docenteController.publicarMaterialMateria);
+
+router.get('/materias/:materiaId/sesiones-en-vivo', docenteController.listarSesionesEnVivo);
+router.post('/materias/:materiaId/sesiones-en-vivo', docenteController.programarSesionEnVivo);
+
+router.get('/grupos/:grupoId/materias/:materiaId/alumnos', docenteController.alumnosPorGrupoMateria);
+router.post('/asistencia', docenteController.registrarAsistenciaGrupo);
+router.put('/calificaciones/parcial', docenteController.capturarCalificacionesParcial);
+router.post('/actas/enviar-a-coordinacion', docenteController.enviarActaCoordinacion);
+
+router.get('/justificantes-recibidos', docenteController.justificantesRecibidos);
+router.get('/avisos-grupales', docenteController.listarAvisosGrupales);
+router.post('/avisos-grupales', docenteController.publicarAvisoGrupal);
 
 router.get('/dashboard', requirePermission(PERMISSIONS.MAESTRO_DASHBOARD_READ), docenteController.dashboard);
 router.get('/grupos', requirePermission(PERMISSIONS.MAESTRO_GRUPOS_READ), docenteController.grupos);
