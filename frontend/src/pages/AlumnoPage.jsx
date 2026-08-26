@@ -34,24 +34,11 @@ const pagoSchema = z.object({
     (value) => (value === '' || value == null ? NaN : Number(value)),
     z.number().positive('El monto debe ser mayor a 0.'),
   ),
-  adjunto_url: z
-    .string()
-    .trim()
-    .url('Ingresa una URL valida para el comprobante.'),
 });
 
 const tramiteSchema = z.object({
   tipo: z.enum(['constancia', 'credencial', 'uniforme']),
   descripcion: z.string().trim().optional(),
-  adjunto_url: z.string().trim().optional(),
-});
-
-const entregaSchema = z.object({
-  evidencia_url: z.string().trim().min(1, 'Debes enviar una URL de evidencia.').url('Ingresa una URL valida.'),
-  tamano_mb: z.preprocess(
-    (value) => (value === '' || value == null ? 0 : Number(value)),
-    z.number().min(0, 'Tamano invalido').max(10, 'El archivo excede 10MB.'),
-  ),
 });
 
 function formatDate(value, withTime = false) {
@@ -74,6 +61,23 @@ function getStatusBadgeClass(estatus) {
   if (estatus === 'en_proceso' || estatus === 'en_revision') return 'badge-warn';
   if (estatus === 'rechazado' || estatus === 'cancelado') return 'badge-danger';
   return 'badge-neutral';
+}
+
+function resolveBackendFileUrl(filePath) {
+  const raw = String(filePath || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  const baseUrl = String(api.defaults.baseURL || '').trim();
+  const absoluteBase = /^https?:\/\//i.test(baseUrl)
+    ? baseUrl
+    : `${window.location.origin}${baseUrl.startsWith('/') ? baseUrl : `/${baseUrl}`}`;
+
+  try {
+    return new URL(raw, absoluteBase).toString();
+  } catch (_error) {
+    return raw;
+  }
 }
 
 export default function AlumnoPage() {
@@ -100,13 +104,14 @@ export default function AlumnoPage() {
   const [openTramiteAccordion, setOpenTramiteAccordion] = useState(false);
 
   const [entregaDrafts, setEntregaDrafts] = useState({});
+  const [pagoArchivo, setPagoArchivo] = useState(null);
+  const [tramiteArchivo, setTramiteArchivo] = useState(null);
 
   const pagoForm = useForm({
     resolver: zodResolver(pagoSchema),
     defaultValues: {
       id_concepto_pago: '',
       monto_pagado: '',
-      adjunto_url: '',
     },
   });
 
@@ -115,9 +120,27 @@ export default function AlumnoPage() {
     defaultValues: {
       tipo: 'constancia',
       descripcion: '',
-      adjunto_url: '',
     },
   });
+
+  function handleEntregaFileChange(tareaId, event) {
+    const archivo = event.target.files?.[0] || null;
+    setEntregaDrafts((prev) => ({
+      ...prev,
+      [tareaId]: {
+        ...prev[tareaId],
+        archivo,
+      },
+    }));
+  }
+
+  function handlePagoFileChange(event) {
+    setPagoArchivo(event.target.files?.[0] || null);
+  }
+
+  function handleTramiteFileChange(event) {
+    setTramiteArchivo(event.target.files?.[0] || null);
+  }
 
   const primeraClase = useMemo(() => {
     if (horario.length === 0) return null;
@@ -212,18 +235,26 @@ export default function AlumnoPage() {
   }, []);
 
   async function submitComprobante(values) {
+    if (!pagoArchivo) {
+      setError('Debes seleccionar un archivo de comprobante (PDF o imagen).');
+      return;
+    }
+
     setSending(true);
     setError('');
     setMessage('');
 
     try {
-      await api.post('/alumno/pagos/comprobantes', {
-        id_concepto_pago: Number(values.id_concepto_pago),
-        monto_pagado: Number(values.monto_pagado),
-        adjunto_url: values.adjunto_url,
-      });
+      const formData = new FormData();
+      formData.append('archivo', pagoArchivo);
+      formData.append('id_concepto_pago', String(Number(values.id_concepto_pago)));
+      formData.append('monto_pagado', String(Number(values.monto_pagado)));
+      formData.append('tipo_tramite', 'comprobante_pago');
 
-      pagoForm.reset({ id_concepto_pago: '', monto_pagado: '', adjunto_url: '' });
+      await api.post('/alumno/pagos/comprobantes', formData);
+
+      pagoForm.reset({ id_concepto_pago: '', monto_pagado: '' });
+      setPagoArchivo(null);
       setMessage('Comprobante enviado correctamente a ventanilla.');
       await loadBase();
     } catch (requestError) {
@@ -234,18 +265,26 @@ export default function AlumnoPage() {
   }
 
   async function submitTramite(values) {
+    if (!tramiteArchivo) {
+      setError('Debes adjuntar un archivo para la solicitud (PDF o imagen).');
+      return;
+    }
+
     setSending(true);
     setError('');
     setMessage('');
 
     try {
-      await api.post('/alumno/tramites/solicitar', {
-        tipo: values.tipo,
-        descripcion: values.descripcion?.trim() || undefined,
-        adjunto_url: values.adjunto_url?.trim() || undefined,
-      });
+      const formData = new FormData();
+      formData.append('archivo', tramiteArchivo);
+      formData.append('tipo', values.tipo);
+      formData.append('tipo_tramite', values.tipo);
+      formData.append('descripcion', values.descripcion?.trim() || `Solicitud de ${values.tipo}.`);
 
-      tramiteForm.reset({ tipo: 'constancia', descripcion: '', adjunto_url: '' });
+      await api.post('/alumno/tramites/solicitar', formData);
+
+      tramiteForm.reset({ tipo: 'constancia', descripcion: '' });
+      setTramiteArchivo(null);
       setMessage('Solicitud enviada a ventanilla.');
       await loadBase();
     } catch (requestError) {
@@ -256,10 +295,15 @@ export default function AlumnoPage() {
   }
 
   async function entregarTarea(tareaId) {
-    const draft = entregaDrafts[tareaId] || { evidencia_url: '', tamano_mb: '' };
-    const parsed = entregaSchema.safeParse(draft);
-    if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message || 'Datos de entrega invalidos.');
+    const archivo = entregaDrafts[tareaId]?.archivo || null;
+    if (!archivo) {
+      setError('Selecciona un archivo para entregar la tarea.');
+      return;
+    }
+
+    const sizeMb = archivo.size / (1024 * 1024);
+    if (sizeMb > 10) {
+      setError('El archivo excede el limite de 10MB.');
       return;
     }
 
@@ -268,11 +312,12 @@ export default function AlumnoPage() {
     setMessage('');
 
     try {
-      await api.post(`/alumno/tareas/${Number(tareaId)}/entregar`, {
-        archivo_entrega_url: parsed.data.evidencia_url,
-      });
+      const formData = new FormData();
+      formData.append('archivo', archivo);
+
+      await api.post(`/alumno/tareas/${Number(tareaId)}/entregar`, formData);
       setMessage('Entrega registrada correctamente.');
-      setEntregaDrafts((prev) => ({ ...prev, [tareaId]: { evidencia_url: '', tamano_mb: '' } }));
+      setEntregaDrafts((prev) => ({ ...prev, [tareaId]: { archivo: null } }));
       await loadBase();
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo entregar la tarea.');
@@ -371,31 +416,10 @@ export default function AlumnoPage() {
                     <p>{formatDate(item.fecha_limite, true)}</p>
                     <div className="alumno-inline-form">
                       <input
-                        type="url"
-                        placeholder="https://evidencia..."
-                        value={entregaDrafts[item.id_tarea]?.evidencia_url || ''}
-                        onChange={(event) => setEntregaDrafts((prev) => ({
-                          ...prev,
-                          [item.id_tarea]: {
-                            ...prev[item.id_tarea],
-                            evidencia_url: event.target.value,
-                          },
-                        }))}
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        max="10"
-                        step="0.1"
-                        placeholder="Tamano MB"
-                        value={entregaDrafts[item.id_tarea]?.tamano_mb || ''}
-                        onChange={(event) => setEntregaDrafts((prev) => ({
-                          ...prev,
-                          [item.id_tarea]: {
-                            ...prev[item.id_tarea],
-                            tamano_mb: event.target.value,
-                          },
-                        }))}
+                        type="file"
+                        accept=".pdf, .jpg, .jpeg, .png"
+                        className="form-control"
+                        onChange={(event) => handleEntregaFileChange(item.id_tarea, event)}
                       />
                       <button type="button" className="btn-primary" onClick={() => entregarTarea(item.id_tarea)} disabled={sending}>
                         Entregar tarea
@@ -417,7 +441,7 @@ export default function AlumnoPage() {
                   <article key={item.id_material} className="alumno-list-item">
                     <strong>{item.tema_semana}</strong>
                     <p>{item.materia?.nombre_materia || 'Materia'} · {item.tipo_archivo}</p>
-                    <a href={item.archivo_url} target="_blank" rel="noreferrer">Abrir recurso</a>
+                    <a href={resolveBackendFileUrl(item.archivo_url)} target="_blank" rel="noreferrer">Abrir recurso</a>
                   </article>
                 ))}
               </div>
@@ -507,8 +531,14 @@ export default function AlumnoPage() {
                 <label htmlFor="pago-monto">Monto pagado</label>
                 <input id="pago-monto" type="number" min="0" step="0.01" {...pagoForm.register('monto_pagado')} />
 
-                <label htmlFor="pago-adjunto">Comprobante (URL imagen/PDF)</label>
-                <input id="pago-adjunto" type="url" placeholder="https://..." {...pagoForm.register('adjunto_url')} />
+                <label htmlFor="pago-adjunto">Comprobante (PDF o imagen)</label>
+                <input
+                  id="pago-adjunto"
+                  type="file"
+                  accept=".pdf, .jpg, .jpeg, .png"
+                  className="form-control"
+                  onChange={handlePagoFileChange}
+                />
 
                 <button type="submit" className="btn-primary" disabled={sending}>Subir comprobante</button>
               </form>
@@ -535,8 +565,14 @@ export default function AlumnoPage() {
                 <label htmlFor="tramite-descripcion">Descripcion (opcional)</label>
                 <textarea id="tramite-descripcion" rows="3" {...tramiteForm.register('descripcion')} />
 
-                <label htmlFor="tramite-adjunto">Adjunto (opcional)</label>
-                <input id="tramite-adjunto" type="url" placeholder="https://..." {...tramiteForm.register('adjunto_url')} />
+                <label htmlFor="tramite-adjunto">Adjunto (PDF o imagen)</label>
+                <input
+                  id="tramite-adjunto"
+                  type="file"
+                  accept=".pdf, .jpg, .jpeg, .png"
+                  className="form-control"
+                  onChange={handleTramiteFileChange}
+                />
 
                 <button type="submit" className="btn-secondary" disabled={sending}>Enviar solicitud</button>
               </form>
@@ -558,6 +594,9 @@ export default function AlumnoPage() {
                       </span>
                     </div>
                     <p>{item.descripcion}</p>
+                    {item.adjunto_url ? (
+                      <a href={resolveBackendFileUrl(item.adjunto_url)} target="_blank" rel="noreferrer">Ver adjunto</a>
+                    ) : null}
                     <small>{formatDate(item.fecha_resolucion || item.fecha_solicitud, true)}</small>
                   </article>
                 ))}
