@@ -643,6 +643,40 @@ async function alumnosProgreso(_req, res) {
   return res.json({ items });
 }
 
+async function meritosRecientes(_req, res) {
+  const rows = await MeritoAcademico.findAll({
+    include: [{
+      model: AlumnoPerfil,
+      as: 'alumno',
+      attributes: ['id_alumno', 'carrera'],
+      include: [{
+        model: Usuario,
+        as: 'usuario',
+        attributes: ['id_usuario', 'folio_matricula', 'nombre_completo'],
+      }],
+    }],
+    order: [['fecha', 'DESC'], ['id_merito', 'DESC']],
+    limit: 20,
+  });
+
+  const items = rows.map((item) => ({
+    id_merito: item.id_merito,
+    id_alumno: item.id_alumno,
+    tipo_merito: item.tipo_merito,
+    nombre: item.nombre,
+    fecha: item.fecha,
+    archivo_url: item.archivo_url,
+    alumno: {
+      id_alumno: item.alumno?.id_alumno || item.id_alumno,
+      nombre_completo: item.alumno?.usuario?.nombre_completo || `Alumno ${item.id_alumno}`,
+      folio_matricula: item.alumno?.usuario?.folio_matricula || null,
+      carrera: item.alumno?.carrera || null,
+    },
+  }));
+
+  return res.json({ items });
+}
+
 const TIPOS_MERITO_VALIDOS = new Set([
   'diploma',
   'constancia',
@@ -1058,5 +1092,6 @@ module.exports = {
   actualizarMateriaPrograma,
   eliminarMateriaPrograma,
   alumnosProgreso,
+  meritosRecientes,
   asignarMerito,
 };

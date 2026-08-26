@@ -167,6 +167,7 @@ export default function CoordinacionAcademicaPage() {
   const [selectedProgramaCalifId, setSelectedProgramaCalifId] = useState('');
   const [selectedPeriodoCalif, setSelectedPeriodoCalif] = useState('');
   const [alumnosProgreso, setAlumnosProgreso] = useState([]);
+  const [meritosRecientes, setMeritosRecientes] = useState([]);
   const [selectedPrograma, setSelectedPrograma] = useState(null);
 
   const [alumnoGrupoItems, setAlumnoGrupoItems] = useState([]);
@@ -298,12 +299,13 @@ export default function CoordinacionAcademicaPage() {
     setError('');
 
     try {
-      const [docentesResp, aulasResp, actasResp, programasResp, progresoResp, programasAcademicosResp] = await Promise.all([
+      const [docentesResp, aulasResp, actasResp, programasResp, progresoResp, meritosResp, programasAcademicosResp] = await Promise.all([
         api.get('/coordinacion/docentes-asignaciones'),
         api.get('/coordinacion/aulas-disponibilidad'),
         api.get('/coordinacion/actas-pendientes'),
         api.get('/coordinacion/programas-externos'),
         api.get('/coordinacion/alumnos-progreso'),
+        api.get('/coordinacion/meritos-recientes'),
         api.get('/coordinacion/programas'),
       ]);
 
@@ -314,6 +316,7 @@ export default function CoordinacionAcademicaPage() {
       const actasData = actasResp?.data?.items || [];
       const programasData = programasResp?.data?.items || [];
       const progresoData = progresoResp?.data?.items || [];
+      const meritosData = meritosResp?.data?.items || [];
       const programasAcademicosData = programasAcademicosResp?.data?.items || [];
 
       setDocentes(docentesData);
@@ -324,6 +327,7 @@ export default function CoordinacionAcademicaPage() {
       setProgramas(programasData);
       setProgramasAcademicos(programasAcademicosData);
       setAlumnosProgreso(progresoData);
+      setMeritosRecientes(meritosData);
 
       const firstProgramaAcademico = programasAcademicosData[0] || null;
       if (firstProgramaAcademico) {
@@ -906,33 +910,37 @@ export default function CoordinacionAcademicaPage() {
         <div className="coord-grid-2">
           <article className="coord-card coord-span-2">
             <h3>Filtro curricular para carga horaria</h3>
-            <div className="form-grid coord-form-4">
-              <label htmlFor="coord-carga-programa">Programa / Carrera</label>
-              <select
-                id="coord-carga-programa"
-                value={selectedProgramaCargaId}
-                onChange={(event) => setSelectedProgramaCargaId(event.target.value)}
-              >
-                <option value="">Selecciona programa</option>
-                {programasAcademicos.map((item) => (
-                  <option key={`pc-${item.id}`} value={String(item.id)}>
-                    {item.nombre}
-                  </option>
-                ))}
-              </select>
+            <div className="coord-curricular-grid">
+              <div className="coord-form-group">
+                <label htmlFor="coord-carga-programa">Programa / Carrera</label>
+                <select
+                  id="coord-carga-programa"
+                  value={selectedProgramaCargaId}
+                  onChange={(event) => setSelectedProgramaCargaId(event.target.value)}
+                >
+                  <option value="">Selecciona programa</option>
+                  {programasAcademicos.map((item) => (
+                    <option key={`pc-${item.id}`} value={String(item.id)}>
+                      {item.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-              <label htmlFor="coord-carga-periodo">Periodo / Semestre</label>
-              <select
-                id="coord-carga-periodo"
-                value={selectedPeriodoCarga}
-                onChange={(event) => setSelectedPeriodoCarga(event.target.value)}
-                disabled={!selectedProgramaCargaId}
-              >
-                <option value="">Selecciona periodo</option>
-                {periodoOptionsCarga.map((item) => (
-                  <option key={`pc-per-${item.value}`} value={item.value}>{item.label}</option>
-                ))}
-              </select>
+              <div className="coord-form-group">
+                <label htmlFor="coord-carga-periodo">Periodo / Semestre</label>
+                <select
+                  id="coord-carga-periodo"
+                  value={selectedPeriodoCarga}
+                  onChange={(event) => setSelectedPeriodoCarga(event.target.value)}
+                  disabled={!selectedProgramaCargaId}
+                >
+                  <option value="">Selecciona periodo</option>
+                  {periodoOptionsCarga.map((item) => (
+                    <option key={`pc-per-${item.value}`} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </article>
 
@@ -1228,33 +1236,37 @@ export default function CoordinacionAcademicaPage() {
         <div className="coord-grid-2">
           <article className="coord-card coord-span-2">
             <h3>Filtro curricular para calificaciones</h3>
-            <div className="form-grid coord-form-4">
-              <label htmlFor="coord-calif-programa">Programa / Carrera</label>
-              <select
-                id="coord-calif-programa"
-                value={selectedProgramaCalifId}
-                onChange={(event) => setSelectedProgramaCalifId(event.target.value)}
-              >
-                <option value="">Selecciona programa</option>
-                {programasAcademicos.map((item) => (
-                  <option key={`pcal-${item.id}`} value={String(item.id)}>
-                    {item.nombre}
-                  </option>
-                ))}
-              </select>
+            <div className="coord-curricular-grid">
+              <div className="coord-form-group">
+                <label htmlFor="coord-calif-programa">Programa / Carrera</label>
+                <select
+                  id="coord-calif-programa"
+                  value={selectedProgramaCalifId}
+                  onChange={(event) => setSelectedProgramaCalifId(event.target.value)}
+                >
+                  <option value="">Selecciona programa</option>
+                  {programasAcademicos.map((item) => (
+                    <option key={`pcal-${item.id}`} value={String(item.id)}>
+                      {item.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-              <label htmlFor="coord-calif-periodo">Periodo / Semestre</label>
-              <select
-                id="coord-calif-periodo"
-                value={selectedPeriodoCalif}
-                onChange={(event) => setSelectedPeriodoCalif(event.target.value)}
-                disabled={!selectedProgramaCalifId}
-              >
-                <option value="">Selecciona periodo</option>
-                {periodoOptionsCalif.map((item) => (
-                  <option key={`pcal-per-${item.value}`} value={item.value}>{item.label}</option>
-                ))}
-              </select>
+              <div className="coord-form-group">
+                <label htmlFor="coord-calif-periodo">Periodo / Semestre</label>
+                <select
+                  id="coord-calif-periodo"
+                  value={selectedPeriodoCalif}
+                  onChange={(event) => setSelectedPeriodoCalif(event.target.value)}
+                  disabled={!selectedProgramaCalifId}
+                >
+                  <option value="">Selecciona periodo</option>
+                  {periodoOptionsCalif.map((item) => (
+                    <option key={`pcal-per-${item.value}`} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </article>
 
@@ -1460,27 +1472,37 @@ export default function CoordinacionAcademicaPage() {
               </select>
             </div>
 
-            <form className="form-grid coord-form-4" onSubmit={materiaPlanForm.handleSubmit(submitMateriaPlan)}>
+            <form className="coord-materia-grid" onSubmit={materiaPlanForm.handleSubmit(submitMateriaPlan)}>
               <input type="hidden" {...materiaPlanForm.register('programa_academico_id')} />
 
-              <label htmlFor="coord-mat-periodo">Periodo</label>
-              <select id="coord-mat-periodo" {...materiaPlanForm.register('periodo_numero')} disabled={!programaCurricular}>
-                {(programaPeriodos || []).map((periodo) => (
-                  <option key={`periodo-${periodo.numero}`} value={String(periodo.numero)}>{periodo.label}</option>
-                ))}
-              </select>
+              <div className="coord-form-group">
+                <label htmlFor="coord-mat-periodo">Periodo</label>
+                <select id="coord-mat-periodo" {...materiaPlanForm.register('periodo_numero')} disabled={!programaCurricular}>
+                  {(programaPeriodos || []).map((periodo) => (
+                    <option key={`periodo-${periodo.numero}`} value={String(periodo.numero)}>{periodo.label}</option>
+                  ))}
+                </select>
+              </div>
 
-              <label htmlFor="coord-mat-codigo">Codigo</label>
-              <input id="coord-mat-codigo" placeholder="ING-101" {...materiaPlanForm.register('codigo_materia')} />
+              <div className="coord-form-group">
+                <label htmlFor="coord-mat-codigo">Codigo de Materia</label>
+                <input id="coord-mat-codigo" placeholder="ING-101" {...materiaPlanForm.register('codigo_materia')} />
+              </div>
 
-              <label htmlFor="coord-mat-nombre">Nombre de materia</label>
-              <input id="coord-mat-nombre" placeholder="Calculo Diferencial" {...materiaPlanForm.register('nombre_materia')} />
+              <div className="coord-form-group coord-col-span-2">
+                <label htmlFor="coord-mat-nombre">Nombre de la Asignatura</label>
+                <input id="coord-mat-nombre" placeholder="Calculo Diferencial" {...materiaPlanForm.register('nombre_materia')} />
+              </div>
 
-              <label htmlFor="coord-mat-creditos">Creditos</label>
-              <input id="coord-mat-creditos" type="number" min="0" step="1" {...materiaPlanForm.register('creditos')} />
+              <div className="coord-form-group">
+                <label htmlFor="coord-mat-creditos">Creditos</label>
+                <input id="coord-mat-creditos" type="number" min="0" step="1" {...materiaPlanForm.register('creditos')} />
+              </div>
 
-              <label htmlFor="coord-mat-horas">Horas semanales</label>
-              <input id="coord-mat-horas" type="number" min="0" step="1" {...materiaPlanForm.register('horas_semanales')} />
+              <div className="coord-form-group">
+                <label htmlFor="coord-mat-horas">Horas semanales</label>
+                <input id="coord-mat-horas" type="number" min="0" step="1" {...materiaPlanForm.register('horas_semanales')} />
+              </div>
 
               <button type="submit" className="btn-primary" disabled={loading || sending || !selectedProgramaOfertaId}>
                 {editingMateriaPlanId ? 'Actualizar materia' : 'Agregar Materia'}
@@ -1507,15 +1529,14 @@ export default function CoordinacionAcademicaPage() {
               ) : null}
             </form>
 
-            <div className="coord-list">
+            <div className="coord-list coord-periodos-list">
               {(programaPeriodos || []).map((periodo) => (
                 <div key={`bloque-${periodo.numero}`} className="coord-list-item">
                   <strong>{periodo.label}</strong>
                   {periodo.materias.length === 0 ? <p>Sin materias asignadas.</p> : null}
                   {periodo.materias.map((materia) => (
-                    <div key={`materia-row-${materia.id_materia || materia.id}`}>
-                      <span>{`${materia.codigo_materia} · ${materia.nombre_materia}`}</span>
-                      <span>{`${materia.creditos ?? 0} cred. · ${materia.horas_semanales ?? 0} hrs/sem`}</span>
+                    <div key={`materia-row-${materia.id_materia || materia.id}`} className="coord-materia-row">
+                      <span>{`${materia.codigo_materia} · ${materia.nombre_materia} · ${materia.creditos ?? 0} cred. · ${materia.horas_semanales ?? 0} hrs/sem`}</span>
                       <div>
                         <button
                           type="button"
@@ -1556,79 +1577,87 @@ export default function CoordinacionAcademicaPage() {
         <div className="coord-grid-2">
           <article className="coord-card">
             <h3>Bandeja de programas externos</h3>
-            <div className="coord-list">
-              {programas.map((programa) => (
-                <button
-                  key={programa.id_programa}
-                  type="button"
-                  className={selectedPrograma?.id_programa === programa.id_programa ? 'coord-list-item is-selected' : 'coord-list-item'}
-                  onClick={() => {
-                    setSelectedPrograma(programa);
-                    programaForm.reset({
-                      expediente_id: String(programa.id_programa),
-                      tipo_programa: programa.tipo_programa,
-                      estatus: toUiProgramaStatus(programa.estatus),
-                      oficio_liberacion: programa.oficio_liberacion || '',
-                      horas_concluidas: programa.horas_concluidas ?? '',
-                      observaciones: programa.observaciones || '',
-                    });
-                  }}
-                >
-                  <strong>{programa.alumno?.usuario?.nombre_completo || `Alumno ${programa.id_alumno}`}</strong>
-                  <span>{programa.tipo_programa}</span>
-                  <span>{programa.estatus}</span>
-                </button>
-              ))}
-            </div>
+            {programas.length === 0 ? (
+              <div className="coord-empty-state">
+                Sin expedientes de Servicio Social o Practicas pendientes de revision.
+              </div>
+            ) : (
+              <div className="coord-list">
+                {programas.map((programa) => (
+                  <button
+                    key={programa.id_programa}
+                    type="button"
+                    className={selectedPrograma?.id_programa === programa.id_programa ? 'coord-list-item is-selected' : 'coord-list-item'}
+                    onClick={() => {
+                      setSelectedPrograma(programa);
+                      programaForm.reset({
+                        expediente_id: String(programa.id_programa),
+                        tipo_programa: programa.tipo_programa,
+                        estatus: toUiProgramaStatus(programa.estatus),
+                        oficio_liberacion: programa.oficio_liberacion || '',
+                        horas_concluidas: programa.horas_concluidas ?? '',
+                        observaciones: programa.observaciones || '',
+                      });
+                    }}
+                  >
+                    <strong>{programa.alumno?.usuario?.nombre_completo || `Alumno ${programa.id_alumno}`}</strong>
+                    <span>{programa.tipo_programa}</span>
+                    <span>{programa.estatus}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </article>
 
           <article className="coord-card">
             <h3>Actualizacion de estatus y liberacion</h3>
             <form className="form-grid" onSubmit={programaForm.handleSubmit(submitPrograma)}>
-              <label htmlFor="coord-prg-exp">Expediente</label>
-              <select id="coord-prg-exp" {...programaForm.register('expediente_id')}>
-                <option value="">Selecciona expediente</option>
-                {programas.map((programa) => (
-                  <option key={`p-${programa.id_programa}`} value={String(programa.id_programa)}>
-                    {`#${programa.id_programa} · ${programa.alumno?.usuario?.nombre_completo || `Alumno ${programa.id_alumno}`}`}
-                  </option>
-                ))}
-              </select>
+              <fieldset className="coord-fieldset" disabled={!selectedPrograma || loading || sending}>
+                <label htmlFor="coord-prg-exp">Expediente</label>
+                <select id="coord-prg-exp" {...programaForm.register('expediente_id')}>
+                  <option value="">Selecciona expediente</option>
+                  {programas.map((programa) => (
+                    <option key={`p-${programa.id_programa}`} value={String(programa.id_programa)}>
+                      {`#${programa.id_programa} · ${programa.alumno?.usuario?.nombre_completo || `Alumno ${programa.id_alumno}`}`}
+                    </option>
+                  ))}
+                </select>
 
-              <label htmlFor="coord-prg-tipo">Tipo programa</label>
-              <select id="coord-prg-tipo" {...programaForm.register('tipo_programa')}>
-                <option value="servicio_social">Servicio social</option>
-                <option value="practicas_profesionales">Practicas profesionales</option>
-              </select>
+                <label htmlFor="coord-prg-tipo">Tipo programa</label>
+                <select id="coord-prg-tipo" {...programaForm.register('tipo_programa')}>
+                  <option value="servicio_social">Servicio social</option>
+                  <option value="practicas_profesionales">Practicas profesionales</option>
+                </select>
 
-              <label htmlFor="coord-prg-estatus">Estatus</label>
-              <select id="coord-prg-estatus" {...programaForm.register('estatus')}>
-                {programaStatusOptions.map((status) => (
-                  <option key={status.value} value={status.value}>{status.label}</option>
-                ))}
-              </select>
+                <label htmlFor="coord-prg-estatus">Estatus</label>
+                <select id="coord-prg-estatus" {...programaForm.register('estatus')}>
+                  {programaStatusOptions.map((status) => (
+                    <option key={status.value} value={status.value}>{status.label}</option>
+                  ))}
+                </select>
 
-              <label htmlFor="coord-prg-oficio">Oficio/Documento de liberacion</label>
-              <input id="coord-prg-oficio" placeholder="OF-SS-2026-123" {...programaForm.register('oficio_liberacion')} />
-              {programaForm.formState.errors.oficio_liberacion ? <small>{programaForm.formState.errors.oficio_liberacion.message}</small> : null}
+                <label htmlFor="coord-prg-oficio">Oficio/Documento de liberacion</label>
+                <input id="coord-prg-oficio" placeholder="OF-SS-2026-123" {...programaForm.register('oficio_liberacion')} />
+                {programaForm.formState.errors.oficio_liberacion ? <small>{programaForm.formState.errors.oficio_liberacion.message}</small> : null}
 
-              <label htmlFor="coord-prg-horas">Horas concluidas</label>
-              <input id="coord-prg-horas" type="number" min="0" step="1" {...programaForm.register('horas_concluidas')} />
-              {programaForm.formState.errors.horas_concluidas ? <small>{programaForm.formState.errors.horas_concluidas.message}</small> : null}
+                <label htmlFor="coord-prg-horas">Horas concluidas</label>
+                <input id="coord-prg-horas" type="number" min="0" step="1" {...programaForm.register('horas_concluidas')} />
+                {programaForm.formState.errors.horas_concluidas ? <small>{programaForm.formState.errors.horas_concluidas.message}</small> : null}
 
-              <label htmlFor="coord-prg-obs">Observaciones</label>
-              <textarea id="coord-prg-obs" className="coord-textarea" rows="3" {...programaForm.register('observaciones')} />
+                <label htmlFor="coord-prg-obs">Observaciones</label>
+                <textarea id="coord-prg-obs" className="coord-textarea" rows="3" {...programaForm.register('observaciones')} />
 
-              <button type="submit" className="btn-secondary" disabled={loading || sending}>
-                {sending ? 'Actualizando...' : 'Actualizar expediente'}
-              </button>
+                <button type="submit" className="btn-secondary" disabled={loading || sending || !selectedPrograma}>
+                  {sending ? 'Actualizando...' : 'Actualizar expediente'}
+                </button>
+              </fieldset>
             </form>
           </article>
         </div>
       ) : null}
 
       {activeTab === 'progreso' ? (
-        <div className="coord-grid-2">
+        <div className="coord-grid-2 coord-progreso-grid">
           <article className="coord-card">
             <h3>Asignar merito academico</h3>
             <form className="form-grid" onSubmit={meritoForm.handleSubmit(submitMerito)}>
@@ -1662,32 +1691,51 @@ export default function CoordinacionAcademicaPage() {
             </form>
           </article>
 
-          <article className="coord-card coord-span-2">
-            <h3>Progreso curricular de alumnos</h3>
-            <div className="table-wrap coord-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Alumno</th>
-                    <th>Carrera</th>
-                    <th>Avance</th>
-                    <th>Promedio global</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {alumnosProgreso.map((item) => (
-                    <tr key={`prog-${item.id_alumno}`}>
-                      <td>
-                        <strong>{item.nombre_completo}</strong>
-                        <p>{item.folio_matricula || 'SIN-FOLIO'}</p>
-                      </td>
-                      <td>{item.carrera}</td>
-                      <td>{`${item.porcentaje_avance}%`}</td>
-                      <td>{item.promedio_global ?? 'Sin datos'}</td>
+          <article className="coord-card coord-progreso-right">
+            <div>
+              <h3>Progreso curricular de alumnos</h3>
+              <div className="table-wrap coord-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Alumno</th>
+                      <th>Carrera</th>
+                      <th>Avance</th>
+                      <th>Promedio global</th>
                     </tr>
+                  </thead>
+                  <tbody>
+                    {alumnosProgreso.map((item) => (
+                      <tr key={`prog-${item.id_alumno}`}>
+                        <td>
+                          <strong>{item.nombre_completo}</strong>
+                          <p>{item.folio_matricula || 'SIN-FOLIO'}</p>
+                        </td>
+                        <td>{item.carrera}</td>
+                        <td>{`${item.porcentaje_avance}%`}</td>
+                        <td>{item.promedio_global ?? 'Sin datos'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div>
+              <h3>Meritos recientes</h3>
+              {meritosRecientes.length === 0 ? (
+                <p className="coord-empty-state">Sin meritos registrados recientemente.</p>
+              ) : (
+                <div className="coord-list">
+                  {meritosRecientes.map((merito) => (
+                    <div key={`mr-${merito.id_merito}`} className="coord-list-item">
+                      <strong>{merito.nombre}</strong>
+                      <span>{`${merito.tipo_merito} · ${merito.fecha}`}</span>
+                      <span>{`${merito.alumno?.folio_matricula || 'SIN-FOLIO'} · ${merito.alumno?.nombre_completo || `Alumno ${merito.id_alumno}`}`}</span>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              )}
             </div>
           </article>
         </div>

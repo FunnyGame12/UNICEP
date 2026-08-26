@@ -94,6 +94,17 @@
   margin-top: 0;
 }
 
+.coord-form-group {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.coord-curricular-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
 .coord-span-2 {
   grid-column: 1 / -1;
 }
@@ -204,6 +215,23 @@
   overflow: auto;
 }
 
+.coord-periodos-list {
+  scrollbar-color: #374151 #111827;
+}
+
+.coord-periodos-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.coord-periodos-list::-webkit-scrollbar-track {
+  background: #111827;
+}
+
+.coord-periodos-list::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 999px;
+}
+
 .coord-list-item {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
@@ -224,6 +252,57 @@
 .coord-list-item.is-selected {
   border-color: rgba(59, 130, 246, 0.6);
   background: rgba(37, 99, 235, 0.2);
+}
+
+.coord-materia-row {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+
+.coord-materia-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.coord-col-span-2 {
+  grid-column: 1 / -1;
+}
+
+.coord-materia-grid .btn-primary,
+.coord-materia-grid .btn-secondary {
+  grid-column: 1 / -1;
+}
+
+.coord-empty-state {
+  margin: 0;
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: #9ca3af;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 1rem;
+}
+
+.coord-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.coord-progreso-grid {
+  align-items: start;
+}
+
+.coord-progreso-right {
+  display: grid;
+  gap: 1rem;
 }
 
 .coord-form-4 {
@@ -295,8 +374,14 @@
 
 @media (max-width: 900px) {
   .coord-grid-2,
-  .coord-form-4 {
+  .coord-form-4,
+  .coord-curricular-grid,
+  .coord-materia-grid {
     grid-template-columns: 1fr;
+  }
+
+  .coord-col-span-2 {
+    grid-column: 1;
   }
 
   .coord-aulas-grid {

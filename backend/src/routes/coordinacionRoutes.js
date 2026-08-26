@@ -32,6 +32,7 @@ router.put('/materias/:id', coordinacionController.actualizarMateriaPrograma);
 router.delete('/materias/:id', coordinacionController.eliminarMateriaPrograma);
 
 router.get('/alumnos-progreso', coordinacionController.alumnosProgreso);
+router.get('/meritos-recientes', coordinacionController.meritosRecientes);
 router.post('/asignar-merito', coordinacionController.asignarMerito);
 
 module.exports = router;
