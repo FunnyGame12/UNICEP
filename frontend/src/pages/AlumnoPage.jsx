@@ -6,15 +6,14 @@ import api from '../services/api';
 import './AlumnoPage.css';
 
 const tabs = [
-  { id: 'dia', label: 'Mi Dia' },
-  { id: 'calificaciones', label: 'Calificaciones' },
-  { id: 'ventanilla', label: 'Ventanilla' },
-  { id: 'perfil', label: 'Perfil y Alertas' },
+  { id: 'resumen', label: 'Mi Resumen' },
+  { id: 'calificaciones', label: 'Calificaciones y Kardex' },
+  { id: 'finanzas', label: 'Finanzas y Pagos' },
+  { id: 'ventanilla', label: 'Ventanilla y Trámites' },
 ];
 
 const tramiteLabels = {
   constancia: 'Constancia',
-  credencial: 'Credencial',
   uniforme: 'Uniforme',
   comprobante_pago: 'Comprobante de pago',
 };
@@ -28,6 +27,13 @@ const estatusTramiteLabels = {
   cancelado: 'Cancelado',
 };
 
+const expedienteDocumentos = [
+  { key: 'curp', label: 'CURP', detalle: 'Identificación oficial', estatus: 'faltante' },
+  { key: 'acta', label: 'Acta de nacimiento', detalle: 'Documentación de registro', estatus: 'pendiente' },
+  { key: 'certificado', label: 'Certificado de bachillerato', detalle: 'Boleta de preparatoria', estatus: 'entregado' },
+  { key: 'foto', label: 'Foto oficial', detalle: 'Formato escolar vigente', estatus: 'pendiente' },
+];
+
 const pagoSchema = z.object({
   id_concepto_pago: z.string().min(1, 'Selecciona un concepto de pago.'),
   monto_pagado: z.preprocess(
@@ -37,7 +43,7 @@ const pagoSchema = z.object({
 });
 
 const tramiteSchema = z.object({
-  tipo: z.enum(['constancia', 'credencial', 'uniforme']),
+  tipo: z.enum(['constancia', 'uniforme']),
   descripcion: z.string().trim().optional(),
 });
 
@@ -49,18 +55,17 @@ function formatDate(value, withTime = false) {
   }).format(new Date(value));
 }
 
-function getUrgencyClass(hours) {
-  if (hours == null) return 'urgency-normal';
-  if (hours <= 6) return 'urgency-high';
-  if (hours <= 24) return 'urgency-medium';
-  return 'urgency-normal';
-}
-
 function getStatusBadgeClass(estatus) {
   if (estatus === 'resuelto') return 'badge-success';
   if (estatus === 'en_proceso' || estatus === 'en_revision') return 'badge-warn';
   if (estatus === 'rechazado' || estatus === 'cancelado') return 'badge-danger';
   return 'badge-neutral';
+}
+
+function getDocumentStatusClass(estatus) {
+  if (estatus === 'entregado') return 'doc-status success';
+  if (estatus === 'pendiente') return 'doc-status warn';
+  return 'doc-status danger';
 }
 
 function resolveBackendFileUrl(filePath) {
@@ -81,7 +86,7 @@ function resolveBackendFileUrl(filePath) {
 }
 
 export default function AlumnoPage() {
-  const [activeTab, setActiveTab] = useState('dia');
+  const [activeTab, setActiveTab] = useState('resumen');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
@@ -89,8 +94,6 @@ export default function AlumnoPage() {
 
   const [acceso, setAcceso] = useState(null);
   const [horario, setHorario] = useState([]);
-  const [tareasPendientes, setTareasPendientes] = useState([]);
-  const [materiales, setMateriales] = useState([]);
   const [calificaciones, setCalificaciones] = useState({ parciales: [], finales: [], resumen: [] });
   const [calificacionesBloqueadas, setCalificacionesBloqueadas] = useState(false);
   const [asistencia, setAsistencia] = useState({ items: [], acumulado: [] });
@@ -101,9 +104,8 @@ export default function AlumnoPage() {
   const [conceptosPago, setConceptosPago] = useState([]);
 
   const [openPagoAccordion, setOpenPagoAccordion] = useState(true);
-  const [openTramiteAccordion, setOpenTramiteAccordion] = useState(false);
+  const [openTramiteAccordion, setOpenTramiteAccordion] = useState(true);
 
-  const [entregaDrafts, setEntregaDrafts] = useState({});
   const [pagoArchivo, setPagoArchivo] = useState(null);
   const [tramiteArchivo, setTramiteArchivo] = useState(null);
 
@@ -122,17 +124,6 @@ export default function AlumnoPage() {
       descripcion: '',
     },
   });
-
-  function handleEntregaFileChange(tareaId, event) {
-    const archivo = event.target.files?.[0] || null;
-    setEntregaDrafts((prev) => ({
-      ...prev,
-      [tareaId]: {
-        ...prev[tareaId],
-        archivo,
-      },
-    }));
-  }
 
   function handlePagoFileChange(event) {
     setPagoArchivo(event.target.files?.[0] || null);
@@ -153,6 +144,58 @@ export default function AlumnoPage() {
       })
       .find((item) => item.sala_virtual?.fecha_programada) || horario[0];
   }, [horario]);
+
+  const kardexRows = useMemo(() => {
+    const partialMap = new Map();
+
+    (calificaciones.parciales || []).forEach((item) => {
+      const idMateria = Number(item.id_materia);
+      const materiaKey = Number.isFinite(idMateria) ? idMateria : (item.materia?.nombre_materia || item.materia || 'materia');
+      const current = partialMap.get(materiaKey) || {
+        id_materia: idMateria || materiaKey,
+        materia: item.materia?.nombre_materia || item.materia || 'Materia',
+        parcial_1: null,
+        parcial_2: null,
+        final: null,
+      };
+
+      const numeroParcial = Number(item.parcial_numero);
+      if (numeroParcial === 1) current.parcial_1 = Number(item.calificacion ?? 0);
+      if (numeroParcial === 2) current.parcial_2 = Number(item.calificacion ?? 0);
+      partialMap.set(materiaKey, current);
+    });
+
+    (calificaciones.resumen || []).forEach((item) => {
+      const idMateria = Number(item.id_materia);
+      const materiaKey = Number.isFinite(idMateria) ? idMateria : (item.materia || 'materia');
+      const current = partialMap.get(materiaKey) || {
+        id_materia: idMateria || materiaKey,
+        materia: item.materia || 'Materia',
+        parcial_1: null,
+        parcial_2: null,
+        final: null,
+      };
+      current.final = item.final_promedio ?? item.parcial_promedio ?? null;
+      partialMap.set(materiaKey, current);
+    });
+
+    return [...partialMap.values()].map((item) => {
+      const docente = horario.find((clase) => {
+        if (Number(clase.id_materia) === Number(item.id_materia)) return true;
+        return String(clase.materia || '').trim().toLowerCase() === String(item.materia || '').trim().toLowerCase();
+      })?.docente || 'Sin docente asignado';
+
+      return {
+        ...item,
+        docente,
+      };
+    });
+  }, [calificaciones, horario]);
+
+  const historialTramitesFiltrados = useMemo(
+    () => (historialTramites || []).filter((item) => !['comprobante_pago', 'credencial'].includes(item.tipo)),
+    [historialTramites],
+  );
 
   async function loadBase() {
     setLoading(true);
@@ -189,8 +232,6 @@ export default function AlumnoPage() {
 
       if (estadoResp.data?.bloqueo_plataforma) {
         setHorario([]);
-        setTareasPendientes([]);
-        setMateriales([]);
         setCalificaciones({ parciales: [], finales: [], resumen: [] });
         setAsistencia({ items: [], acumulado: [] });
         setNotificaciones([]);
@@ -198,10 +239,8 @@ export default function AlumnoPage() {
         return;
       }
 
-      const [horarioResp, tareasResp, materialesResp, asistenciaResp, notificacionesResp, calificacionesResp] = await Promise.all([
+      const [horarioResp, asistenciaResp, notificacionesResp, calificacionesResp] = await Promise.all([
         api.get('/alumno/horario-aulas'),
-        api.get('/alumno/tareas-pendientes'),
-        api.get('/alumno/materiales-clase'),
         api.get('/alumno/asistencia'),
         api.get('/alumno/notificaciones'),
         api.get('/alumno/calificaciones').catch((requestError) => {
@@ -214,14 +253,10 @@ export default function AlumnoPage() {
       ]);
 
       setHorario(horarioResp.data?.items || []);
-      setTareasPendientes(tareasResp.data?.items || []);
-      setMateriales(materialesResp.data?.items || []);
       setAsistencia(asistenciaResp.data || { items: [], acumulado: [] });
       setNotificaciones(notificacionesResp.data?.items || []);
       setCalificaciones(calificacionesResp.data || { parciales: [], finales: [], resumen: [] });
-      if (!calificacionesBloqueadas) {
-        setCalificacionesBloqueadas(false);
-      }
+      setCalificacionesBloqueadas(false);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo cargar el panel del alumno.');
     } finally {
@@ -255,7 +290,7 @@ export default function AlumnoPage() {
 
       pagoForm.reset({ id_concepto_pago: '', monto_pagado: '' });
       setPagoArchivo(null);
-      setMessage('Comprobante enviado correctamente a ventanilla.');
+      setMessage('Comprobante enviado correctamente a Tesorería.');
       await loadBase();
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo enviar el comprobante.');
@@ -294,36 +329,29 @@ export default function AlumnoPage() {
     }
   }
 
-  async function entregarTarea(tareaId) {
-    const archivo = entregaDrafts[tareaId]?.archivo || null;
-    if (!archivo) {
-      setError('Selecciona un archivo para entregar la tarea.');
+  function handleDownloadKardex() {
+    if (!kardexRows.length) {
+      setMessage('Todavía no hay materias registradas en tu kardex.');
       return;
     }
 
-    const sizeMb = archivo.size / (1024 * 1024);
-    if (sizeMb > 10) {
-      setError('El archivo excede el limite de 10MB.');
-      return;
-    }
+    const payload = [
+      'UNICEP - Kardex Digital',
+      `Alumno: ${acceso?.perfil?.nombre_completo || 'Estudiante'}`,
+      `Carrera: ${acceso?.perfil?.carrera || 'N/D'}`,
+      '',
+      'Materia;Docente;Parcial 1;Parcial 2;Calificación Final',
+      ...kardexRows.map((item) => `${item.materia};${item.docente};${item.parcial_1 ?? 'N/D'};${item.parcial_2 ?? 'N/D'};${item.final ?? 'N/D'}`),
+    ].join('\n');
 
-    setSending(true);
-    setError('');
-    setMessage('');
-
-    try {
-      const formData = new FormData();
-      formData.append('archivo', archivo);
-
-      await api.post(`/alumno/tareas/${Number(tareaId)}/entregar`, formData);
-      setMessage('Entrega registrada correctamente.');
-      setEntregaDrafts((prev) => ({ ...prev, [tareaId]: { archivo: null } }));
-      await loadBase();
-    } catch (requestError) {
-      setError(requestError?.response?.data?.message || 'No se pudo entregar la tarea.');
-    } finally {
-      setSending(false);
-    }
+    const blob = new Blob([payload], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'kardex-digital-unicep.txt';
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setMessage('Kardex digital descargado correctamente.');
   }
 
   const bloqueadoTotal = Boolean(acceso?.bloqueo_plataforma);
@@ -339,14 +367,14 @@ export default function AlumnoPage() {
               Comunicate con Tesoreria para regularizar tu cuenta.
             </p>
             <p className="alumno-overlay-note">
-              Mientras tanto, solo puedes usar la Ventanilla Digital para subir tu comprobante de pago.
+              Mientras tanto, puedes seguir tu estatus financiero y ventanilla digital.
             </p>
             <button
               type="button"
               className="btn-primary"
-              onClick={() => setActiveTab('ventanilla')}
+              onClick={() => setActiveTab('finanzas')}
             >
-              Ir a Ventanilla
+              Ir a Finanzas
             </button>
           </div>
         </div>
@@ -365,7 +393,7 @@ export default function AlumnoPage() {
             type="button"
             className={activeTab === tab.id ? 'is-active' : ''}
             onClick={() => setActiveTab(tab.id)}
-            disabled={bloqueadoTotal && tab.id !== 'ventanilla'}
+            disabled={bloqueadoTotal && tab.id !== 'finanzas'}
           >
             {tab.label}
           </button>
@@ -376,14 +404,15 @@ export default function AlumnoPage() {
       {message ? <p className="ok-box">{message}</p> : null}
       {loading ? <p className="alumno-loading">Cargando panel...</p> : null}
 
-      {activeTab === 'dia' ? (
+      {activeTab === 'resumen' ? (
         <div className="alumno-section-grid">
           <article className="alumno-card next-class-card">
-            <h3>Proxima clase</h3>
+            <h3>Próxima clase</h3>
             {primeraClase ? (
               <>
                 <strong>{primeraClase.materia}</strong>
                 <p>Grupo {primeraClase.grupo}</p>
+                <p>Docente: {primeraClase.docente || 'Por asignar'}</p>
                 <p>Aula: {primeraClase.aula_fisica || 'Por confirmar'}</p>
                 {primeraClase.sala_virtual?.enlace ? (
                   <a className="btn-primary" href={primeraClase.sala_virtual.enlace} target="_blank" rel="noreferrer">
@@ -399,57 +428,16 @@ export default function AlumnoPage() {
           </article>
 
           <article className="alumno-card">
-            <h3>Tareas por entregar</h3>
-            {tareasPendientes.length === 0 ? (
-              <p className="alumno-empty">No tienes tareas pendientes.</p>
+            <h3>Alertas y avisos</h3>
+            {notificaciones.length === 0 ? (
+              <p className="alumno-empty">No hay alertas por mostrar.</p>
             ) : (
-              <div className="alumno-list">
-                {tareasPendientes.map((item) => (
-                  <article key={item.id_tarea} className="alumno-list-item">
-                    <div className="alumno-list-head">
-                      <strong>{item.titulo}</strong>
-                      <span className={`urgency-chip ${getUrgencyClass(item.vence_en_horas)}`}>
-                        {item.vence_en_horas != null ? `Vence en ${item.vence_en_horas} horas` : 'Fecha no disponible'}
-                      </span>
-                    </div>
-                    <p>{item.materia?.nombre_materia || 'Materia'} · Grupo {item.grupo_id || '-'}</p>
-                    <p>{formatDate(item.fecha_limite, true)}</p>
-                    <div className="alumno-inline-form">
-                      <div className="file-upload-wrapper">
-                        <label className="btn-file-custom">
-                          <input
-                            type="file"
-                            accept=".pdf, .jpg, .jpeg, .png"
-                            onChange={(event) => handleEntregaFileChange(item.id_tarea, event)}
-                            style={{ display: 'none' }}
-                          />
-                          📎 {entregaDrafts[item.id_tarea]?.archivo ? 'Cambiar archivo' : 'Seleccionar archivo'}
-                        </label>
-                        <span className="file-name-display">
-                          {entregaDrafts[item.id_tarea]?.archivo?.name || 'Ningun archivo seleccionado'}
-                        </span>
-                      </div>
-                      <button type="button" className="btn-primary" onClick={() => entregarTarea(item.id_tarea)} disabled={sending}>
-                        Entregar tarea
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </article>
-
-          <article className="alumno-card full-width">
-            <h3>Materiales de clase</h3>
-            {materiales.length === 0 ? (
-              <p className="alumno-empty">No hay materiales publicados.</p>
-            ) : (
-              <div className="alumno-list compact">
-                {materiales.map((item) => (
-                  <article key={item.id_material} className="alumno-list-item">
-                    <strong>{item.tema_semana}</strong>
-                    <p>{item.materia?.nombre_materia || 'Materia'} · {item.tipo_archivo}</p>
-                    <a href={resolveBackendFileUrl(item.archivo_url)} target="_blank" rel="noreferrer">Abrir recurso</a>
+              <div className="alumno-list scroll-area">
+                {notificaciones.map((item, index) => (
+                  <article key={`${item.tipo}-${index}`} className="alumno-list-item">
+                    <strong>{item.titulo}</strong>
+                    <p>{item.detalle}</p>
+                    <small>{formatDate(item.fecha, true)}</small>
                   </article>
                 ))}
               </div>
@@ -460,7 +448,13 @@ export default function AlumnoPage() {
 
       {activeTab === 'calificaciones' ? (
         <article className="alumno-card">
-          <h3>Mis Calificaciones</h3>
+          <div className="section-head">
+            <h3>Materias en Curso</h3>
+            <button type="button" className="btn-primary kardex-download" onClick={handleDownloadKardex}>
+              📄 Descargar Kardex Digital
+            </button>
+          </div>
+
           {calificacionesBloqueadas ? (
             <div className="alumno-empty lock-empty">
               <strong>Calificaciones bloqueadas</strong>
@@ -468,26 +462,28 @@ export default function AlumnoPage() {
             </div>
           ) : (
             <>
-              {calificaciones.resumen.length === 0 ? (
-                <p className="alumno-empty">Aun no hay calificaciones registradas.</p>
+              {kardexRows.length === 0 ? (
+                <p className="alumno-empty">Aun no hay materias en curso registradas.</p>
               ) : (
                 <div className="table-wrap dark-table">
                   <table>
                     <thead>
                       <tr>
                         <th>Materia</th>
-                        <th>Parcial</th>
-                        <th>Final</th>
-                        <th>Estatus</th>
+                        <th>Docente</th>
+                        <th>Parcial 1</th>
+                        <th>Parcial 2</th>
+                        <th>Calificación Final</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {calificaciones.resumen.map((item) => (
-                        <tr key={item.id_materia}>
+                      {kardexRows.map((item) => (
+                        <tr key={item.id_materia || item.materia}>
                           <td>{item.materia}</td>
-                          <td>{item.parcial_promedio ?? 'N/D'}</td>
-                          <td>{item.final_promedio ?? 'N/D'}</td>
-                          <td>{item.estatus}</td>
+                          <td>{item.docente}</td>
+                          <td>{item.parcial_1 ?? 'N/D'}</td>
+                          <td>{item.parcial_2 ?? 'N/D'}</td>
+                          <td>{item.final ?? 'N/D'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -514,53 +510,89 @@ export default function AlumnoPage() {
         </article>
       ) : null}
 
-      {activeTab === 'ventanilla' ? (
+      {activeTab === 'finanzas' ? (
         <div className="alumno-section-grid">
-          <article className="alumno-card">
-            <button
-              type="button"
-              className="accordion-toggle"
-              onClick={() => setOpenPagoAccordion((prev) => !prev)}
-            >
-              Subir Comprobante de Pago
-            </button>
-            {openPagoAccordion ? (
-              <form className="alumno-form" onSubmit={pagoForm.handleSubmit(submitComprobante)}>
-                <label htmlFor="pago-concepto">Concepto</label>
-                <select id="pago-concepto" {...pagoForm.register('id_concepto_pago')}>
-                  <option value="">Selecciona concepto</option>
-                  {conceptosPago.map((item) => (
-                    <option key={item.id_concepto_pago} value={String(item.id_concepto_pago)}>
-                      {item.nombre}
-                    </option>
-                  ))}
-                </select>
-
-                <label htmlFor="pago-monto">Monto pagado</label>
-                <input id="pago-monto" type="number" min="0" step="0.01" {...pagoForm.register('monto_pagado')} />
-
-                <label htmlFor="pago-adjunto">Comprobante (PDF o imagen)</label>
-                <div className="file-upload-wrapper">
-                  <label className="btn-file-custom" htmlFor="pago-adjunto">
-                    <input
-                      id="pago-adjunto"
-                      type="file"
-                      accept=".pdf, .jpg, .jpeg, .png"
-                      onChange={handlePagoFileChange}
-                      style={{ display: 'none' }}
-                    />
-                    📎 {pagoArchivo ? 'Cambiar archivo' : 'Seleccionar archivo'}
-                  </label>
-                  <span className="file-name-display">
-                    {pagoArchivo?.name || 'Ningun archivo seleccionado'}
-                  </span>
-                </div>
-
-                <button type="submit" className="btn-primary" disabled={sending}>Subir comprobante</button>
-              </form>
-            ) : null}
+          <article className="alumno-card full-width">
+            <h3>Resumen financiero</h3>
+            <div className="payment-cards">
+              <div>
+                <span>Estado</span>
+                <strong>{pagos.resumen?.estado_general || 'N/D'}</strong>
+              </div>
+              <div>
+                <span>Total pagado</span>
+                <strong>{Number(pagos.resumen?.total_pagado || 0).toFixed(2)} MXN</strong>
+              </div>
+              <div>
+                <span>Adeudo pendiente</span>
+                <strong>{Number(pagos.resumen?.adeudo_pendiente || 0).toFixed(2)} MXN</strong>
+              </div>
+            </div>
           </article>
 
+          <article className="alumno-card">
+            <h3>Subir comprobante de pago</h3>
+            <form className="alumno-form" onSubmit={pagoForm.handleSubmit(submitComprobante)}>
+              <label htmlFor="pago-concepto">Concepto</label>
+              <select id="pago-concepto" {...pagoForm.register('id_concepto_pago')}>
+                <option value="">Selecciona concepto</option>
+                {conceptosPago.map((item) => (
+                  <option key={item.id_concepto_pago} value={String(item.id_concepto_pago)}>
+                    {item.nombre}
+                  </option>
+                ))}
+              </select>
+
+              <label htmlFor="pago-monto">Monto pagado</label>
+              <input id="pago-monto" type="number" min="0" step="0.01" {...pagoForm.register('monto_pagado')} />
+
+              <label htmlFor="pago-adjunto">Comprobante (PDF o imagen)</label>
+              <div className="file-upload-wrapper">
+                <label className="btn-file-custom" htmlFor="pago-adjunto">
+                  <input
+                    id="pago-adjunto"
+                    type="file"
+                    accept=".pdf, .jpg, .jpeg, .png"
+                    onChange={handlePagoFileChange}
+                    style={{ display: 'none' }}
+                  />
+                  📎 {pagoArchivo ? 'Cambiar archivo' : 'Seleccionar archivo'}
+                </label>
+                <span className="file-name-display">
+                  {pagoArchivo?.name || 'Ningun archivo seleccionado'}
+                </span>
+              </div>
+
+              <button type="submit" className="btn-primary" disabled={sending}>Subir comprobante</button>
+            </form>
+          </article>
+
+          <article className="alumno-card">
+            <h3>Estado de pagos</h3>
+            {pagos.items.length === 0 ? (
+              <p className="alumno-empty">No hay pagos registrados.</p>
+            ) : (
+              <div className="alumno-list compact">
+                {pagos.items.map((item) => (
+                  <article key={item.id_pago || `${item.concepto}-${item.fecha_limite}`} className="alumno-list-item">
+                    <div className="alumno-list-head">
+                      <strong>{item.concepto || 'Pago'}</strong>
+                      <span className={`status-badge ${getStatusBadgeClass(item.estatus === 'pagado' ? 'resuelto' : item.estatus === 'pendiente' ? 'badge-neutral' : item.estatus)}`}>
+                        {item.estatus || 'N/D'}
+                      </span>
+                    </div>
+                    <p>{Number(item.monto || 0).toFixed(2)} MXN</p>
+                    <small>{formatDate(item.fecha_limite || item.fecha_pago, true)}</small>
+                  </article>
+                ))}
+              </div>
+            )}
+          </article>
+        </div>
+      ) : null}
+
+      {activeTab === 'ventanilla' ? (
+        <div className="alumno-section-grid">
           <article className="alumno-card">
             <button
               type="button"
@@ -574,7 +606,6 @@ export default function AlumnoPage() {
                 <label htmlFor="tramite-tipo">Tipo de tramite</label>
                 <select id="tramite-tipo" {...tramiteForm.register('tipo')}>
                   <option value="constancia">Constancia</option>
-                  <option value="credencial">Credencial</option>
                   <option value="uniforme">Uniforme</option>
                 </select>
 
@@ -603,13 +634,30 @@ export default function AlumnoPage() {
             ) : null}
           </article>
 
+          <article className="alumno-card">
+            <h3>Mi Expediente</h3>
+            <div className="document-list">
+              {expedienteDocumentos.map((item) => (
+                <div key={item.key} className="doc-card">
+                  <div className="doc-meta">
+                    <strong>{item.label}</strong>
+                    <span>{item.detalle}</span>
+                  </div>
+                  <span className={getDocumentStatusClass(item.estatus)}>
+                    {item.estatus === 'entregado' ? 'Entregado' : item.estatus === 'pendiente' ? 'Pendiente' : 'Falta'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </article>
+
           <article className="alumno-card full-width">
             <h3>Historial de tramites</h3>
-            {historialTramites.length === 0 ? (
+            {historialTramitesFiltrados.length === 0 ? (
               <p className="alumno-empty">Sin tramites registrados.</p>
             ) : (
               <div className="alumno-list compact">
-                {historialTramites.map((item) => (
+                {historialTramitesFiltrados.map((item) => (
                   <article key={item.id_tramite} className="alumno-list-item">
                     <div className="alumno-list-head">
                       <strong>{tramiteLabels[item.tipo] || item.tipo}</strong>
@@ -630,61 +678,6 @@ export default function AlumnoPage() {
         </div>
       ) : null}
 
-      {activeTab === 'perfil' ? (
-        <div className="alumno-section-grid">
-          <article className="alumno-card">
-            <h3>Insignias y Meritos</h3>
-            {meritos.length === 0 ? (
-              <p className="alumno-empty">Aun no tienes meritos registrados.</p>
-            ) : (
-              <div className="chips-grid">
-                {meritos.map((item) => (
-                  <div key={item.id_merito} className="merito-chip">
-                    <strong>{item.nombre}</strong>
-                    <span>{item.tipo_merito}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </article>
-
-          <article className="alumno-card">
-            <h3>Notificaciones recientes</h3>
-            {notificaciones.length === 0 ? (
-              <p className="alumno-empty">No hay notificaciones por mostrar.</p>
-            ) : (
-              <div className="alumno-list scroll-area">
-                {notificaciones.map((item, index) => (
-                  <article key={`${item.tipo}-${index}`} className="alumno-list-item">
-                    <strong>{item.titulo}</strong>
-                    <p>{item.detalle}</p>
-                    <small>{formatDate(item.fecha, true)}</small>
-                  </article>
-                ))}
-              </div>
-            )}
-          </article>
-
-          <article className="alumno-card full-width">
-            <h3>Resumen financiero</h3>
-            <div className="payment-cards">
-              <div>
-                <span>Estado</span>
-                <strong>{pagos.resumen?.estado_general || 'N/D'}</strong>
-              </div>
-              <div>
-                <span>Total pagado</span>
-                <strong>{Number(pagos.resumen?.total_pagado || 0).toFixed(2)} MXN</strong>
-              </div>
-              <div>
-                <span>Adeudo pendiente</span>
-                <strong>{Number(pagos.resumen?.adeudo_pendiente || 0).toFixed(2)} MXN</strong>
-              </div>
-            </div>
-          </article>
-        </div>
-      ) : null}
-
       <nav className="alumno-bottom-nav mobile-only" aria-label="Navegacion alumno">
         {tabs.map((tab) => (
           <button
@@ -692,7 +685,7 @@ export default function AlumnoPage() {
             type="button"
             className={activeTab === tab.id ? 'is-active' : ''}
             onClick={() => setActiveTab(tab.id)}
-            disabled={bloqueadoTotal && tab.id !== 'ventanilla'}
+            disabled={bloqueadoTotal && tab.id !== 'finanzas'}
           >
             {tab.label}
           </button>

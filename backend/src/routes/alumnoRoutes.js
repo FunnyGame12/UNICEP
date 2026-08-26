@@ -11,9 +11,6 @@ router.use(auth(['alumno']));
 router.get('/estado-acceso', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ), alumnoController.estadoAcceso);
 
 router.get('/horario-aulas', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ), alumnoController.horarioAulas);
-router.get('/tareas-pendientes', requirePermission(PERMISSIONS.ALUMNO_TAREAS_READ), alumnoController.tareasPendientes);
-router.post('/tareas/:tareaId/entregar', requirePermission(PERMISSIONS.ALUMNO_ENTREGAS_CREATE), alumnoController.entregarTarea);
-router.get('/materiales-clase', requirePermission(PERMISSIONS.ALUMNO_MATERIALES_READ), alumnoController.materialesClase);
 router.get('/calificaciones', requirePermission(PERMISSIONS.ALUMNO_CALIFICACIONES_READ), alumnoController.calificaciones);
 router.get('/asistencia', requirePermission(PERMISSIONS.ALUMNO_CALIFICACIONES_READ), alumnoController.asistencia);
 
@@ -25,10 +22,7 @@ router.get('/notificaciones', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_REA
 // Rutas legacy para compatibilidad con clientes antiguos.
 router.get('/dashboard', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ), alumnoController.dashboard);
 router.get('/horarios', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ), alumnoController.horarios);
-router.get('/tareas', requirePermission(PERMISSIONS.ALUMNO_TAREAS_READ), alumnoController.tareas);
-router.post('/tareas/:id_tarea/entregas', requirePermission(PERMISSIONS.ALUMNO_ENTREGAS_CREATE), alumnoController.entregarTarea);
 router.get('/asistencias', requirePermission(PERMISSIONS.ALUMNO_CALIFICACIONES_READ), alumnoController.asistencias);
-router.get('/materiales', requirePermission(PERMISSIONS.ALUMNO_MATERIALES_READ), alumnoController.materiales);
 router.get('/video-clases', requirePermission(PERMISSIONS.ALUMNO_MATERIALES_READ), alumnoController.videoClases);
 router.get('/portafolio', requirePermission(PERMISSIONS.ALUMNO_PORTAFOLIO_READ), alumnoController.portafolio);
 router.get('/meritos', requirePermission(PERMISSIONS.ALUMNO_MERITOS_READ), alumnoController.meritos);

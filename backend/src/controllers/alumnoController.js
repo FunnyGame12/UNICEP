@@ -313,89 +313,6 @@ async function tareasPendientes(req, res) {
   return res.json({ items });
 }
 
-async function entregarTarea(req, res) {
-  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
-  if (!validacion.ok) {
-    return res.status(validacion.status).json(validacion.payload);
-  }
-
-  const tareaId = toNumber(req.params.tareaId ?? req.params.id_tarea);
-  if (!Number.isInteger(tareaId)) {
-    return res.status(400).json({ message: 'tareaId invalido.' });
-  }
-
-  const enlaceEntrega = normalizeText(req.body.archivo_entrega_url || req.body.enlace_entrega_url || req.body.adjunto_url);
-  if (!enlaceEntrega) {
-    return res.status(400).json({ message: 'Debes enviar una URL o evidencia de entrega.' });
-  }
-
-  const tarea = await Tarea.findByPk(tareaId, {
-    include: [{ model: Materia, as: 'materia' }],
-  });
-
-  if (!tarea) {
-    return res.status(404).json({ message: 'Tarea no encontrada.' });
-  }
-
-  const filtroInscripcion = {
-    id_alumno: validacion.idAlumno,
-    id_materia: tarea.id_materia,
-  };
-  if (tarea.grupo_id) {
-    filtroInscripcion.grupo = String(tarea.grupo_id).trim();
-  }
-
-  const inscripcion = await AlumnoGrupo.findOne({ where: filtroInscripcion });
-  if (!inscripcion) {
-    return res.status(403).json({ message: 'No puedes entregar tareas de materias o grupos que no te pertenecen.' });
-  }
-
-  const ahora = new Date();
-  const fueraDeTiempo = ahora.getTime() > new Date(tarea.fecha_limite).getTime();
-  const estatus = fueraDeTiempo ? 'fuera_de_tiempo' : 'entregada';
-
-  const existente = await EntregaTarea.findOne({
-    where: {
-      id_tarea: tareaId,
-      id_alumno: validacion.idAlumno,
-    },
-  });
-
-  let entrega;
-  if (existente) {
-    existente.archivo_entrega_url = enlaceEntrega;
-    existente.fecha_entrega = ahora;
-    existente.estatus = estatus;
-    await existente.save();
-    entrega = existente;
-  } else {
-    entrega = await EntregaTarea.create({
-      id_tarea: tareaId,
-      id_alumno: validacion.idAlumno,
-      archivo_entrega_url: enlaceEntrega,
-      fecha_entrega: ahora,
-      estatus,
-    });
-  }
-
-  await registrarEventoAuditoria({
-    idUsuario: validacion.idAlumno,
-    rolActor: req.user.rol,
-    accion: existente ? 'actualizar_entrega_tarea_alumno' : 'crear_entrega_tarea_alumno',
-    modulo: 'alumno',
-    entidad: 'entregas_tareas',
-    idEntidad: entrega.id_entrega,
-    detalle: {
-      id_tarea: tarea.id_tarea,
-      id_materia: tarea.id_materia,
-      grupo: inscripcion.grupo,
-      estatus,
-    },
-  });
-
-  return res.status(existente ? 200 : 201).json(entrega);
-}
-
 async function materialesClase(req, res) {
   const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
   if (!validacion.ok) {
@@ -1057,7 +974,6 @@ module.exports = {
   estadoAcceso,
   horarioAulas,
   tareasPendientes,
-  entregarTarea,
   materialesClase,
   calificaciones,
   asistencia,
@@ -1071,7 +987,6 @@ module.exports = {
   tareas,
   asistencias,
   pagos,
-  materiales,
   portafolio,
   meritos,
   alertas,
