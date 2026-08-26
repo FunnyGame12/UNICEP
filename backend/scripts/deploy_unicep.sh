@@ -41,10 +41,19 @@ cd ../frontend
 npm install
 npm run build
 
-echo "[deploy] Ajuste de CSP para nginx"
-sudo sed -i "s|script-src 'self'; style-src 'self' 'unsafe-inline'|script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'|" /etc/nginx/sites-available/unicep /etc/nginx/sites-enabled/unicep
-sudo nginx -t
-sudo systemctl reload nginx
+echo "[deploy] Ajuste de CSP para nginx (solo si sudo no requiere password)"
+if sudo -n true >/dev/null 2>&1; then
+  for nginx_file in /etc/nginx/sites-available/unicep /etc/nginx/sites-enabled/unicep; do
+    if [[ -f "${nginx_file}" ]]; then
+      sudo sed -i "s|script-src 'self'; style-src 'self' 'unsafe-inline'|script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'|" "${nginx_file}"
+    fi
+  done
+  sudo nginx -t
+  sudo systemctl reload nginx
+  echo "[deploy] Nginx actualizado correctamente."
+else
+  echo "[deploy] sudo requiere password; se omite el ajuste de nginx para no interrumpir el despliegue."
+fi
 
 echo "[deploy] Despliegue completado correctamente"
 EOS
