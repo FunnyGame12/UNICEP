@@ -15,6 +15,15 @@ const statusOptions = [
   { value: 'justificado', label: 'Justificado', className: 'is-justified' },
 ];
 
+function normalizeUiStatus(value) {
+  return value === 'ausente' ? 'falta' : value;
+}
+
+function normalizeBackendStatus(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  return raw === 'falta' ? 'ausente' : raw;
+}
+
 function formatDate(value, withTime = false) {
   if (!value) return 'Sin fecha';
   return new Intl.DateTimeFormat('es-MX', {
@@ -38,6 +47,7 @@ export default function DocentePage() {
   const [alumnos, setAlumnos] = useState([]);
   const [justificantes, setJustificantes] = useState([]);
   const [avisos, setAvisos] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [asistenciaPorAlumno, setAsistenciaPorAlumno] = useState({});
   const [calificacionesPorAlumno, setCalificacionesPorAlumno] = useState({});
 
@@ -54,6 +64,14 @@ export default function DocentePage() {
     }, 3000);
     return () => clearTimeout(timer);
   }, [message, error]);
+
+  useEffect(() => {
+    if (!selectedAsignacion) return;
+    loadAsistenciaPorFecha(selectedDate).catch((requestError) => {
+      setError(requestError?.response?.data?.message || 'No se pudo cargar la asistencia seleccionada.');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAsignacionId, selectedDate]);
 
   useEffect(() => {
     let isMounted = true;
@@ -134,9 +152,31 @@ export default function DocentePage() {
     };
   }, [selectedAsignacionId]);
 
+  async function loadAsistenciaPorFecha(fecha = selectedDate) {
+    if (!selectedAsignacion) {
+      setAsistenciaPorAlumno({});
+      return;
+    }
+
+    try {
+      const grupoId = String(selectedAsignacion.grupo_id);
+      const materiaId = Number(selectedAsignacion.materia_id);
+      const response = await api.get(`/docente/grupos/${encodeURIComponent(grupoId)}/materias/${materiaId}/asistencia`, {
+        params: { fecha },
+      });
+      const nextMap = {};
+      (response?.data?.items || []).forEach((item) => {
+        nextMap[item.id_alumno] = normalizeUiStatus(item.estado) || null;
+      });
+      setAsistenciaPorAlumno(nextMap);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo cargar la asistencia seleccionada.');
+    }
+  }
+
   async function guardarAsistencia(alumnoId) {
     if (!selectedAsignacion) return;
-    const draft = asistenciaPorAlumno[alumnoId] || { status: 'presente' };
+    const nextStatus = normalizeBackendStatus(asistenciaPorAlumno[alumnoId] || 'presente');
 
     try {
       setSending(true);
@@ -144,10 +184,11 @@ export default function DocentePage() {
       await api.post('/docente/asistencia', {
         alumno_id: Number(alumnoId),
         materia_id: Number(selectedAsignacion.materia_id),
-        fecha: new Date().toISOString().slice(0, 10),
-        estatus: draft.status || 'presente',
+        fecha: selectedDate,
+        estatus: nextStatus,
       });
       setMessage('Asistencia guardada correctamente.');
+      await loadAsistenciaPorFecha(selectedDate);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo guardar la asistencia.');
     } finally {
@@ -290,6 +331,41 @@ export default function DocentePage() {
 
       {activeTab === 'asistencia' ? (
         <article className="docente-card">
+          <div className="docente-toolbar">
+            <label className="docente-date-picker">
+              <span>Fecha</span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(event) => setSelectedDate(event.target.value)}
+              />
+            </label>
+            <button type="button" className="btn-secondary download-button" onClick={() => {
+              const rows = [
+                ['Alumno', 'Folio', 'Asistencia'],
+                ...alumnos.map((row) => {
+                  const alumno = row.alumno?.usuario;
+                  const status = asistenciaPorAlumno[row.id_alumno] || 'Sin registrar';
+                  return [alumno?.nombre_completo || `Alumno ${row.id_alumno}`, alumno?.folio_matricula || '', status];
+                }),
+              ];
+
+              const csvContent = rows
+                .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+                .join('\n');
+
+              const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+              const url = URL.createObjectURL(blob);
+              const anchor = document.createElement('a');
+              anchor.href = url;
+              anchor.download = `asistencia-${selectedDate}.csv`;
+              anchor.click();
+              URL.revokeObjectURL(url);
+            }}>
+              ⬇️ Descargar Lista (CSV)
+            </button>
+          </div>
+
           <h3>Control de Asistencia</h3>
           {alumnos.length === 0 ? (
             <p className="docente-empty">Sin alumnos asignados a este grupo. Contacte a Coordinación Académica.</p>
@@ -306,7 +382,7 @@ export default function DocentePage() {
                 <tbody>
                   {alumnos.map((row) => {
                     const alumno = row.alumno?.usuario;
-                    const currentStatus = asistenciaPorAlumno[row.id_alumno]?.status || 'presente';
+                    const currentStatus = normalizeUiStatus(asistenciaPorAlumno[row.id_alumno]) || null;
 
                     return (
                       <tr key={row.id_alumno_grupo}>
@@ -323,7 +399,7 @@ export default function DocentePage() {
                                 className={currentStatus === option.value ? `toggle-btn ${option.className} active` : `toggle-btn ${option.className}`}
                                 onClick={() => setAsistenciaPorAlumno((prev) => ({
                                   ...prev,
-                                  [row.id_alumno]: { ...(prev[row.id_alumno] || {}), status: option.value },
+                                  [row.id_alumno]: option.value,
                                 }))}
                               >
                                 {option.label}

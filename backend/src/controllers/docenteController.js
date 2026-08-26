@@ -1014,6 +1014,64 @@ async function alumnosPorGrupoMateria(req, res) {
   return res.json({ items });
 }
 
+async function listarAsistenciaGrupoFecha(req, res) {
+  const materiaId = Number(req.params.materiaId);
+  const grupoId = normalizeGrupo(req.params.grupoId);
+  const fechaQuery = String(req.query.fecha || '').trim();
+
+  if (!Number.isInteger(materiaId) || !grupoId) {
+    return res.status(400).json({ message: 'materiaId/grupoId invalidos.' });
+  }
+  if (!fechaQuery) {
+    return res.status(400).json({ message: 'fecha es obligatoria.' });
+  }
+
+  const fechaBase = new Date(`${fechaQuery}T00:00:00`);
+  if (Number.isNaN(fechaBase.getTime())) {
+    return res.status(400).json({ message: 'fecha invalida. Usa YYYY-MM-DD.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
+    return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+  }
+
+  const items = await AlumnoGrupo.findAll({
+    where: { id_materia: materiaId, grupo: grupoId },
+    include: [{
+      model: AlumnoPerfil,
+      as: 'alumno',
+      include: [{ model: Usuario, as: 'usuario', attributes: ['id_usuario', 'folio_matricula', 'nombre_completo', 'correo'] }],
+    }],
+    order: [['id_alumno_grupo', 'DESC']],
+  });
+
+  const fechaInicio = new Date(fechaBase);
+  fechaInicio.setHours(0, 0, 0, 0);
+  const fechaFin = new Date(fechaBase);
+  fechaFin.setHours(23, 59, 59, 999);
+
+  const registros = await AsistenciaDocente.findAll({
+    where: {
+      id_materia: materiaId,
+      fecha_clase: { [Op.gte]: fechaInicio, [Op.lte]: fechaFin },
+    },
+    raw: true,
+  });
+
+  const registrosMap = new Map(registros.map((row) => [Number(row.id_alumno), row.estatus_asistencia === 'ausente' ? 'falta' : row.estatus_asistencia]));
+
+  const responseItems = items.map((row) => ({
+    id_alumno: Number(row.id_alumno),
+    nombre_completo: row.alumno?.usuario?.nombre_completo || `Alumno ${row.id_alumno}`,
+    folio_matricula: row.alumno?.usuario?.folio_matricula || '',
+    correo: row.alumno?.usuario?.correo || '',
+    estado: registrosMap.get(Number(row.id_alumno)) || null,
+  }));
+
+  return res.json({ items: responseItems, fecha: fechaQuery });
+}
+
 async function registrarAsistenciaGrupo(req, res) {
   const materiaId = Number(req.body.materia_id || req.body.id_materia);
   const alumnoId = Number(req.body.alumno_id || req.body.id_alumno);
@@ -1040,7 +1098,29 @@ async function registrarAsistenciaGrupo(req, res) {
     return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
   }
 
-  const item = await AsistenciaDocente.create({
+  const fechaInicio = new Date(fechaClase);
+  fechaInicio.setHours(0, 0, 0, 0);
+  const fechaFin = new Date(fechaClase);
+  fechaFin.setHours(23, 59, 59, 999);
+
+  let registro = await AsistenciaDocente.findOne({
+    where: {
+      id_materia: materiaId,
+      id_alumno: alumnoId,
+      fecha_clase: { [Op.gte]: fechaInicio, [Op.lte]: fechaFin },
+    },
+  });
+
+  if (registro) {
+    registro.id_docente = req.user.id_usuario;
+    registro.estatus_asistencia = estatus;
+    registro.aprovechamiento = registro.aprovechamiento || 'medio';
+    registro.observaciones = sanitizeText(req.body.observaciones) || registro.observaciones || null;
+    await registro.save();
+    return res.status(200).json(registro);
+  }
+
+  registro = await AsistenciaDocente.create({
     id_docente: req.user.id_usuario,
     id_materia: materiaId,
     id_alumno: alumnoId,
@@ -1051,7 +1131,7 @@ async function registrarAsistenciaGrupo(req, res) {
     fecha_creacion: new Date(),
   });
 
-  return res.status(201).json(item);
+  return res.status(201).json(registro);
 }
 
 async function capturarCalificacionesParcial(req, res) {
@@ -1269,14 +1349,8 @@ async function publicarAvisoGrupal(req, res) {
 
 module.exports = {
   misMaterias,
-  materiasTareas,
-  crearTareaMateria,
-  tareaEntregas,
-  calificarEntregaMateria,
-  publicarMaterialMateria,
-  listarSesionesEnVivo,
-  programarSesionEnVivo,
   alumnosPorGrupoMateria,
+  listarAsistenciaGrupoFecha,
   registrarAsistenciaGrupo,
   capturarCalificacionesParcial,
   enviarActaCoordinacion,
@@ -1285,18 +1359,7 @@ module.exports = {
   publicarAvisoGrupal,
   dashboard,
   grupos,
-  tareas,
-  crearTarea,
-  entregas,
-  calificarEntrega,
-  materiales,
-  subirMaterial,
-  portafolios,
   calificacionesFinales,
-  anuncios,
-  publicarAnuncio,
-  salasVideo,
-  crearSalaVideo,
   listarAsistencias,
   registrarAsistencia,
   aprovechamiento,
