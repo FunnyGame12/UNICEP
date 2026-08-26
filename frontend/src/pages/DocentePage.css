@@ -65,6 +65,28 @@
   font: inherit;
 }
 
+.sticky-toast {
+  position: sticky;
+  top: 1rem;
+  z-index: 20;
+  margin: 0;
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.28);
+}
+
+.ok-box {
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #d1fae5;
+}
+
+.error-box {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.38);
+  color: #fecaca;
+}
+
 .docente-tabs {
   display: flex;
   gap: 0.55rem;
@@ -130,6 +152,9 @@
   font-size: 0.75rem;
   cursor: pointer;
   transition: all 0.2s ease;
+  background: transparent;
+  border: 1px solid #4b5563;
+  color: #d1d5db;
 }
 
 .toggle-btn.active {
@@ -138,24 +163,44 @@
 }
 
 .toggle-btn.is-present.active {
-  background: #166534;
+  background: #10b981;
+  color: #fff;
 }
 
 .toggle-btn.is-missing.active {
-  background: #7f1d1d;
+  background: #ef4444;
+  color: #fff;
 }
 
 .toggle-btn.is-late.active {
-  background: #92400e;
+  background: #f59e0b;
+  color: #111827;
 }
 
 .toggle-btn.is-justified.active {
-  background: #374151;
+  background: #3b82f6;
+  color: #fff;
 }
 
 .grade-input {
-  width: 100%;
-  min-height: 42px;
+  background-color: #1f2937;
+  border: 1px solid #374151;
+  text-align: center;
+  width: 80px;
+  border-radius: 6px;
+  padding: 6px;
+  color: #f9fafb;
+  min-height: 38px;
+}
+
+.save-mini {
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  color: #93c5fd;
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.8rem;
+  cursor: pointer;
 }
 
 .btn-primary,
@@ -188,8 +233,11 @@
   min-height: 110px;
   display: grid;
   place-items: center;
+  align-items: center;
+  justify-items: center;
   padding: 0.9rem;
   text-align: center;
+  line-height: 1.5;
 }
 
 .docente-loading {

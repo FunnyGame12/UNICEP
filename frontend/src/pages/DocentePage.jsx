@@ -47,6 +47,15 @@ export default function DocentePage() {
   );
 
   useEffect(() => {
+    if (!message && !error) return undefined;
+    const timer = setTimeout(() => {
+      setMessage('');
+      setError('');
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [message, error]);
+
+  useEffect(() => {
     let isMounted = true;
 
     async function loadContextData() {
@@ -176,8 +185,10 @@ export default function DocentePage() {
   async function guardarCalificacion(alumnoId, field) {
     if (!selectedAsignacion) return;
     const current = calificacionesPorAlumno[alumnoId] || {};
-    const value = Number(current[field]);
+    const rawValue = current[field];
+    const value = rawValue === '' || rawValue === null || rawValue === undefined ? null : Number(rawValue);
 
+    if (value === null) return;
     if (!Number.isFinite(value) || value < 0 || value > 10) {
       setError('La calificación debe estar entre 0 y 10.');
       return;
@@ -206,6 +217,14 @@ export default function DocentePage() {
     } finally {
       setSending(false);
     }
+  }
+
+  function handleGradeBlur(alumnoId, field) {
+    const value = calificacionesPorAlumno[alumnoId]?.[field];
+    if (value === '' || value === null || value === undefined) {
+      return;
+    }
+    guardarCalificacion(alumnoId, field);
   }
 
   async function cerrarActa() {
@@ -265,8 +284,8 @@ export default function DocentePage() {
         ))}
       </div>
 
-      {error ? <p className="error-box">{error}</p> : null}
-      {message ? <p className="ok-box">{message}</p> : null}
+      {error ? <p className="error-box sticky-toast">{error}</p> : null}
+      {message ? <p className="ok-box sticky-toast">{message}</p> : null}
       {loading ? <p className="docente-loading">Cargando panel docente...</p> : null}
 
       {activeTab === 'asistencia' ? (
@@ -376,6 +395,7 @@ export default function DocentePage() {
                               value={field === 'definitiva' ? (draft.definitiva || '') : (draft[field] ?? '')}
                               disabled={actaCerrada || field === 'definitiva'}
                               onChange={(event) => handleGradeChange(row.id_alumno, field, event.target.value)}
+                              onBlur={() => handleGradeBlur(row.id_alumno, field)}
                               onKeyDown={(event) => {
                                 if (event.key === 'Tab' || event.key === 'Enter') {
                                   event.preventDefault();
@@ -391,7 +411,7 @@ export default function DocentePage() {
                         <td>
                           <button
                             type="button"
-                            className="btn-secondary"
+                            className="save-mini"
                             onClick={() => {
                               ['parcial_1', 'parcial_2', 'proyecto_final'].forEach((field) => {
                                 const value = calificacionesPorAlumno[row.id_alumno]?.[field];
@@ -402,7 +422,7 @@ export default function DocentePage() {
                             }}
                             disabled={sending || actaCerrada}
                           >
-                            Guardar
+                            💾 Guardar
                           </button>
                         </td>
                       </tr>
