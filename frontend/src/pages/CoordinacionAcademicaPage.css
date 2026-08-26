@@ -1,6 +1,6 @@
 .coord-page {
   display: grid;
-  gap: 1rem;
+  gap: 1.1rem;
 }
 
 .coord-header {
@@ -92,11 +92,17 @@
 
 .coord-card h3 {
   margin-top: 0;
+  margin-bottom: 0.75rem;
 }
 
 .coord-form-group {
   display: grid;
   gap: 0.4rem;
+}
+
+.coord-form-group label {
+  color: #d1d5db;
+  font-weight: 600;
 }
 
 .coord-curricular-grid {
@@ -129,6 +135,10 @@
   font: inherit;
 }
 
+.coord-card small {
+  color: #9ca3af;
+}
+
 .coord-card select {
   appearance: none;
 }
@@ -156,6 +166,7 @@
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: #111827;
+  overflow-x: auto;
 }
 
 .coord-table-wrap table {
@@ -264,6 +275,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.8rem;
+  margin-top: 0.65rem;
 }
 
 .coord-col-span-2 {
@@ -303,6 +315,10 @@
 .coord-progreso-right {
   display: grid;
   gap: 1rem;
+}
+
+.coord-progreso-right .coord-list {
+  max-height: 290px;
 }
 
 .coord-form-4 {
@@ -367,12 +383,31 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .coord-tabs {
+    overflow-x: auto;
+    padding-bottom: 0.2rem;
+    scrollbar-width: thin;
+  }
+
+  .coord-tabs button {
+    white-space: nowrap;
+  }
+
   .coord-aulas-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 900px) {
+  .coord-page {
+    gap: 0.85rem;
+  }
+
+  .coord-header,
+  .coord-card {
+    padding: 0.85rem;
+  }
+
   .coord-grid-2,
   .coord-form-4,
   .coord-curricular-grid,
@@ -386,5 +421,14 @@
 
   .coord-aulas-grid {
     grid-template-columns: 1fr;
+  }
+
+  .coord-list {
+    max-height: 280px;
+  }
+
+  .coord-empty-state {
+    min-height: 140px;
+    font-size: 0.95rem;
   }
 }
