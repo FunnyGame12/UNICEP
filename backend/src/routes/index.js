@@ -19,6 +19,8 @@ router.get('/health', (_req, res) => {
 
 router.use('/auth', authRoutes);
 router.use('/alumnos', alumnoRoutes);
+router.use('/alumno', alumnoRoutes);
+router.use('/estudiante', alumnoRoutes);
 router.get('/docentes/asistencias', authMaestro, requirePermission(PERMISSIONS.MAESTRO_ASISTENCIAS_READ), docenteController.listarAsistencias);
 router.post('/docentes/asistencias', authMaestro, requirePermission(PERMISSIONS.MAESTRO_ASISTENCIAS_CREATE), docenteController.registrarAsistencia);
 router.get('/docentes/aprovechamiento', authMaestro, requirePermission(PERMISSIONS.MAESTRO_APROVECHAMIENTO_READ), docenteController.aprovechamiento);

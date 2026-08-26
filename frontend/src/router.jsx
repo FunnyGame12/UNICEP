@@ -36,6 +36,14 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: 'estudiante',
+        element: (
+          <ProtectedRoute roles={['alumno']}>
+            <AlumnoPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
         path: 'docente',
         element: (
           <ProtectedRoute roles={['maestro', 'docente']}>

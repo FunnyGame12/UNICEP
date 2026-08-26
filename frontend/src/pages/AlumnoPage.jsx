@@ -1,214 +1,204 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
 import api from '../services/api';
-import { useAuth } from '../auth/AuthContext';
+import './AlumnoPage.css';
 
-const anunciosDemo = [
-  {
-    title: 'Actualización institucional',
-    detail: 'Consulta semanalmente tus módulos académicos, materiales y recordatorios publicados por control escolar.',
-  },
-  {
-    title: 'Integración de video clases',
-    detail: 'Los enlaces de YouTube se mostrarán aquí en cuanto el docente publique nuevas sesiones o clases de apoyo.',
-  },
-  {
-    title: 'Portafolio con Drive',
-    detail: 'La carga final de evidencias se conectará con una carpeta institucional de Google Drive en la siguiente fase.',
-  },
+const tabs = [
+  { id: 'dia', label: 'Mi Dia' },
+  { id: 'calificaciones', label: 'Calificaciones' },
+  { id: 'ventanilla', label: 'Ventanilla' },
+  { id: 'perfil', label: 'Perfil y Alertas' },
 ];
-
-const videoClasesDemo = [
-  {
-    title: 'Video clases por publicar',
-    description: 'Aquí se concentrarán los enlaces que comparta cada docente para reforzar los temas por materia.',
-  },
-  {
-    title: 'Canal académico institucional',
-    description: 'La integración de YouTube se mostrará en este espacio cuando se habilite el repositorio oficial.',
-  },
-];
-
-const statusLabels = {
-  pendiente: 'Pendiente',
-  entregada: 'Entregada',
-  fuera_de_tiempo: 'Fuera de tiempo',
-  calificada: 'Calificada',
-  pagado: 'Pagado',
-  condonado: 'Condonado por Dirección',
-  vencido: 'Vencido',
-  cursada: 'Cursada',
-  en_curso: 'En curso',
-  recibido: 'Recibido',
-  en_revision: 'En revisión',
-  resuelto: 'Resuelto',
-  rechazado: 'Rechazado',
-  cancelado: 'Cancelado',
-};
 
 const tramiteLabels = {
   constancia: 'Constancia',
   credencial: 'Credencial',
   uniforme: 'Uniforme',
-  papeleria_oficial: 'Papelería oficial',
   comprobante_pago: 'Comprobante de pago',
-  otro: 'Otro',
 };
 
-function formatDate(value) {
+const estatusTramiteLabels = {
+  recibido: 'Recibido',
+  en_revision: 'En revision',
+  en_proceso: 'En proceso',
+  resuelto: 'Listo para entrega',
+  rechazado: 'Rechazado',
+  cancelado: 'Cancelado',
+};
+
+const pagoSchema = z.object({
+  id_concepto_pago: z.string().min(1, 'Selecciona un concepto de pago.'),
+  monto_pagado: z.preprocess(
+    (value) => (value === '' || value == null ? NaN : Number(value)),
+    z.number().positive('El monto debe ser mayor a 0.'),
+  ),
+  adjunto_url: z
+    .string()
+    .trim()
+    .url('Ingresa una URL valida para el comprobante.'),
+});
+
+const tramiteSchema = z.object({
+  tipo: z.enum(['constancia', 'credencial', 'uniforme']),
+  descripcion: z.string().trim().optional(),
+  adjunto_url: z.string().trim().optional(),
+});
+
+const entregaSchema = z.object({
+  evidencia_url: z.string().trim().min(1, 'Debes enviar una URL de evidencia.').url('Ingresa una URL valida.'),
+  tamano_mb: z.preprocess(
+    (value) => (value === '' || value == null ? 0 : Number(value)),
+    z.number().min(0, 'Tamano invalido').max(10, 'El archivo excede 10MB.'),
+  ),
+});
+
+function formatDate(value, withTime = false) {
   if (!value) return 'Sin fecha';
   return new Intl.DateTimeFormat('es-MX', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
+    dateStyle: 'medium',
+    ...(withTime ? { timeStyle: 'short' } : {}),
   }).format(new Date(value));
 }
 
-function formatDateTime(value) {
-  if (!value) return 'Sin fecha';
-  return new Intl.DateTimeFormat('es-MX', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
+function getUrgencyClass(hours) {
+  if (hours == null) return 'urgency-normal';
+  if (hours <= 6) return 'urgency-high';
+  if (hours <= 24) return 'urgency-medium';
+  return 'urgency-normal';
 }
 
-function formatCurrency(value) {
-  return new Intl.NumberFormat('es-MX', {
-    style: 'currency',
-    currency: 'MXN',
-  }).format(Number(value || 0));
-}
-
-function groupBy(items, keyBuilder) {
-  return items.reduce((acc, item) => {
-    const key = keyBuilder(item);
-    if (!acc[key]) {
-      acc[key] = [];
-    }
-    acc[key].push(item);
-    return acc;
-  }, {});
-}
-
-function getItems(payload) {
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-  if (Array.isArray(payload?.items)) {
-    return payload.items;
-  }
-  return [];
+function getStatusBadgeClass(estatus) {
+  if (estatus === 'resuelto') return 'badge-success';
+  if (estatus === 'en_proceso' || estatus === 'en_revision') return 'badge-warn';
+  if (estatus === 'rechazado' || estatus === 'cancelado') return 'badge-danger';
+  return 'badge-neutral';
 }
 
 export default function AlumnoPage() {
-  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState('dia');
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  const [sectionErrors, setSectionErrors] = useState({});
-  const [dashboard, setDashboard] = useState(null);
-  const [tareas, setTareas] = useState([]);
-  const [calificaciones, setCalificaciones] = useState([]);
+  const [message, setMessage] = useState('');
+
+  const [acceso, setAcceso] = useState(null);
+  const [horario, setHorario] = useState([]);
+  const [tareasPendientes, setTareasPendientes] = useState([]);
   const [materiales, setMateriales] = useState([]);
-  const [portafolio, setPortafolio] = useState([]);
+  const [calificaciones, setCalificaciones] = useState({ parciales: [], finales: [], resumen: [] });
+  const [calificacionesBloqueadas, setCalificacionesBloqueadas] = useState(false);
+  const [asistencia, setAsistencia] = useState({ items: [], acumulado: [] });
+  const [historialTramites, setHistorialTramites] = useState([]);
+  const [notificaciones, setNotificaciones] = useState([]);
   const [meritos, setMeritos] = useState([]);
-  const [planEstudio, setPlanEstudio] = useState({ items: [], porcentaje_avance: 0 });
-  const [pagos, setPagos] = useState([]);
-  const [resumenPagos, setResumenPagos] = useState(null);
-  const [tramites, setTramites] = useState([]);
-  const [entregaLinks, setEntregaLinks] = useState({});
-  const [submittingTaskId, setSubmittingTaskId] = useState(null);
-  const [actionMessage, setActionMessage] = useState('');
-  const [actionError, setActionError] = useState('');
-  const [tramiteForm, setTramiteForm] = useState({
-    tipo: 'constancia',
-    descripcion: '',
-    adjunto_url: '',
+  const [pagos, setPagos] = useState({ items: [], resumen: null });
+  const [conceptosPago, setConceptosPago] = useState([]);
+
+  const [openPagoAccordion, setOpenPagoAccordion] = useState(true);
+  const [openTramiteAccordion, setOpenTramiteAccordion] = useState(false);
+
+  const [entregaDrafts, setEntregaDrafts] = useState({});
+
+  const pagoForm = useForm({
+    resolver: zodResolver(pagoSchema),
+    defaultValues: {
+      id_concepto_pago: '',
+      monto_pagado: '',
+      adjunto_url: '',
+    },
   });
 
-  async function loadAlumnoData() {
+  const tramiteForm = useForm({
+    resolver: zodResolver(tramiteSchema),
+    defaultValues: {
+      tipo: 'constancia',
+      descripcion: '',
+      adjunto_url: '',
+    },
+  });
+
+  const primeraClase = useMemo(() => {
+    if (horario.length === 0) return null;
+
+    return [...horario]
+      .sort((a, b) => {
+        const aDate = a.sala_virtual?.fecha_programada ? new Date(a.sala_virtual.fecha_programada).getTime() : Number.MAX_SAFE_INTEGER;
+        const bDate = b.sala_virtual?.fecha_programada ? new Date(b.sala_virtual.fecha_programada).getTime() : Number.MAX_SAFE_INTEGER;
+        return aDate - bDate;
+      })
+      .find((item) => item.sala_virtual?.fecha_programada) || horario[0];
+  }, [horario]);
+
+  async function loadBase() {
     setLoading(true);
     setError('');
-    setSectionErrors({});
-    setActionError('');
 
     try {
-      const dashboardResponse = await api.get('/alumnos/dashboard');
-      setDashboard(dashboardResponse.data);
-
-      const results = await Promise.allSettled([
-        api.get('/alumnos/tareas'),
-        api.get('/alumnos/calificaciones'),
-        api.get('/alumnos/materiales'),
-        api.get('/alumnos/portafolio'),
-        api.get('/alumnos/meritos'),
-        api.get('/alumnos/plan-estudio'),
-        api.get('/alumnos/pagos'),
-        api.get('/alumnos/tramites'),
+      const [estadoResp, pagosResp] = await Promise.all([
+        api.get('/alumno/estado-acceso'),
+        api.get('/alumno/pagos'),
       ]);
 
-      const nextSectionErrors = {};
+      setAcceso(estadoResp.data);
+      setPagos(pagosResp.data || { items: [], resumen: null });
 
-      if (results[0].status === 'fulfilled') {
-        setTareas(getItems(results[0].value.data));
-      } else {
-        setTareas([]);
-        nextSectionErrors.tareas = results[0].reason?.response?.data?.message || 'No se pudieron cargar las tareas.';
-      }
+      const conceptosUnicos = [];
+      const seen = new Set();
+      (pagosResp.data?.items || []).forEach((item) => {
+        if (!item.id_concepto_pago || seen.has(item.id_concepto_pago)) return;
+        seen.add(item.id_concepto_pago);
+        conceptosUnicos.push({
+          id_concepto_pago: item.id_concepto_pago,
+          nombre: item.concepto,
+        });
+      });
+      setConceptosPago(conceptosUnicos);
 
-      if (results[1].status === 'fulfilled') {
-        setCalificaciones(getItems(results[1].value.data));
-      } else {
-        setCalificaciones([]);
-        nextSectionErrors.calificaciones = results[1].reason?.response?.data?.message || 'No se pudieron cargar las calificaciones.';
-      }
+      const [tramitesResp, meritosResp] = await Promise.all([
+        api.get('/alumno/historial-tramites'),
+        api.get('/alumno/meritos').catch(() => ({ data: { items: [] } })),
+      ]);
 
-      if (results[2].status === 'fulfilled') {
-        setMateriales(getItems(results[2].value.data));
-      } else {
+      setHistorialTramites(tramitesResp.data?.items || []);
+      setMeritos(meritosResp.data?.items || []);
+
+      if (estadoResp.data?.bloqueo_plataforma) {
+        setHorario([]);
+        setTareasPendientes([]);
         setMateriales([]);
-        nextSectionErrors.materiales = results[2].reason?.response?.data?.message || 'No se pudieron cargar los materiales.';
+        setCalificaciones({ parciales: [], finales: [], resumen: [] });
+        setAsistencia({ items: [], acumulado: [] });
+        setNotificaciones([]);
+        setCalificacionesBloqueadas(Boolean(estadoResp.data?.bloqueo_calificaciones));
+        return;
       }
 
-      if (results[3].status === 'fulfilled') {
-        setPortafolio(getItems(results[3].value.data));
-      } else {
-        setPortafolio([]);
-        nextSectionErrors.portafolio = results[3].reason?.response?.data?.message || 'No se pudo cargar el portafolio.';
-      }
+      const [horarioResp, tareasResp, materialesResp, asistenciaResp, notificacionesResp, calificacionesResp] = await Promise.all([
+        api.get('/alumno/horario-aulas'),
+        api.get('/alumno/tareas-pendientes'),
+        api.get('/alumno/materiales-clase'),
+        api.get('/alumno/asistencia'),
+        api.get('/alumno/notificaciones'),
+        api.get('/alumno/calificaciones').catch((requestError) => {
+          if (requestError?.response?.status === 403) {
+            setCalificacionesBloqueadas(true);
+            return { data: { parciales: [], finales: [], resumen: [] } };
+          }
+          throw requestError;
+        }),
+      ]);
 
-      if (results[4].status === 'fulfilled') {
-        setMeritos(getItems(results[4].value.data));
-      } else {
-        setMeritos([]);
-        nextSectionErrors.meritos = results[4].reason?.response?.data?.message || 'No se pudieron cargar los méritos.';
+      setHorario(horarioResp.data?.items || []);
+      setTareasPendientes(tareasResp.data?.items || []);
+      setMateriales(materialesResp.data?.items || []);
+      setAsistencia(asistenciaResp.data || { items: [], acumulado: [] });
+      setNotificaciones(notificacionesResp.data?.items || []);
+      setCalificaciones(calificacionesResp.data || { parciales: [], finales: [], resumen: [] });
+      if (!calificacionesBloqueadas) {
+        setCalificacionesBloqueadas(false);
       }
-
-      if (results[5].status === 'fulfilled') {
-        setPlanEstudio(results[5].value.data || { items: [], porcentaje_avance: 0 });
-      } else {
-        setPlanEstudio({ items: [], porcentaje_avance: 0 });
-        nextSectionErrors.plan = results[5].reason?.response?.data?.message || 'No se pudo cargar el plan de estudios.';
-      }
-
-      if (results[6].status === 'fulfilled') {
-        setPagos(getItems(results[6].value.data));
-        setResumenPagos(results[6].value.data.resumen || dashboardResponse.data.resumen_pagos || null);
-      } else {
-        setPagos([]);
-        setResumenPagos(dashboardResponse.data.resumen_pagos || null);
-        nextSectionErrors.pagos = results[6].reason?.response?.data?.message || 'No se pudo cargar el módulo de pagos.';
-      }
-
-      if (results[7].status === 'fulfilled') {
-        setTramites(getItems(results[7].value.data));
-      } else {
-        setTramites([]);
-        nextSectionErrors.tramites = results[7].reason?.response?.data?.message || 'No se pudo cargar la ventanilla virtual.';
-      }
-
-      setSectionErrors(nextSectionErrors);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo cargar el panel del alumno.');
     } finally {
@@ -217,584 +207,434 @@ export default function AlumnoPage() {
   }
 
   useEffect(() => {
-    loadAlumnoData();
+    loadBase();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id_usuario, user?.rol]);
+  }, []);
 
-  async function handleEntregarTarea(idTarea, initialUrl = '') {
-    const archivoUrl = String(entregaLinks[idTarea] ?? initialUrl).trim();
-    setActionError('');
-    setActionMessage('');
-
-    if (!archivoUrl) {
-      setActionError('Pega una URL válida del archivo o evidencia antes de registrar la entrega.');
-      return;
-    }
-
-    setSubmittingTaskId(idTarea);
+  async function submitComprobante(values) {
+    setSending(true);
+    setError('');
+    setMessage('');
 
     try {
-      await api.post(`/alumnos/tareas/${idTarea}/entregas`, {
-        archivo_entrega_url: archivoUrl,
+      await api.post('/alumno/pagos/comprobantes', {
+        id_concepto_pago: Number(values.id_concepto_pago),
+        monto_pagado: Number(values.monto_pagado),
+        adjunto_url: values.adjunto_url,
       });
-      setActionMessage('Entrega registrada correctamente.');
-      await loadAlumnoData();
+
+      pagoForm.reset({ id_concepto_pago: '', monto_pagado: '', adjunto_url: '' });
+      setMessage('Comprobante enviado correctamente a ventanilla.');
+      await loadBase();
     } catch (requestError) {
-      setActionError(requestError?.response?.data?.message || 'No se pudo registrar la entrega de la tarea.');
+      setError(requestError?.response?.data?.message || 'No se pudo enviar el comprobante.');
     } finally {
-      setSubmittingTaskId(null);
+      setSending(false);
     }
   }
 
-  async function handleCrearTramite(event) {
-    event.preventDefault();
-    setActionError('');
-    setActionMessage('');
-
-    if (!tramiteForm.descripcion.trim()) {
-      setActionError('Describe el trámite que deseas solicitar.');
-      return;
-    }
+  async function submitTramite(values) {
+    setSending(true);
+    setError('');
+    setMessage('');
 
     try {
-      await api.post('/alumnos/tramites', {
-        tipo: tramiteForm.tipo,
-        descripcion: tramiteForm.descripcion.trim(),
-        adjunto_url: tramiteForm.adjunto_url.trim() || undefined,
+      await api.post('/alumno/tramites/solicitar', {
+        tipo: values.tipo,
+        descripcion: values.descripcion?.trim() || undefined,
+        adjunto_url: values.adjunto_url?.trim() || undefined,
       });
-      setTramiteForm({ tipo: 'constancia', descripcion: '', adjunto_url: '' });
-      setActionMessage('Trámite enviado a ventanilla virtual.');
-      await loadAlumnoData();
+
+      tramiteForm.reset({ tipo: 'constancia', descripcion: '', adjunto_url: '' });
+      setMessage('Solicitud enviada a ventanilla.');
+      await loadBase();
     } catch (requestError) {
-      setActionError(requestError?.response?.data?.message || 'No se pudo registrar el trámite.');
+      setError(requestError?.response?.data?.message || 'No se pudo registrar el tramite.');
+    } finally {
+      setSending(false);
     }
   }
 
-  function handleDownloadCalificaciones() {
-    if (calificaciones.length === 0) {
-      setActionError('No hay calificaciones disponibles para descargar.');
+  async function entregarTarea(tareaId) {
+    const draft = entregaDrafts[tareaId] || { evidencia_url: '', tamano_mb: '' };
+    const parsed = entregaSchema.safeParse(draft);
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message || 'Datos de entrega invalidos.');
       return;
     }
 
-    const rows = [
-      ['Materia', 'Tarea', 'Calificación', 'Estatus académico', 'Retroalimentación'],
-      ...calificaciones.map((item) => [
-        item.tarea?.materia?.nombre_materia || 'Sin materia',
-        item.tarea?.titulo || 'Sin tarea',
-        item.calificacion ?? 'Sin calificación',
-        item.estatus_academico,
-        item.retroalimentacion || '',
-      ]),
-    ];
+    setSending(true);
+    setError('');
+    setMessage('');
 
-    const csv = rows
-      .map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(','))
-      .join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'kardex-alumno.csv';
-    link.click();
-    URL.revokeObjectURL(url);
+    try {
+      await api.post(`/alumno/tareas/${Number(tareaId)}/entregar`, {
+        archivo_entrega_url: parsed.data.evidencia_url,
+      });
+      setMessage('Entrega registrada correctamente.');
+      setEntregaDrafts((prev) => ({ ...prev, [tareaId]: { evidencia_url: '', tamano_mb: '' } }));
+      await loadBase();
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo entregar la tarea.');
+    } finally {
+      setSending(false);
+    }
   }
 
-  const perfil = dashboard?.perfil;
-  const usuarioPerfil = perfil?.usuario || user || {};
-  const pagosResumen = resumenPagos || dashboard?.resumen_pagos || {
-    estado_general: 'pendiente',
-    total_pagado: 0,
-    adeudo_pendiente: 0,
-  };
-  const tareasPorMateria = groupBy(tareas, (item) => item.materia?.nombre_materia || 'Sin materia');
-  const materialesPorMateria = groupBy(materiales, (item) => item.materia?.nombre_materia || 'Sin materia');
-  const portafolioPorMateria = groupBy(portafolio, (item) => item.materia?.nombre_materia || 'Sin materia');
-  const planPorBimestre = groupBy(planEstudio.items || [], (item) => item.bimestre_pertenece || 'Sin bimestre');
-
-  if (!dashboard && !loading) {
-    return (
-      <section className="student-page">
-        <div className="student-toast-stack">
-          <div className="error-box student-feedback">{error || 'No se pudo cargar el panel del alumno.'}</div>
-        </div>
-        <button type="button" className="btn-primary mini-action-button" onClick={loadAlumnoData}>
-          Reintentar carga
-        </button>
-      </section>
-    );
-  }
+  const bloqueadoTotal = Boolean(acceso?.bloqueo_plataforma);
 
   return (
-    <section className="student-page">
-      <div className="student-toast-stack" aria-live="polite" aria-atomic="true">
-        {error ? <p className="error-box student-feedback">{error}</p> : null}
-        {actionError ? <p className="error-box student-feedback">{actionError}</p> : null}
-        {actionMessage ? <p className="ok-box student-feedback">{actionMessage}</p> : null}
+    <section className="alumno-page">
+      {bloqueadoTotal ? (
+        <div className="alumno-overlay" role="dialog" aria-modal="true">
+          <div className="alumno-overlay-card">
+            <h2>Acceso Restringido</h2>
+            <p>
+              Tu acceso academico esta restringido temporalmente.
+              Comunicate con Tesoreria para regularizar tu cuenta.
+            </p>
+            <p className="alumno-overlay-note">
+              Mientras tanto, solo puedes usar la Ventanilla Digital para subir tu comprobante de pago.
+            </p>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => setActiveTab('ventanilla')}
+            >
+              Ir a Ventanilla
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <header className="alumno-header alumno-card">
+        <p className="alumno-eyebrow">Portal Estudiantil UNICEP</p>
+        <h2>Hola, {acceso?.perfil?.nombre_completo || 'Alumno'}</h2>
+        <p>{acceso?.perfil?.carrera || 'Sin carrera'} · Bimestre {acceso?.perfil?.bimestre_actual || 'N/A'}</p>
+      </header>
+
+      <div className="alumno-tabs desktop-only" role="tablist" aria-label="Panel alumno">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={activeTab === tab.id ? 'is-active' : ''}
+            onClick={() => setActiveTab(tab.id)}
+            disabled={bloqueadoTotal && tab.id !== 'ventanilla'}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <section id="alumno-dashboard" className="student-hero card-panel">
-        <div className="student-profile-card">
-          <div className="student-avatar">
-            {usuarioPerfil.foto_url ? (
-              <img src={usuarioPerfil.foto_url} alt={usuarioPerfil.nombre_completo} />
+      {error ? <p className="error-box">{error}</p> : null}
+      {message ? <p className="ok-box">{message}</p> : null}
+      {loading ? <p className="alumno-loading">Cargando panel...</p> : null}
+
+      {activeTab === 'dia' ? (
+        <div className="alumno-section-grid">
+          <article className="alumno-card next-class-card">
+            <h3>Proxima clase</h3>
+            {primeraClase ? (
+              <>
+                <strong>{primeraClase.materia}</strong>
+                <p>Grupo {primeraClase.grupo}</p>
+                <p>Aula: {primeraClase.aula_fisica || 'Por confirmar'}</p>
+                {primeraClase.sala_virtual?.enlace ? (
+                  <a className="btn-primary" href={primeraClase.sala_virtual.enlace} target="_blank" rel="noreferrer">
+                    Unirme a videollamada
+                  </a>
+                ) : (
+                  <button type="button" className="btn-secondary" disabled>Sin sala virtual</button>
+                )}
+              </>
             ) : (
-              <span>{(usuarioPerfil.nombre_completo || 'A').charAt(0).toUpperCase()}</span>
+              <p className="alumno-empty">Sin clases programadas.</p>
             )}
-          </div>
-          <div className="student-profile-copy">
-            <p className="student-eyebrow">Dashboard del alumno</p>
-            <h2>{usuarioPerfil.nombre_completo || 'Alumno UNICEP'}</h2>
-            <p>{usuarioPerfil.correo || 'Sin correo registrado'}</p>
-            <div className="student-meta-grid">
-              <div>
-                <strong>Folio</strong>
-                <span>{usuarioPerfil.folio_matricula || 'Sin folio'}</span>
-              </div>
-              <div>
-                <strong>Carrera</strong>
-                <span>{perfil?.carrera || 'Sin carrera asignada'}</span>
-              </div>
-              <div>
-                <strong>Bimestre actual</strong>
-                <span>{perfil?.bimestre_actual || 'Sin asignar'}</span>
-              </div>
-              <div>
-                <strong>Estado de pagos</strong>
-                <span>{pagosResumen.estado_general === 'al_corriente' ? 'Al corriente' : pagosResumen.estado_general === 'adeudo' ? 'Con adeudo' : 'Pendiente'}</span>
-              </div>
-            </div>
-          </div>
-        </div>
+          </article>
 
-        <div className="student-summary-grid">
-          <article className="summary-card">
-            <span>Tareas activas</span>
-            <strong>{tareas.length}</strong>
-            <p>Incluye pendientes, entregadas, fuera de tiempo y calificadas.</p>
-          </article>
-          <article className="summary-card">
-            <span>Promedio visible</span>
-            <strong>
-              {calificaciones.length > 0
-                ? (calificaciones.reduce((acc, item) => acc + Number(item.calificacion || 0), 0) / calificaciones.length).toFixed(1)
-                : 'N/D'}
-            </strong>
-            <p>Kardex digital con base en las tareas ya calificadas.</p>
-          </article>
-          <article className="summary-card">
-            <span>Avance curricular</span>
-            <strong>{planEstudio.porcentaje_avance || 0}%</strong>
-            <p>Mide materias cursadas, en curso y pendientes por bimestre.</p>
-          </article>
-          <article className="summary-card">
-            <span>Adeudo pendiente</span>
-            <strong>{formatCurrency(pagosResumen.adeudo_pendiente)}</strong>
-            <p>Resumen financiero consultivo sin cobro en esta primera etapa.</p>
-          </article>
-        </div>
-
-        <div className="quick-access-panel">
-          <a href="#alumno-anuncios" className="quick-link">Anuncios</a>
-          <a href="#alumno-tareas" className="quick-link">Tareas</a>
-          <a href="#alumno-calificaciones" className="quick-link">Calificaciones</a>
-          <a href="#alumno-materiales" className="quick-link">Material</a>
-          <a href="#alumno-portafolio" className="quick-link">Portafolio</a>
-          <a href="#alumno-tramites" className="quick-link">Trámites</a>
-          <a href="#alumno-videos" className="quick-link">Video clases</a>
-        </div>
-
-        <div className="schedule-dashboard-grid">
-          <article className="card-panel student-schedule-card">
-            <div className="section-heading">
-              <h3>Horario de clases por bimestre</h3>
-              <p>Consulta tus grupos actuales y el rango oficial de horarios para modalidad flexible.</p>
-            </div>
-            <div className="bimestre-stack">
-              {(dashboard?.horario_bimestre || []).length > 0 ? (dashboard.horario_bimestre.map((bloque) => (
-                <div key={bloque.bimestre} className="bimestre-card">
-                  <strong>Bimestre {bloque.bimestre}</strong>
-                  {bloque.materias.map((materia) => (
-                    <div key={`${materia.codigo_materia}-${materia.grupo}`} className="mini-row">
-                      <span>{materia.nombre_materia}</span>
-                      <small>{materia.grupo} · {materia.docente}</small>
+          <article className="alumno-card">
+            <h3>Tareas por entregar</h3>
+            {tareasPendientes.length === 0 ? (
+              <p className="alumno-empty">No tienes tareas pendientes.</p>
+            ) : (
+              <div className="alumno-list">
+                {tareasPendientes.map((item) => (
+                  <article key={item.id_tarea} className="alumno-list-item">
+                    <div className="alumno-list-head">
+                      <strong>{item.titulo}</strong>
+                      <span className={`urgency-chip ${getUrgencyClass(item.vence_en_horas)}`}>
+                        {item.vence_en_horas != null ? `Vence en ${item.vence_en_horas} horas` : 'Fecha no disponible'}
+                      </span>
                     </div>
+                    <p>{item.materia?.nombre_materia || 'Materia'} · Grupo {item.grupo_id || '-'}</p>
+                    <p>{formatDate(item.fecha_limite, true)}</p>
+                    <div className="alumno-inline-form">
+                      <input
+                        type="url"
+                        placeholder="https://evidencia..."
+                        value={entregaDrafts[item.id_tarea]?.evidencia_url || ''}
+                        onChange={(event) => setEntregaDrafts((prev) => ({
+                          ...prev,
+                          [item.id_tarea]: {
+                            ...prev[item.id_tarea],
+                            evidencia_url: event.target.value,
+                          },
+                        }))}
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        placeholder="Tamano MB"
+                        value={entregaDrafts[item.id_tarea]?.tamano_mb || ''}
+                        onChange={(event) => setEntregaDrafts((prev) => ({
+                          ...prev,
+                          [item.id_tarea]: {
+                            ...prev[item.id_tarea],
+                            tamano_mb: event.target.value,
+                          },
+                        }))}
+                      />
+                      <button type="button" className="btn-primary" onClick={() => entregarTarea(item.id_tarea)} disabled={sending}>
+                        Entregar tarea
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </article>
+
+          <article className="alumno-card full-width">
+            <h3>Materiales de clase</h3>
+            {materiales.length === 0 ? (
+              <p className="alumno-empty">No hay materiales publicados.</p>
+            ) : (
+              <div className="alumno-list compact">
+                {materiales.map((item) => (
+                  <article key={item.id_material} className="alumno-list-item">
+                    <strong>{item.tema_semana}</strong>
+                    <p>{item.materia?.nombre_materia || 'Materia'} · {item.tipo_archivo}</p>
+                    <a href={item.archivo_url} target="_blank" rel="noreferrer">Abrir recurso</a>
+                  </article>
+                ))}
+              </div>
+            )}
+          </article>
+        </div>
+      ) : null}
+
+      {activeTab === 'calificaciones' ? (
+        <article className="alumno-card">
+          <h3>Mis Calificaciones</h3>
+          {calificacionesBloqueadas ? (
+            <div className="alumno-empty lock-empty">
+              <strong>Calificaciones bloqueadas</strong>
+              <p>Tus calificaciones estan temporalmente ocultas por un tema administrativo.</p>
+            </div>
+          ) : (
+            <>
+              {calificaciones.resumen.length === 0 ? (
+                <p className="alumno-empty">Aun no hay calificaciones registradas.</p>
+              ) : (
+                <div className="table-wrap dark-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Materia</th>
+                        <th>Parcial</th>
+                        <th>Final</th>
+                        <th>Estatus</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {calificaciones.resumen.map((item) => (
+                        <tr key={item.id_materia}>
+                          <td>{item.materia}</td>
+                          <td>{item.parcial_promedio ?? 'N/D'}</td>
+                          <td>{item.final_promedio ?? 'N/D'}</td>
+                          <td>{item.estatus}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <h4>Asistencia acumulada</h4>
+              {asistencia.acumulado.length === 0 ? (
+                <p className="alumno-empty">Sin registros de asistencia.</p>
+              ) : (
+                <div className="alumno-list compact">
+                  {asistencia.acumulado.map((item) => (
+                    <article key={item.id_materia} className="alumno-list-item">
+                      <strong>{item.materia}</strong>
+                      <p>{item.porcentaje_asistencia}% asistencia</p>
+                      <p>{item.presentes} presentes · {item.faltas} faltas · {item.retardos} retardos</p>
+                    </article>
                   ))}
                 </div>
-              ))) : <p className="empty-state">Aún no hay grupos cargados para este alumno.</p>}
-            </div>
+              )}
+            </>
+          )}
+        </article>
+      ) : null}
+
+      {activeTab === 'ventanilla' ? (
+        <div className="alumno-section-grid">
+          <article className="alumno-card">
+            <button
+              type="button"
+              className="accordion-toggle"
+              onClick={() => setOpenPagoAccordion((prev) => !prev)}
+            >
+              Subir Comprobante de Pago
+            </button>
+            {openPagoAccordion ? (
+              <form className="alumno-form" onSubmit={pagoForm.handleSubmit(submitComprobante)}>
+                <label htmlFor="pago-concepto">Concepto</label>
+                <select id="pago-concepto" {...pagoForm.register('id_concepto_pago')}>
+                  <option value="">Selecciona concepto</option>
+                  {conceptosPago.map((item) => (
+                    <option key={item.id_concepto_pago} value={String(item.id_concepto_pago)}>
+                      {item.nombre}
+                    </option>
+                  ))}
+                </select>
+
+                <label htmlFor="pago-monto">Monto pagado</label>
+                <input id="pago-monto" type="number" min="0" step="0.01" {...pagoForm.register('monto_pagado')} />
+
+                <label htmlFor="pago-adjunto">Comprobante (URL imagen/PDF)</label>
+                <input id="pago-adjunto" type="url" placeholder="https://..." {...pagoForm.register('adjunto_url')} />
+
+                <button type="submit" className="btn-primary" disabled={sending}>Subir comprobante</button>
+              </form>
+            ) : null}
           </article>
 
-          <article className="card-panel student-schedule-card">
-            <div className="section-heading">
-              <h3>Rangos oficiales</h3>
-              <p>Ventanas horarias institucionales aplicables a la modalidad ejecutiva.</p>
-            </div>
-            <div className="official-schedule-list">
-              {(dashboard?.horarios_oficiales || []).map((horario) => (
-                <div key={horario.id_horario} className="official-schedule-item">
-                  <strong>{horario.turno}</strong>
-                  <span>{horario.periodo}</span>
-                  <small>{horario.hora_inicio} - {horario.hora_fin}</small>
-                </div>
-              ))}
-            </div>
+          <article className="alumno-card">
+            <button
+              type="button"
+              className="accordion-toggle"
+              onClick={() => setOpenTramiteAccordion((prev) => !prev)}
+            >
+              Solicitar Documento
+            </button>
+            {openTramiteAccordion ? (
+              <form className="alumno-form" onSubmit={tramiteForm.handleSubmit(submitTramite)}>
+                <label htmlFor="tramite-tipo">Tipo de tramite</label>
+                <select id="tramite-tipo" {...tramiteForm.register('tipo')}>
+                  <option value="constancia">Constancia</option>
+                  <option value="credencial">Credencial</option>
+                  <option value="uniforme">Uniforme</option>
+                </select>
+
+                <label htmlFor="tramite-descripcion">Descripcion (opcional)</label>
+                <textarea id="tramite-descripcion" rows="3" {...tramiteForm.register('descripcion')} />
+
+                <label htmlFor="tramite-adjunto">Adjunto (opcional)</label>
+                <input id="tramite-adjunto" type="url" placeholder="https://..." {...tramiteForm.register('adjunto_url')} />
+
+                <button type="submit" className="btn-secondary" disabled={sending}>Enviar solicitud</button>
+              </form>
+            ) : null}
           </article>
-        </div>
-      </section>
 
-      {loading ? <p className="student-loading">Cargando información del alumno...</p> : null}
-
-      <section id="alumno-anuncios" className="card-panel student-section">
-        <div className="section-heading">
-          <h3>Anuncios y accesos prioritarios</h3>
-          <p>Este bloque concentra avisos institucionales y recordatorios de uso frecuente.</p>
-        </div>
-        <div className="info-grid">
-          {anunciosDemo.map((item) => (
-            <article key={item.title} className="info-card">
-              <h4>{item.title}</h4>
-              <p>{item.detail}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section id="alumno-tareas" className="card-panel student-section">
-        <div className="section-heading">
-          <h3>Zona de tareas</h3>
-          <p>Tareas asignadas por materia con estado, fecha límite, calificación y retroalimentación docente.</p>
-        </div>
-        {sectionErrors.tareas ? <p className="error-box">{sectionErrors.tareas}</p> : null}
-        {Object.keys(tareasPorMateria).length > 0 ? Object.entries(tareasPorMateria).map(([materia, items]) => (
-          <div key={materia} className="subject-block">
-            <h4>{materia}</h4>
-            <div className="student-card-grid">
-              {items.map((item) => (
-                <article key={item.id_tarea} className="student-feature-card">
-                  <div className="card-topline">
-                    <span className={`status-pill status-${item.estatus}`}>{statusLabels[item.estatus] || item.estatus}</span>
-                    <strong>Grupo {item.grupo}</strong>
-                  </div>
-                  <h5>{item.titulo}</h5>
-                  <p>{item.descripcion}</p>
-                  <div className="detail-list">
-                    <div><strong>Fecha límite:</strong> <span>{formatDateTime(item.fecha_limite)}</span></div>
-                    <div><strong>Adjunto:</strong> <span>{item.archivo_adjunto_url ? <a href={item.archivo_adjunto_url} target="_blank" rel="noreferrer">Ver archivo</a> : 'Sin adjunto'}</span></div>
-                    <div><strong>Calificación:</strong> <span>{item.calificacion ?? 'Sin calificar'}</span></div>
-                    <div><strong>Retroalimentación:</strong> <span>{item.retroalimentacion || 'Aún no hay comentarios del docente.'}</span></div>
-                  </div>
-                  <div className="delivery-box">
-                    <label>
-                      URL de entrega
-                      <input
-                        id={`entrega-url-${item.id_tarea}`}
-                        name={`entrega_url_${item.id_tarea}`}
-                        type="url"
-                        value={entregaLinks[item.id_tarea] ?? item.entrega?.archivo_entrega_url ?? ''}
-                        onChange={(event) => setEntregaLinks((actual) => ({ ...actual, [item.id_tarea]: event.target.value }))}
-                        placeholder="https://..."
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      className="btn-primary mini-action-button"
-                      disabled={submittingTaskId === item.id_tarea}
-                      onClick={() => handleEntregarTarea(item.id_tarea, item.entrega?.archivo_entrega_url)}
-                    >
-                      {submittingTaskId === item.id_tarea ? 'Guardando...' : 'Registrar entrega'}
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        )) : <p className="empty-state">No hay tareas asignadas por el momento.</p>}
-      </section>
-
-      <section id="alumno-portafolio" className="card-panel student-section">
-        <div className="section-heading">
-          <h3>Portafolio de evidencias</h3>
-          <p>Espacio para evidencias finales por materia o bimestre, visible para docentes y control escolar.</p>
-        </div>
-        {sectionErrors.portafolio ? <p className="error-box">{sectionErrors.portafolio}</p> : null}
-        <div className="integration-banner">
-          <strong>Integración prevista con Google Drive</strong>
-          <p>La siguiente fase conectará este módulo con una carpeta institucional específica para carga múltiple y organización automática.</p>
-        </div>
-        {Object.keys(portafolioPorMateria).length > 0 ? Object.entries(portafolioPorMateria).map(([materia, items]) => (
-          <div key={materia} className="subject-block">
-            <h4>{materia}</h4>
-            <div className="student-card-grid">
-              {items.map((item) => (
-                <article key={item.id_evidencia} className="student-feature-card compact-card">
-                  <h5>Periodo {item.periodo_bimestre}</h5>
-                  <p>Archivo final cargado para revisión académica.</p>
-                  <div className="detail-list">
-                    <div><strong>Materia:</strong> <span>{item.materia?.nombre_materia || materia}</span></div>
-                    <div><strong>Archivo:</strong> <span><a href={item.archivo_url} target="_blank" rel="noreferrer">Abrir evidencia</a></span></div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        )) : <p className="empty-state">Aún no hay evidencias registradas en el portafolio.</p>}
-      </section>
-
-      <section id="alumno-materiales" className="card-panel student-section">
-        <div className="section-heading">
-          <h3>Material de clases</h3>
-          <p>Repositorio digital por materia con visualización, descarga y organización por temas o semanas.</p>
-        </div>
-        {sectionErrors.materiales ? <p className="error-box">{sectionErrors.materiales}</p> : null}
-        {Object.keys(materialesPorMateria).length > 0 ? Object.entries(materialesPorMateria).map(([materia, items]) => (
-          <div key={materia} className="subject-block">
-            <h4>{materia}</h4>
-            <div className="student-card-grid">
-              {items.map((item) => (
-                <article key={item.id_material} className="student-feature-card compact-card">
-                  <div className="card-topline">
-                    <span className="material-type">{item.tipo_archivo}</span>
-                    <strong>{item.tema_semana}</strong>
-                  </div>
-                  <p>Recurso publicado por el docente para seguimiento semanal.</p>
-                  <div className="material-actions">
-                    <a href={item.archivo_url} target="_blank" rel="noreferrer">Visualizar</a>
-                    <a href={item.archivo_url} target="_blank" rel="noreferrer">Descargar</a>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        )) : <p className="empty-state">Todavía no hay materiales de clase publicados.</p>}
-      </section>
-
-      <section id="alumno-videos" className="card-panel student-section">
-        <div className="section-heading">
-          <h3>Video clases enlazadas a YouTube</h3>
-          <p>Este espacio se alimentará con los enlaces externos que comparta cada docente por materia.</p>
-        </div>
-        <div className="info-grid">
-          {videoClasesDemo.map((item) => (
-            <article key={item.title} className="info-card">
-              <h4>{item.title}</h4>
-              <p>{item.description}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section id="alumno-meritos" className="card-panel student-section">
-        <div className="section-heading">
-          <h3>Méritos académicos</h3>
-          <p>Portafolio curricular con diplomas, constancias, reconocimientos, cursos y talleres.</p>
-        </div>
-        {sectionErrors.meritos ? <p className="error-box">{sectionErrors.meritos}</p> : null}
-        <div className="student-card-grid">
-          {meritos.length > 0 ? meritos.map((item) => (
-            <article key={item.id_merito} className="student-feature-card compact-card">
-              <div className="card-topline">
-                <span className="material-type">{item.tipo_merito}</span>
-                <strong>{formatDate(item.fecha)}</strong>
+          <article className="alumno-card full-width">
+            <h3>Historial de tramites</h3>
+            {historialTramites.length === 0 ? (
+              <p className="alumno-empty">Sin tramites registrados.</p>
+            ) : (
+              <div className="alumno-list compact">
+                {historialTramites.map((item) => (
+                  <article key={item.id_tramite} className="alumno-list-item">
+                    <div className="alumno-list-head">
+                      <strong>{tramiteLabels[item.tipo] || item.tipo}</strong>
+                      <span className={`status-badge ${getStatusBadgeClass(item.estatus)}`}>
+                        {estatusTramiteLabels[item.estatus] || item.estatus}
+                      </span>
+                    </div>
+                    <p>{item.descripcion}</p>
+                    <small>{formatDate(item.fecha_resolucion || item.fecha_solicitud, true)}</small>
+                  </article>
+                ))}
               </div>
-              <h5>{item.nombre}</h5>
-              <p>Archivo académico cargado como respaldo curricular.</p>
-              <a href={item.archivo_url} target="_blank" rel="noreferrer">Abrir archivo</a>
-            </article>
-          )) : <p className="empty-state">Aún no hay méritos académicos registrados.</p>}
+            )}
+          </article>
         </div>
-      </section>
+      ) : null}
 
-      <section id="alumno-calificaciones" className="card-panel student-section">
-        <div className="section-heading section-heading-inline">
-          <div>
-            <h3>Calificaciones y kardex digital</h3>
-            <p>Consulta calificaciones por materia, historial académico y retroalimentación docente.</p>
-          </div>
-          <button type="button" className="btn-primary mini-action-button" onClick={handleDownloadCalificaciones}>
-            Descargar kardex
-          </button>
-        </div>
-        {sectionErrors.calificaciones ? <p className="error-box">{sectionErrors.calificaciones}</p> : null}
-        <div className="integration-banner slim-banner">
-          <strong>Integración prevista con Excel académico en la nube</strong>
-          <p>Este módulo podrá sincronizarse con el archivo institucional de calificaciones en la siguiente etapa.</p>
-        </div>
-        <div className="table-wrap dark-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Materia</th>
-                <th>Tarea</th>
-                <th>Calificación</th>
-                <th>Estatus</th>
-                <th>Retroalimentación</th>
-              </tr>
-            </thead>
-            <tbody>
-              {calificaciones.length > 0 ? calificaciones.map((item) => (
-                <tr key={item.id_entrega}>
-                  <td>{item.tarea?.materia?.nombre_materia || 'Sin materia'}</td>
-                  <td>{item.tarea?.titulo || 'Sin tarea'}</td>
-                  <td>{item.calificacion ?? 'Sin calificación'}</td>
-                  <td>{item.estatus_academico}</td>
-                  <td>{item.retroalimentacion || 'Sin retroalimentación'}</td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan="5">No hay calificaciones registradas todavía.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section id="alumno-plan" className="card-panel student-section">
-        <div className="section-heading">
-          <h3>Plan de estudios</h3>
-          <p>Malla curricular organizada por bimestres con avance académico, materias cursadas, en curso y pendientes.</p>
-        </div>
-        {sectionErrors.plan ? <p className="error-box">{sectionErrors.plan}</p> : null}
-        <div className="progress-banner">
-          <strong>Avance general: {planEstudio.porcentaje_avance || 0}%</strong>
-          <div className="progress-bar">
-            <span style={{ width: `${planEstudio.porcentaje_avance || 0}%` }} />
-          </div>
-        </div>
-        {Object.keys(planPorBimestre).length > 0 ? Object.entries(planPorBimestre).map(([bimestre, materias]) => (
-          <div key={bimestre} className="subject-block">
-            <h4>Bimestre {bimestre}</h4>
-            <div className="student-card-grid">
-              {materias.map((item) => (
-                <article key={item.id_materia} className="student-feature-card compact-card">
-                  <div className="card-topline">
-                    <span className={`status-pill status-${item.estatus}`}>{statusLabels[item.estatus] || item.estatus}</span>
-                    <strong>{item.codigo_materia}</strong>
+      {activeTab === 'perfil' ? (
+        <div className="alumno-section-grid">
+          <article className="alumno-card">
+            <h3>Insignias y Meritos</h3>
+            {meritos.length === 0 ? (
+              <p className="alumno-empty">Aun no tienes meritos registrados.</p>
+            ) : (
+              <div className="chips-grid">
+                {meritos.map((item) => (
+                  <div key={item.id_merito} className="merito-chip">
+                    <strong>{item.nombre}</strong>
+                    <span>{item.tipo_merito}</span>
                   </div>
-                  <h5>{item.nombre_materia}</h5>
-                  <p>{item.grupo ? `Grupo asignado: ${item.grupo}` : 'Pendiente de cursar.'}</p>
-                </article>
-              ))}
+                ))}
+              </div>
+            )}
+          </article>
+
+          <article className="alumno-card">
+            <h3>Notificaciones recientes</h3>
+            {notificaciones.length === 0 ? (
+              <p className="alumno-empty">No hay notificaciones por mostrar.</p>
+            ) : (
+              <div className="alumno-list scroll-area">
+                {notificaciones.map((item, index) => (
+                  <article key={`${item.tipo}-${index}`} className="alumno-list-item">
+                    <strong>{item.titulo}</strong>
+                    <p>{item.detalle}</p>
+                    <small>{formatDate(item.fecha, true)}</small>
+                  </article>
+                ))}
+              </div>
+            )}
+          </article>
+
+          <article className="alumno-card full-width">
+            <h3>Resumen financiero</h3>
+            <div className="payment-cards">
+              <div>
+                <span>Estado</span>
+                <strong>{pagos.resumen?.estado_general || 'N/D'}</strong>
+              </div>
+              <div>
+                <span>Total pagado</span>
+                <strong>{Number(pagos.resumen?.total_pagado || 0).toFixed(2)} MXN</strong>
+              </div>
+              <div>
+                <span>Adeudo pendiente</span>
+                <strong>{Number(pagos.resumen?.adeudo_pendiente || 0).toFixed(2)} MXN</strong>
+              </div>
             </div>
-          </div>
-        )) : <p className="empty-state">No hay materias registradas para mostrar el plan de estudios.</p>}
-      </section>
-
-      <section id="alumno-pagos" className="card-panel student-section">
-        <div className="section-heading">
-          <h3>Pagos</h3>
-          <p>Consulta tu estatus financiero, conceptos liberados, pagos pendientes y referencias internas.</p>
-        </div>
-        {sectionErrors.pagos ? <p className="error-box">{sectionErrors.pagos}</p> : null}
-        <div className="payment-summary-grid">
-          <article className="summary-card">
-            <span>Estado general</span>
-            <strong>{pagosResumen.estado_general === 'al_corriente' ? 'Al corriente' : pagosResumen.estado_general === 'adeudo' ? 'Adeudo' : 'Pendiente'}</strong>
-            <p>Resumen consultivo sin función de cobro en esta primera etapa.</p>
-          </article>
-          <article className="summary-card">
-            <span>Periodo activo</span>
-            <strong>{pagosResumen.periodo_activo ? formatDate(pagosResumen.periodo_activo) : 'Sin periodo'}</strong>
-            <p>Fecha o mes de referencia más cercano en tu historial de pagos.</p>
-          </article>
-          <article className="summary-card">
-            <span>Total pagado</span>
-            <strong>{formatCurrency(pagosResumen.total_pagado)}</strong>
-            <p>Conceptos liberados, mensualidades e inscripción cubiertos.</p>
-          </article>
-          <article className="summary-card">
-            <span>Adeudo pendiente</span>
-            <strong>{formatCurrency(pagosResumen.adeudo_pendiente)}</strong>
-            <p>Incluye conceptos pendientes o vencidos aún no regularizados.</p>
           </article>
         </div>
-        <div className="table-wrap dark-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Concepto</th>
-                <th>Monto</th>
-                <th>Fecha límite</th>
-                <th>Estatus</th>
-                <th>Fecha de pago</th>
-                <th>Folio interno</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pagos.length > 0 ? pagos.map((item) => (
-                <tr key={item.id_pago}>
-                  <td>{item.concepto}</td>
-                  <td>{formatCurrency(item.monto)}</td>
-                  <td>{formatDate(item.fecha_limite)}</td>
-                  <td>{statusLabels[item.estatus] || item.estatus}</td>
-                  <td>{item.fecha_pago ? formatDate(item.fecha_pago) : 'Sin pago'}</td>
-                  <td>{item.folio_interno || 'Sin referencia'}</td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan="6">No hay movimientos de pago registrados.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      ) : null}
 
-      <section id="alumno-tramites" className="card-panel student-section">
-        <div className="section-heading">
-          <h3>Ventanilla virtual</h3>
-          <p>Solicita constancias, credenciales, uniformes, papelería oficial o registro de comprobantes para revisión institucional.</p>
-        </div>
-        {sectionErrors.tramites ? <p className="error-box">{sectionErrors.tramites}</p> : null}
-
-        <form className="form-grid admin-form-grid" onSubmit={handleCrearTramite}>
-          <h4>Nuevo trámite</h4>
-          <label>Tipo
-            <select id="tramite-tipo" name="tipo" value={tramiteForm.tipo} onChange={(event) => setTramiteForm((current) => ({ ...current, tipo: event.target.value }))}>
-              {Object.entries(tramiteLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label className="admin-form-wide">Descripción
-            <input id="tramite-descripcion" name="descripcion" value={tramiteForm.descripcion} onChange={(event) => setTramiteForm((current) => ({ ...current, descripcion: event.target.value }))} placeholder="Explica el trámite o la solicitud que deseas registrar" />
-          </label>
-          <label className="admin-form-wide">Adjunto o referencia
-            <input id="tramite-adjunto-url" name="adjunto_url" value={tramiteForm.adjunto_url} onChange={(event) => setTramiteForm((current) => ({ ...current, adjunto_url: event.target.value }))} placeholder="https://... (opcional)" />
-          </label>
-          <button type="submit" className="btn-primary admin-btn admin-btn-save">Enviar trámite</button>
-        </form>
-
-        <div className="table-wrap dark-table">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Tipo</th>
-                <th>Estatus</th>
-                <th>Solicitud</th>
-                <th>Respuesta</th>
-                <th>Fecha</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tramites.length > 0 ? tramites.map((item) => (
-                <tr key={item.id_tramite}>
-                  <td>{item.id_tramite}</td>
-                  <td>{tramiteLabels[item.tipo] || item.tipo}</td>
-                  <td>{statusLabels[item.estatus] || item.estatus}</td>
-                  <td>{item.descripcion}</td>
-                  <td>{item.respuesta || 'Sin respuesta aún'}</td>
-                  <td>{formatDateTime(item.fecha_resolucion || item.fecha_solicitud)}</td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan="6">Aún no has registrado trámites.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <nav className="alumno-bottom-nav mobile-only" aria-label="Navegacion alumno">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={activeTab === tab.id ? 'is-active' : ''}
+            onClick={() => setActiveTab(tab.id)}
+            disabled={bloqueadoTotal && tab.id !== 'ventanilla'}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
     </section>
   );
 }

@@ -1,4 +1,4 @@
-﻿const { Op } = require('sequelize');
+const { Op } = require('sequelize');
 const {
   AlumnoPerfil,
   AlumnoGrupo,
@@ -8,7 +8,6 @@ const {
   Materia,
   PagoEstatus,
   MaterialClase,
-  PortafolioEvidencia,
   MeritoAcademico,
   AsignacionGrupo,
   DocentePerfil,
@@ -16,547 +15,321 @@ const {
   TramiteSolicitud,
   SalaVideoDocente,
   AsistenciaDocente,
+  ConceptoPago,
+  AnuncioDocente,
+  CalificacionParcialDocente,
 } = require('../../models');
 const { registrarEventoAuditoria } = require('../services/auditService');
-const { buildPaymentSummary, getAlumnoFinancialState } = require('../services/financialService');
-const { TRAMITE_TIPOS } = require('../constants/tramites');
-
-function buildAcademicStatus(calificacion) {
-  if (calificacion === null || calificacion === undefined) {
-    return 'sin_registrar';
-  }
-
-  return Number(calificacion) >= 6 ? 'aprobado' : 'reprobado';
-}
 
 function normalizeText(value) {
   return String(value || '').trim();
 }
 
-function mapTaskRecord(tarea, entrega, grupo) {
+function toNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toDate(value) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function estatusAcademico(calificacion) {
+  if (calificacion === null || calificacion === undefined) return 'sin_registrar';
+  return Number(calificacion) >= 6 ? 'Aprobado' : 'Reprobado';
+}
+
+function getAuthenticatedAlumnoId(req) {
+  const id = Number(req?.user?.id ?? req?.user?.id_usuario);
+  return Number.isInteger(id) ? id : null;
+}
+
+async function obtenerEstadoAlumno(idAlumno) {
+  const [usuario, perfil] = await Promise.all([
+    Usuario.findByPk(idAlumno, {
+      attributes: ['id_usuario', 'nombre_completo', 'correo', 'folio_matricula', 'cuenta_activada', 'cuenta_bloqueada'],
+    }),
+    AlumnoPerfil.findByPk(idAlumno, {
+      attributes: ['id_alumno', 'carrera', 'bimestre_actual', 'bloqueo_plataforma', 'bloqueo_calificaciones', 'estatus_financiero'],
+    }),
+  ]);
+
+  if (!usuario || !perfil) {
+    return null;
+  }
+
   return {
-    id_tarea: tarea.id_tarea,
-    titulo: tarea.titulo,
-    descripcion: tarea.descripcion,
-    fecha_limite: tarea.fecha_limite,
-    archivo_adjunto_url: tarea.archivo_adjunto_url,
-    materia: tarea.materia,
-    grupo,
-    entrega: entrega
-      ? {
-        id_entrega: entrega.id_entrega,
-        archivo_entrega_url: entrega.archivo_entrega_url,
-        fecha_entrega: entrega.fecha_entrega,
-        estatus: entrega.estatus,
-        calificacion: entrega.calificacion,
-        retroalimentacion: entrega.retroalimentacion,
-      }
-      : null,
-    estatus: entrega?.estatus || 'pendiente',
-    calificacion: entrega?.calificacion || null,
-    retroalimentacion: entrega?.retroalimentacion || null,
+    usuario,
+    perfil,
+    bloqueo_plataforma: Boolean(usuario.cuenta_bloqueada || perfil.bloqueo_plataforma || !usuario.cuenta_activada),
+    bloqueo_calificaciones: Boolean(perfil.bloqueo_calificaciones),
   };
 }
 
-async function obtenerPerfilAlumno(idAlumno) {
-  return AlumnoPerfil.findByPk(idAlumno, {
-    include: [{
-      model: Usuario,
-      as: 'usuario',
-      attributes: ['id_usuario', 'nombre_completo', 'correo', 'foto_url', 'folio_matricula', 'cuenta_activada', 'cuenta_bloqueada'],
-    }],
-  });
+function buildRestrictedPayload(reason) {
+  return {
+    message: reason === 'bloqueo_plataforma'
+      ? 'Tu acceso academico esta restringido temporalmente. Contacta a Tesoreria para regularizar tu cuenta.'
+      : 'Tus calificaciones estan temporalmente ocultas por un tema administrativo.',
+    reason,
+  };
 }
 
-async function obtenerContextoAcademico(idAlumno) {
+async function validarAccesoAlumno(req, { requiereAcademico = false, requiereCalificaciones = false } = {}) {
+  const idAlumno = getAuthenticatedAlumnoId(req);
+  if (!idAlumno) {
+    return {
+      ok: false,
+      status: 401,
+      payload: { message: 'Sesion invalida para alumno.' },
+    };
+  }
+
+  const estado = await obtenerEstadoAlumno(idAlumno);
+  if (!estado) {
+    return {
+      ok: false,
+      status: 404,
+      payload: { message: 'Perfil de alumno no encontrado.' },
+    };
+  }
+
+  if (requiereAcademico && estado.bloqueo_plataforma) {
+    return {
+      ok: false,
+      status: 423,
+      payload: buildRestrictedPayload('bloqueo_plataforma'),
+      estado,
+    };
+  }
+
+  if (requiereCalificaciones && estado.bloqueo_calificaciones) {
+    return {
+      ok: false,
+      status: 403,
+      payload: buildRestrictedPayload('bloqueo_calificaciones'),
+      estado,
+    };
+  }
+
+  return {
+    ok: true,
+    idAlumno,
+    estado,
+  };
+}
+
+async function obtenerContextoAcademicoAlumno(idAlumno) {
   const grupos = await AlumnoGrupo.findAll({
     where: { id_alumno: idAlumno },
     include: [{ model: Materia, as: 'materia' }],
-    order: [[{ model: Materia, as: 'materia' }, 'bimestre_pertenece', 'ASC']],
+    order: [[{ model: Materia, as: 'materia' }, 'nombre_materia', 'ASC']],
   });
 
-  const filtrosAsignacion = grupos.map((grupo) => ({
-    id_materia: grupo.id_materia,
-    grupo: grupo.grupo,
+  const materiasIds = [...new Set(grupos.map((item) => Number(item.id_materia)).filter(Number.isInteger))];
+  const gruposPorMateria = new Map();
+  grupos.forEach((item) => {
+    if (!gruposPorMateria.has(item.id_materia)) {
+      gruposPorMateria.set(item.id_materia, new Set());
+    }
+    gruposPorMateria.get(item.id_materia).add(String(item.grupo || '').trim());
+  });
+
+  const filtrosAsignaciones = grupos.map((item) => ({
+    id_materia: item.id_materia,
+    grupo: item.grupo,
   }));
 
-  const asignaciones = filtrosAsignacion.length > 0
+  const asignaciones = filtrosAsignaciones.length > 0
     ? await AsignacionGrupo.findAll({
-      where: { [Op.or]: filtrosAsignacion },
+      where: { [Op.or]: filtrosAsignaciones },
       include: [{
         model: DocentePerfil,
         as: 'docente',
-        include: [{
-          model: Usuario,
-          as: 'usuario',
-          attributes: ['id_usuario', 'nombre_completo', 'correo'],
-        }],
+        include: [{ model: Usuario, as: 'usuario', attributes: ['id_usuario', 'nombre_completo', 'correo'] }],
       }],
     })
     : [];
 
-  const materiasIds = [...new Set(grupos.map((grupo) => Number(grupo.id_materia)).filter(Number.isInteger))];
-  const docentesIds = [...new Set(asignaciones.map((item) => Number(item.id_docente)).filter(Number.isInteger))];
-
-  return { grupos, asignaciones, materiasIds, docentesIds };
+  return {
+    grupos,
+    materiasIds,
+    gruposPorMateria,
+    asignaciones,
+  };
 }
 
-async function validarLiberacionControlEscolar(idAlumno) {
-  const [usuario, perfil] = await Promise.all([
-    Usuario.findByPk(idAlumno, {
-      attributes: ['id_usuario', 'cuenta_activada', 'cuenta_bloqueada'],
-    }),
-    AlumnoPerfil.findByPk(idAlumno, {
-      attributes: ['id_alumno', 'bloqueo_plataforma', 'bloqueo_calificaciones'],
-    }),
-  ]);
-
-  if (!usuario) {
-    return {
-      ok: false,
-      status: 404,
-      payload: { message: 'Usuario alumno no encontrado.' },
-    };
+async function estadoAcceso(req, res) {
+  const validacion = await validarAccesoAlumno(req);
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
   }
 
-  if (!usuario.cuenta_activada || usuario.cuenta_bloqueada || perfil?.bloqueo_plataforma || perfil?.bloqueo_calificaciones) {
-    const razon = !usuario.cuenta_activada
-      ? 'cuenta_no_activada'
-      : usuario.cuenta_bloqueada || perfil?.bloqueo_plataforma
-        ? 'bloqueo_plataforma'
-        : 'bloqueo_calificaciones';
-
-    return {
-      ok: false,
-      status: 423,
-      payload: {
-        message: 'Tu progreso academico esta temporalmente restringido hasta liberacion de Control Escolar.',
-        razon,
-      },
-    };
-  }
-
-  return { ok: true };
-}
-
-async function construirVideoClases(docentesIds) {
-  if (docentesIds.length === 0) {
-    return [];
-  }
-
-  const salas = await SalaVideoDocente.findAll({
-    where: { id_docente: { [Op.in]: docentesIds } },
-    include: [{
-      model: DocentePerfil,
-      as: 'docente',
-      include: [{ model: Usuario, as: 'usuario', attributes: ['id_usuario', 'nombre_completo', 'correo'] }],
-    }],
-    order: [['fecha_programada', 'DESC']],
-    limit: 50,
-  });
-
-  return salas.map((sala) => ({
-    id_sala: sala.id_sala,
-    titulo: sala.titulo,
-    plataforma: sala.plataforma,
-    enlace: sala.enlace,
-    fecha_programada: sala.fecha_programada,
-    docente: sala.docente?.usuario?.nombre_completo || 'Docente',
-  }));
-}
-
-async function dashboard(req, res) {
-  const alumno = await obtenerPerfilAlumno(req.user.id_usuario);
-  if (!alumno) {
-    return res.status(404).json({ message: 'Perfil de alumno no encontrado.' });
-  }
-
-  const [{ grupos, asignaciones, docentesIds }, pagos, horariosOficiales] = await Promise.all([
-    obtenerContextoAcademico(req.user.id_usuario),
-    PagoEstatus.findAll({
-      where: { id_alumno: req.user.id_usuario },
-      order: [['fecha_limite', 'ASC']],
-      limit: 10,
-    }),
-    Horario.findAll({ order: [['id_horario', 'ASC']] }),
-  ]);
-
-  const videoClases = await construirVideoClases(docentesIds);
-  const asignacionIndex = new Map(asignaciones.map((item) => [`${item.id_materia}-${item.grupo}`, item]));
-
-  const horarioBimestre = grupos.reduce((acc, grupo) => {
-    const materia = grupo.materia;
-    const key = materia?.bimestre_pertenece || 0;
-    const asignacion = asignacionIndex.get(`${grupo.id_materia}-${grupo.grupo}`);
-
-    if (!acc[key]) {
-      acc[key] = { bimestre: key, materias: [] };
-    }
-
-    acc[key].materias.push({
-      id_materia: grupo.id_materia,
-      nombre_materia: materia?.nombre_materia || 'Materia',
-      codigo_materia: materia?.codigo_materia || 'N/A',
-      grupo: grupo.grupo,
-      docente: asignacion?.docente?.usuario?.nombre_completo || 'Por asignar',
-      modalidad: 'Ejecutiva flexible',
-    });
-
-    return acc;
-  }, {});
+  const { estado } = validacion;
 
   return res.json({
-    perfil: alumno,
-    pagos,
-    resumen_pagos: buildPaymentSummary(pagos),
-    horario_bimestre: Object.values(horarioBimestre),
-    horarios_oficiales: horariosOficiales,
-    video_clases: videoClases,
+    id_alumno: validacion.idAlumno,
+    bloqueo_plataforma: estado.bloqueo_plataforma,
+    bloqueo_calificaciones: estado.bloqueo_calificaciones,
+    estatus_financiero: estado.perfil.estatus_financiero || 'al_dia',
+    perfil: {
+      nombre_completo: estado.usuario.nombre_completo,
+      correo: estado.usuario.correo,
+      folio_matricula: estado.usuario.folio_matricula,
+      carrera: estado.perfil.carrera,
+      bimestre_actual: estado.perfil.bimestre_actual,
+    },
   });
 }
 
-async function horarios(req, res) {
-  const { grupos, asignaciones } = await obtenerContextoAcademico(req.user.id_usuario);
+async function horarioAulas(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const { grupos, asignaciones, materiasIds, gruposPorMateria } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
   const horariosOficiales = await Horario.findAll({ order: [['id_horario', 'ASC']] });
 
-  const asignacionIndex = new Map(asignaciones.map((item) => [`${item.id_materia}-${item.grupo}`, item]));
-  const materias = grupos.map((grupo) => ({
-    id_materia: grupo.id_materia,
-    nombre_materia: grupo.materia?.nombre_materia || 'Materia',
-    grupo: grupo.grupo,
-    aula_referencia: horariosOficiales[0]?.aula || null,
-    docente: asignacionIndex.get(`${grupo.id_materia}-${grupo.grupo}`)?.docente?.usuario?.nombre_completo || 'Por asignar',
-  }));
-
-  return res.json({ horarios_oficiales: horariosOficiales, materias });
-}
-
-async function tareas(req, res) {
-  const grupos = await AlumnoGrupo.findAll({ where: { id_alumno: req.user.id_usuario } });
-  const materiasIds = [...new Set(grupos.map((grupo) => grupo.id_materia))];
-  if (materiasIds.length === 0) {
-    return res.json({ items: [] });
-  }
-
-  const [tareasAsignadas, entregas] = await Promise.all([
-    Tarea.findAll({
-      where: { id_materia: { [Op.in]: materiasIds } },
-      include: [{ model: Materia, as: 'materia' }],
-      order: [['fecha_limite', 'ASC']],
-    }),
-    EntregaTarea.findAll({ where: { id_alumno: req.user.id_usuario } }),
-  ]);
-
-  const gruposIndex = new Map(grupos.map((grupo) => [grupo.id_materia, grupo.grupo]));
-  const entregasIndex = new Map(entregas.map((entrega) => [entrega.id_tarea, entrega]));
-
-  const items = tareasAsignadas.map((tarea) => mapTaskRecord(
-    tarea,
-    entregasIndex.get(tarea.id_tarea),
-    gruposIndex.get(tarea.id_materia) || 'Sin grupo',
-  ));
-
-  return res.json({ items });
-}
-
-async function calificaciones(req, res) {
-  const gate = await validarLiberacionControlEscolar(req.user.id_usuario);
-  if (!gate.ok) {
-    return res.status(gate.status).json(gate.payload);
-  }
-
-  const calificaciones = await EntregaTarea.findAll({
-    where: {
-      id_alumno: req.user.id_usuario,
-      estatus: { [Op.in]: ['calificada'] },
-    },
-    include: [{
-      model: Tarea,
-      as: 'tarea',
-      include: [{ model: Materia, as: 'materia' }],
-    }],
-    order: [[{ model: Tarea, as: 'tarea' }, { model: Materia, as: 'materia' }, 'bimestre_pertenece', 'ASC']],
-  });
-
-  const resumenMap = new Map();
-  calificaciones.forEach((item) => {
-    const materia = item.tarea?.materia?.nombre_materia || 'Sin materia';
-    const actual = resumenMap.get(materia) || { materia, suma: 0, total: 0 };
-    actual.suma += Number(item.calificacion || 0);
-    actual.total += 1;
-    resumenMap.set(materia, actual);
-  });
-
-  const resumen = [...resumenMap.values()].map((item) => {
-    const promedio = item.total > 0 ? Number((item.suma / item.total).toFixed(1)) : 0;
-    return { materia: item.materia, promedio, estatus: buildAcademicStatus(promedio) };
-  });
-
-  return res.json({
-    items: calificaciones.map((item) => ({
-      id_entrega: item.id_entrega,
-      estatus: item.estatus,
-      calificacion: item.calificacion,
-      retroalimentacion: item.retroalimentacion,
-      fecha_entrega: item.fecha_entrega,
-      estatus_academico: buildAcademicStatus(item.calificacion),
-      tarea: item.tarea,
-    })),
-    resumen,
-    liberado_por_control_escolar: true,
-  });
-}
-
-async function asistencias(req, res) {
-  const gate = await validarLiberacionControlEscolar(req.user.id_usuario);
-  if (!gate.ok) {
-    return res.status(gate.status).json(gate.payload);
-  }
-
-  const { materiasIds } = await obtenerContextoAcademico(req.user.id_usuario);
-  if (materiasIds.length === 0) {
-    return res.json({ items: [], acumulado: [] });
-  }
-
-  const registros = await AsistenciaDocente.findAll({
-    where: {
-      id_materia: { [Op.in]: materiasIds },
-      [Op.or]: [
-        { id_alumno: req.user.id_usuario },
-        { id_alumno: null },
-      ],
-    },
-    include: [{ model: Materia, as: 'materia' }],
-    order: [['fecha_clase', 'DESC']],
-  });
-
-  const acumuladoMap = new Map();
-  registros.forEach((item) => {
-    const idMateria = Number(item.id_materia);
-    const base = acumuladoMap.get(idMateria) || {
-      id_materia: idMateria,
-      materia: item.materia?.nombre_materia || `Materia ${idMateria}`,
-      total: 0,
-      presentes: 0,
-      ausentes: 0,
-      retardos: 0,
-      justificados: 0,
-    };
-
-    base.total += 1;
-    if (item.estatus_asistencia === 'presente') base.presentes += 1;
-    if (item.estatus_asistencia === 'ausente') base.ausentes += 1;
-    if (item.estatus_asistencia === 'retardo') base.retardos += 1;
-    if (item.estatus_asistencia === 'justificado') base.justificados += 1;
-
-    acumuladoMap.set(idMateria, base);
-  });
-
-  return res.json({ items: registros, acumulado: [...acumuladoMap.values()] });
-}
-
-async function pagos(req, res) {
-  const financialState = await getAlumnoFinancialState(req.user.id_usuario);
-
-  return res.json({
-    items: financialState.pagos,
-    resumen: financialState.resumen,
-    servicios: financialState.servicios,
-  });
-}
-
-async function subirComprobantePago(req, res) {
-  const adjuntoUrl = normalizeText(req.body.adjunto_url);
-  const descripcion = normalizeText(req.body.descripcion) || 'Comprobante de pago enviado por alumno.';
-
-  if (!adjuntoUrl) {
-    return res.status(400).json({ message: 'adjunto_url es obligatorio para registrar comprobante.' });
-  }
-
-  const tramite = await TramiteSolicitud.create({
-    id_alumno: req.user.id_usuario,
-    tipo: 'comprobante_pago',
-    descripcion,
-    adjunto_url: adjuntoUrl,
-    estatus: 'recibido',
-    fecha_solicitud: new Date(),
-  });
-
-  await registrarEventoAuditoria({
-    idUsuario: req.user.id_usuario,
-    rolActor: req.user.rol,
-    accion: 'subir_comprobante_pago',
-    modulo: 'alumnos',
-    entidad: 'tramites_solicitudes',
-    idEntidad: tramite.id_tramite,
-    detalle: {
-      tipo: tramite.tipo,
-      estatus: tramite.estatus,
-    },
-  });
-
-  return res.status(201).json(tramite);
-}
-
-async function materiales(req, res) {
-  const grupos = await AlumnoGrupo.findAll({ where: { id_alumno: req.user.id_usuario } });
-  const materiasIds = [...new Set(grupos.map((grupo) => grupo.id_materia))];
-  if (materiasIds.length === 0) {
-    return res.json({ items: [] });
-  }
-
-  const items = await MaterialClase.findAll({
-    where: { id_materia: { [Op.in]: materiasIds } },
-    include: [{ model: Materia, as: 'materia' }],
-    order: [['id_materia', 'ASC'], ['tema_semana', 'ASC']],
-  });
-
-  return res.json({ items });
-}
-
-async function portafolio(req, res) {
-  const items = await PortafolioEvidencia.findAll({
-    where: { id_alumno: req.user.id_usuario },
-    include: [{ model: Materia, as: 'materia' }],
-    order: [['periodo_bimestre', 'DESC'], ['id_evidencia', 'DESC']],
-  });
-
-  return res.json({
-    items,
-    integracion_drive: {
-      status: 'pendiente',
-      message: 'La conexion con Google Drive requiere definir la carpeta institucional especifica.',
-    },
-  });
-}
-
-async function meritos(req, res) {
-  const items = await MeritoAcademico.findAll({
-    where: { id_alumno: req.user.id_usuario },
-    order: [['fecha', 'DESC']],
-  });
-
-  return res.json({ items });
-}
-
-async function alertas(req, res) {
-  const [meritosItems, tramites, tareasRes] = await Promise.all([
-    MeritoAcademico.findAll({
-      where: { id_alumno: req.user.id_usuario },
-      order: [['fecha', 'DESC']],
-      limit: 5,
-    }),
-    TramiteSolicitud.findAll({
+  const salas = materiasIds.length > 0
+    ? await SalaVideoDocente.findAll({
       where: {
-        id_alumno: req.user.id_usuario,
-        [Op.or]: [
-          { descripcion: { [Op.like]: '%justificante%' } },
-          { descripcion: { [Op.like]: '%medic%' } },
-          { descripcion: { [Op.like]: '%personal%' } },
-        ],
+        id_materia: { [Op.in]: materiasIds },
+        [Op.or]: [{ grupo_id: null }, { grupo_id: { [Op.in]: [...new Set(grupos.map((g) => String(g.grupo || '').trim()))] } }],
       },
-      order: [['fecha_solicitud', 'DESC']],
-      limit: 10,
-    }),
-    (async () => {
-      const grupos = await AlumnoGrupo.findAll({ where: { id_alumno: req.user.id_usuario } });
-      const materiasIds = [...new Set(grupos.map((g) => g.id_materia))];
-      if (materiasIds.length === 0) return [];
+      include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia', 'codigo_materia'] }],
+      order: [['fecha_programada', 'ASC']],
+      limit: 100,
+    })
+    : [];
 
-      const [tareasAsignadas, entregas] = await Promise.all([
-        Tarea.findAll({
-          where: { id_materia: { [Op.in]: materiasIds } },
-          include: [{ model: Materia, as: 'materia' }],
-          order: [['fecha_limite', 'ASC']],
-        }),
-        EntregaTarea.findAll({ where: { id_alumno: req.user.id_usuario } }),
-      ]);
+  const docentesMap = new Map(
+    asignaciones.map((item) => [`${item.id_materia}:${String(item.grupo || '').trim()}`, item.docente?.usuario?.nombre_completo || 'Docente']),
+  );
 
-      const entregasIndex = new Map(entregas.map((item) => [item.id_tarea, item]));
-      return tareasAsignadas
-        .map((tarea) => ({ tarea, entrega: entregasIndex.get(tarea.id_tarea) || null }))
-        .filter((item) => !item.entrega || ['pendiente', 'fuera_de_tiempo'].includes(item.entrega.estatus))
-        .slice(0, 10)
-        .map((item) => ({
-          id_tarea: item.tarea.id_tarea,
-          titulo: item.tarea.titulo,
-          fecha_limite: item.tarea.fecha_limite,
-          materia: item.tarea.materia?.nombre_materia || 'Materia',
-          estatus: item.entrega?.estatus || 'pendiente',
-        }));
-    })(),
-  ]);
+  const clasesSemana = grupos.map((grupo) => {
+    const materia = grupo.materia;
+    const materiaId = Number(grupo.id_materia);
+    const grupoId = String(grupo.grupo || '').trim();
 
-  return res.json({
-    meritos: meritosItems,
-    tareas_pendientes: tareasRes,
-    justificaciones: tramites,
-  });
-}
+    const sala = salas.find((item) => {
+      if (Number(item.id_materia) !== materiaId) return false;
+      if (!item.grupo_id) return true;
+      return grupoId === String(item.grupo_id).trim();
+    });
 
-async function videoClases(req, res) {
-  const { docentesIds } = await obtenerContextoAcademico(req.user.id_usuario);
-  const items = await construirVideoClases(docentesIds);
-  return res.json({ items });
-}
-
-async function planEstudio(req, res) {
-  const alumno = await AlumnoPerfil.findByPk(req.user.id_usuario);
-  if (!alumno) {
-    return res.status(404).json({ message: 'Perfil de alumno no encontrado.' });
-  }
-
-  const [materias, grupos] = await Promise.all([
-    Materia.findAll({ order: [['bimestre_pertenece', 'ASC'], ['nombre_materia', 'ASC']] }),
-    AlumnoGrupo.findAll({ where: { id_alumno: req.user.id_usuario } }),
-  ]);
-
-  const gruposIndex = new Map(grupos.map((grupo) => [grupo.id_materia, grupo.grupo]));
-
-  const items = materias.map((materia) => {
-    let estatus = 'pendiente';
-    if (gruposIndex.has(materia.id_materia)) {
-      estatus = 'en_curso';
-    } else if (materia.bimestre_pertenece < alumno.bimestre_actual) {
-      estatus = 'cursada';
-    }
+    const horarioBase = horariosOficiales[0] || null;
 
     return {
-      ...materia.toJSON(),
-      estatus,
-      grupo: gruposIndex.get(materia.id_materia) || null,
+      id_materia: materiaId,
+      materia: materia?.nombre_materia || 'Materia',
+      codigo_materia: materia?.codigo_materia || null,
+      grupo: grupoId,
+      docente: docentesMap.get(`${materiaId}:${grupoId}`) || 'Por asignar',
+      aula_fisica: horarioBase?.aula || null,
+      turno: horarioBase?.turno || null,
+      periodo: horarioBase?.periodo || null,
+      hora_inicio: horarioBase?.hora_inicio || null,
+      hora_fin: horarioBase?.hora_fin || null,
+      sala_virtual: sala
+        ? {
+          id_sala: sala.id_sala,
+          titulo: sala.titulo,
+          plataforma: sala.plataforma,
+          enlace: sala.enlace,
+          fecha_programada: sala.fecha_programada,
+        }
+        : null,
     };
   });
 
-  const avanceBase = items.reduce((acc, item) => {
-    if (item.estatus === 'cursada') return acc + 1;
-    if (item.estatus === 'en_curso') return acc + 0.5;
-    return acc;
-  }, 0);
-
-  const porcentaje_avance = items.length > 0 ? Math.round((avanceBase / items.length) * 100) : 0;
-
   return res.json({
-    carrera: alumno.carrera,
-    bimestre_actual: alumno.bimestre_actual,
-    porcentaje_avance,
-    items,
+    items: clasesSemana,
+    horarios_oficiales: horariosOficiales,
+    total_materias: materiasIds.length,
+    grupos_activos: [...gruposPorMateria.values()].reduce((acc, set) => acc + set.size, 0),
   });
+}
+
+async function tareasPendientes(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const { materiasIds, gruposPorMateria } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+  if (materiasIds.length === 0) {
+    return res.json({ items: [] });
+  }
+
+  const tareas = await Tarea.findAll({
+    where: {
+      id_materia: { [Op.in]: materiasIds },
+    },
+    include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia', 'codigo_materia'] }],
+    order: [['fecha_limite', 'ASC']],
+  });
+
+  const tareasFiltradas = tareas.filter((tarea) => {
+    if (!tarea.grupo_id) return true;
+    const gruposMateria = gruposPorMateria.get(tarea.id_materia);
+    return gruposMateria ? gruposMateria.has(String(tarea.grupo_id).trim()) : false;
+  });
+
+  const entregas = await EntregaTarea.findAll({
+    where: {
+      id_alumno: validacion.idAlumno,
+      id_tarea: { [Op.in]: tareasFiltradas.map((item) => item.id_tarea) },
+    },
+  });
+
+  const entregasMap = new Map(entregas.map((item) => [item.id_tarea, item]));
+
+  const nowMs = Date.now();
+  const items = tareasFiltradas
+    .map((tarea) => {
+      const entrega = entregasMap.get(tarea.id_tarea) || null;
+      const limite = toDate(tarea.fecha_limite);
+      const diffHours = limite ? Math.max(0, Math.floor((limite.getTime() - nowMs) / (1000 * 60 * 60))) : null;
+
+      return {
+        id_tarea: tarea.id_tarea,
+        id_materia: tarea.id_materia,
+        grupo_id: tarea.grupo_id || null,
+        titulo: tarea.titulo,
+        descripcion: tarea.descripcion,
+        fecha_limite: tarea.fecha_limite,
+        puntaje_maximo: tarea.puntaje_maximo,
+        archivo_adjunto_url: tarea.archivo_adjunto_url,
+        materia: tarea.materia,
+        entrega,
+        vence_en_horas: diffHours,
+      };
+    })
+    .filter((item) => !item.entrega || item.entrega.estatus === 'pendiente')
+    .sort((a, b) => new Date(a.fecha_limite) - new Date(b.fecha_limite));
+
+  return res.json({ items });
 }
 
 async function entregarTarea(req, res) {
-  const idTarea = Number(req.params.id_tarea);
-  const { archivo_entrega_url } = req.body;
-
-  if (!Number.isInteger(idTarea)) {
-    return res.status(400).json({ message: 'id_tarea invalido.' });
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
   }
 
-  if (!archivo_entrega_url) {
-    return res.status(400).json({ message: 'archivo_entrega_url es obligatorio.' });
+  const tareaId = toNumber(req.params.tareaId ?? req.params.id_tarea);
+  if (!Number.isInteger(tareaId)) {
+    return res.status(400).json({ message: 'tareaId invalido.' });
   }
 
-  const tarea = await Tarea.findByPk(idTarea, {
+  const enlaceEntrega = normalizeText(req.body.archivo_entrega_url || req.body.enlace_entrega_url || req.body.adjunto_url);
+  if (!enlaceEntrega) {
+    return res.status(400).json({ message: 'Debes enviar una URL o evidencia de entrega.' });
+  }
+
+  const tarea = await Tarea.findByPk(tareaId, {
     include: [{ model: Materia, as: 'materia' }],
   });
 
@@ -564,54 +337,56 @@ async function entregarTarea(req, res) {
     return res.status(404).json({ message: 'Tarea no encontrada.' });
   }
 
-  const inscripcion = await AlumnoGrupo.findOne({
-    where: {
-      id_alumno: req.user.id_usuario,
-      id_materia: tarea.id_materia,
-    },
-  });
+  const filtroInscripcion = {
+    id_alumno: validacion.idAlumno,
+    id_materia: tarea.id_materia,
+  };
+  if (tarea.grupo_id) {
+    filtroInscripcion.grupo = String(tarea.grupo_id).trim();
+  }
 
+  const inscripcion = await AlumnoGrupo.findOne({ where: filtroInscripcion });
   if (!inscripcion) {
-    return res.status(403).json({ message: 'No puedes entregar tareas de una materia donde no estas inscrito.' });
+    return res.status(403).json({ message: 'No puedes entregar tareas de materias o grupos que no te pertenecen.' });
   }
 
   const ahora = new Date();
-  const fueraDeTiempo = ahora > new Date(tarea.fecha_limite);
+  const fueraDeTiempo = ahora.getTime() > new Date(tarea.fecha_limite).getTime();
   const estatus = fueraDeTiempo ? 'fuera_de_tiempo' : 'entregada';
 
   const existente = await EntregaTarea.findOne({
     where: {
-      id_tarea: idTarea,
-      id_alumno: req.user.id_usuario,
+      id_tarea: tareaId,
+      id_alumno: validacion.idAlumno,
     },
   });
 
   let entrega;
   if (existente) {
-    existente.archivo_entrega_url = archivo_entrega_url;
+    existente.archivo_entrega_url = enlaceEntrega;
     existente.fecha_entrega = ahora;
     existente.estatus = estatus;
     await existente.save();
     entrega = existente;
   } else {
     entrega = await EntregaTarea.create({
-      id_tarea: idTarea,
-      id_alumno: req.user.id_usuario,
-      archivo_entrega_url,
+      id_tarea: tareaId,
+      id_alumno: validacion.idAlumno,
+      archivo_entrega_url: enlaceEntrega,
       fecha_entrega: ahora,
       estatus,
     });
   }
 
   await registrarEventoAuditoria({
-    idUsuario: req.user.id_usuario,
+    idUsuario: validacion.idAlumno,
     rolActor: req.user.rol,
-    accion: existente ? 'actualizar_entrega_tarea' : 'crear_entrega_tarea',
-    modulo: 'alumnos',
+    accion: existente ? 'actualizar_entrega_tarea_alumno' : 'crear_entrega_tarea_alumno',
+    modulo: 'alumno',
     entidad: 'entregas_tareas',
     idEntidad: entrega.id_entrega,
     detalle: {
-      id_tarea: idTarea,
+      id_tarea: tarea.id_tarea,
       id_materia: tarea.id_materia,
       grupo: inscripcion.grupo,
       estatus,
@@ -621,30 +396,284 @@ async function entregarTarea(req, res) {
   return res.status(existente ? 200 : 201).json(entrega);
 }
 
-async function listarTramites(req, res) {
-  const items = await TramiteSolicitud.findAll({
-    where: { id_alumno: req.user.id_usuario },
-    include: [{ model: Usuario, as: 'resolutor', attributes: ['id_usuario', 'nombre_completo', 'rol'] }],
-    order: [['fecha_solicitud', 'DESC'], ['id_tramite', 'DESC']],
+async function materialesClase(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const { materiasIds } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+  if (materiasIds.length === 0) {
+    return res.json({ items: [] });
+  }
+
+  const items = await MaterialClase.findAll({
+    where: { id_materia: { [Op.in]: materiasIds } },
+    include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia', 'codigo_materia'] }],
+    order: [['id_materia', 'ASC'], ['tema_semana', 'ASC']],
   });
 
   return res.json({ items });
 }
 
-async function crearTramite(req, res) {
-  const tipo = normalizeText(req.body.tipo);
-  const descripcion = normalizeText(req.body.descripcion);
-
-  if (!TRAMITE_TIPOS.includes(tipo)) {
-    return res.status(400).json({ message: 'El tipo de tramite no es valido.' });
+async function calificaciones(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereCalificaciones: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
   }
 
-  if (!descripcion) {
-    return res.status(400).json({ message: 'La descripcion del tramite es obligatoria.' });
+  const { materiasIds } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+  if (materiasIds.length === 0) {
+    return res.json({ parciales: [], finales: [], resumen: [] });
+  }
+
+  const [parciales, entregasCalificadas] = await Promise.all([
+    CalificacionParcialDocente.findAll({
+      where: {
+        id_alumno: validacion.idAlumno,
+        id_materia: { [Op.in]: materiasIds },
+      },
+      include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia', 'codigo_materia'] }],
+      order: [['parcial_numero', 'ASC'], ['fecha_captura', 'DESC']],
+    }),
+    EntregaTarea.findAll({
+      where: {
+        id_alumno: validacion.idAlumno,
+        estatus: 'calificada',
+      },
+      include: [{
+        model: Tarea,
+        as: 'tarea',
+        required: true,
+        include: [{
+          model: Materia,
+          as: 'materia',
+          required: true,
+          where: { id_materia: { [Op.in]: materiasIds } },
+        }],
+      }],
+      order: [['fecha_entrega', 'DESC']],
+    }),
+  ]);
+
+  const finalesMap = new Map();
+  entregasCalificadas.forEach((item) => {
+    const idMateria = Number(item.tarea?.materia?.id_materia);
+    if (!Number.isInteger(idMateria)) return;
+
+    const base = finalesMap.get(idMateria) || {
+      id_materia: idMateria,
+      materia: item.tarea?.materia?.nombre_materia || `Materia ${idMateria}`,
+      codigo_materia: item.tarea?.materia?.codigo_materia || null,
+      suma: 0,
+      total: 0,
+    };
+
+    base.suma += Number(item.calificacion || 0);
+    base.total += 1;
+    finalesMap.set(idMateria, base);
+  });
+
+  const finales = [...finalesMap.values()].map((item) => {
+    const promedio = item.total > 0 ? Number((item.suma / item.total).toFixed(2)) : null;
+    return {
+      id_materia: item.id_materia,
+      materia: item.materia,
+      codigo_materia: item.codigo_materia,
+      promedio_final: promedio,
+      estatus: estatusAcademico(promedio),
+    };
+  });
+
+  const parcialesSerialized = parciales.map((item) => ({
+    id_calificacion: item.id_calificacion,
+    id_materia: item.id_materia,
+    materia: item.materia,
+    parcial_numero: item.parcial_numero,
+    calificacion: item.calificacion,
+    retroalimentacion: item.retroalimentacion,
+    fecha_captura: item.fecha_captura,
+    estatus: estatusAcademico(item.calificacion),
+  }));
+
+  const resumenMap = new Map();
+  parcialesSerialized.forEach((item) => {
+    const key = Number(item.id_materia);
+    const current = resumenMap.get(key) || {
+      id_materia: key,
+      materia: item.materia?.nombre_materia || `Materia ${key}`,
+      parcial_suma: 0,
+      parcial_total: 0,
+      final_promedio: null,
+    };
+    current.parcial_suma += Number(item.calificacion || 0);
+    current.parcial_total += 1;
+    resumenMap.set(key, current);
+  });
+
+  finales.forEach((item) => {
+    const current = resumenMap.get(item.id_materia) || {
+      id_materia: item.id_materia,
+      materia: item.materia,
+      parcial_suma: 0,
+      parcial_total: 0,
+      final_promedio: null,
+    };
+    current.final_promedio = item.promedio_final;
+    resumenMap.set(item.id_materia, current);
+  });
+
+  const resumen = [...resumenMap.values()].map((item) => {
+    const parcialPromedio = item.parcial_total > 0
+      ? Number((item.parcial_suma / item.parcial_total).toFixed(2))
+      : null;
+    const base = item.final_promedio ?? parcialPromedio;
+
+    return {
+      id_materia: item.id_materia,
+      materia: item.materia,
+      parcial_promedio: parcialPromedio,
+      final_promedio: item.final_promedio,
+      estatus: estatusAcademico(base),
+    };
+  });
+
+  return res.json({
+    parciales: parcialesSerialized,
+    finales,
+    resumen,
+  });
+}
+
+async function asistencia(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const { materiasIds } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+  if (materiasIds.length === 0) {
+    return res.json({ items: [], acumulado: [] });
+  }
+
+  const items = await AsistenciaDocente.findAll({
+    where: {
+      id_alumno: validacion.idAlumno,
+      id_materia: { [Op.in]: materiasIds },
+    },
+    include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia', 'codigo_materia'] }],
+    order: [['fecha_clase', 'DESC']],
+  });
+
+  const acumuladoMap = new Map();
+  items.forEach((item) => {
+    const idMateria = Number(item.id_materia);
+    const base = acumuladoMap.get(idMateria) || {
+      id_materia: idMateria,
+      materia: item.materia?.nombre_materia || `Materia ${idMateria}`,
+      total: 0,
+      presentes: 0,
+      faltas: 0,
+      retardos: 0,
+      justificados: 0,
+    };
+
+    base.total += 1;
+    if (item.estatus_asistencia === 'presente') base.presentes += 1;
+    if (item.estatus_asistencia === 'ausente') base.faltas += 1;
+    if (item.estatus_asistencia === 'retardo') base.retardos += 1;
+    if (item.estatus_asistencia === 'justificado') base.justificados += 1;
+
+    acumuladoMap.set(idMateria, base);
+  });
+
+  const acumulado = [...acumuladoMap.values()].map((item) => ({
+    ...item,
+    porcentaje_asistencia: item.total > 0 ? Number(((item.presentes / item.total) * 100).toFixed(1)) : 0,
+  }));
+
+  return res.json({ items, acumulado });
+}
+
+async function subirComprobantePago(req, res) {
+  const validacion = await validarAccesoAlumno(req);
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const idConceptoPago = toNumber(req.body.id_concepto_pago);
+  const montoPagado = toNumber(req.body.monto_pagado);
+  const adjuntoUrl = normalizeText(req.body.adjunto_url || req.body.archivo_url || req.body.comprobante_url);
+
+  if (!Number.isInteger(idConceptoPago)) {
+    return res.status(400).json({ message: 'id_concepto_pago es obligatorio.' });
+  }
+
+  if (!montoPagado || montoPagado <= 0) {
+    return res.status(400).json({ message: 'monto_pagado debe ser mayor a 0.' });
+  }
+
+  if (!adjuntoUrl) {
+    return res.status(400).json({ message: 'adjunto_url es obligatorio.' });
+  }
+
+  const concepto = await ConceptoPago.findOne({
+    where: {
+      id_concepto_pago: idConceptoPago,
+      activo: true,
+    },
+  });
+
+  if (!concepto) {
+    return res.status(404).json({ message: 'Concepto de pago no encontrado o inactivo.' });
   }
 
   const tramite = await TramiteSolicitud.create({
-    id_alumno: req.user.id_usuario,
+    id_alumno: validacion.idAlumno,
+    tipo: 'comprobante_pago',
+    descripcion: `Comprobante ${concepto.nombre} por ${montoPagado.toFixed(2)} MXN`,
+    adjunto_url: adjuntoUrl,
+    estatus: 'recibido',
+    fecha_solicitud: new Date(),
+  });
+
+  await registrarEventoAuditoria({
+    idUsuario: validacion.idAlumno,
+    rolActor: req.user.rol,
+    accion: 'subir_comprobante_pago',
+    modulo: 'alumno',
+    entidad: 'tramites_solicitudes',
+    idEntidad: tramite.id_tramite,
+    detalle: {
+      id_concepto_pago: concepto.id_concepto_pago,
+      concepto: concepto.nombre,
+      monto_pagado: montoPagado,
+    },
+  });
+
+  return res.status(201).json({
+    id_tramite: tramite.id_tramite,
+    estatus: tramite.estatus,
+    fecha_solicitud: tramite.fecha_solicitud,
+  });
+}
+
+async function solicitarTramite(req, res) {
+  const validacion = await validarAccesoAlumno(req);
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const tipo = normalizeText(req.body.tipo).toLowerCase();
+  const tiposPermitidos = new Set(['constancia', 'credencial', 'uniforme']);
+  if (!tiposPermitidos.has(tipo)) {
+    return res.status(400).json({ message: 'tipo invalido. Usa constancia, credencial o uniforme.' });
+  }
+
+  const descripcion = normalizeText(req.body.descripcion) || `Solicitud de ${tipo}.`;
+
+  const tramite = await TramiteSolicitud.create({
+    id_alumno: validacion.idAlumno,
     tipo,
     descripcion,
     adjunto_url: normalizeText(req.body.adjunto_url) || null,
@@ -653,36 +682,401 @@ async function crearTramite(req, res) {
   });
 
   await registrarEventoAuditoria({
-    idUsuario: req.user.id_usuario,
+    idUsuario: validacion.idAlumno,
     rolActor: req.user.rol,
-    accion: 'crear_tramite',
-    modulo: 'alumnos',
+    accion: 'solicitar_tramite_alumno',
+    modulo: 'alumno',
     entidad: 'tramites_solicitudes',
     idEntidad: tramite.id_tramite,
-    detalle: {
-      tipo: tramite.tipo,
-      estatus: tramite.estatus,
-    },
+    detalle: { tipo },
   });
 
   return res.status(201).json(tramite);
 }
 
+async function historialTramites(req, res) {
+  const validacion = await validarAccesoAlumno(req);
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const items = await TramiteSolicitud.findAll({
+    where: { id_alumno: validacion.idAlumno },
+    include: [{ model: Usuario, as: 'resolutor', attributes: ['id_usuario', 'nombre_completo', 'rol'] }],
+    order: [['fecha_solicitud', 'DESC'], ['id_tramite', 'DESC']],
+  });
+
+  return res.json({ items });
+}
+
+async function notificaciones(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const { materiasIds } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+
+  const [meritos, pagosAprobados, tramites, anuncios, tareas] = await Promise.all([
+    MeritoAcademico.findAll({
+      where: { id_alumno: validacion.idAlumno },
+      order: [['fecha', 'DESC']],
+      limit: 10,
+    }),
+    PagoEstatus.findAll({
+      where: {
+        id_alumno: validacion.idAlumno,
+        estatus: { [Op.in]: ['pagado', 'condonado'] },
+      },
+      order: [['fecha_pago', 'DESC']],
+      limit: 10,
+    }),
+    TramiteSolicitud.findAll({
+      where: { id_alumno: validacion.idAlumno },
+      order: [['fecha_solicitud', 'DESC']],
+      limit: 10,
+    }),
+    materiasIds.length > 0
+      ? AnuncioDocente.findAll({
+        where: {
+          [Op.or]: [
+            { id_materia: null },
+            { id_materia: { [Op.in]: materiasIds } },
+          ],
+        },
+        include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia'] }],
+        order: [['fecha_publicacion', 'DESC']],
+        limit: 10,
+      })
+      : [],
+    materiasIds.length > 0
+      ? Tarea.findAll({
+        where: {
+          id_materia: { [Op.in]: materiasIds },
+          fecha_limite: { [Op.gte]: new Date() },
+        },
+        include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia'] }],
+        order: [['fecha_limite', 'ASC']],
+        limit: 10,
+      })
+      : [],
+  ]);
+
+  const notifs = [];
+
+  tareas.forEach((item) => {
+    notifs.push({
+      tipo: 'tarea_por_vencer',
+      titulo: `Tarea por vencer: ${item.titulo}`,
+      detalle: `${item.materia?.nombre_materia || 'Materia'} · vence ${item.fecha_limite}`,
+      fecha: item.fecha_limite,
+      prioridad: 'media',
+    });
+  });
+
+  pagosAprobados.forEach((item) => {
+    notifs.push({
+      tipo: 'pago_aprobado',
+      titulo: `Pago ${item.estatus === 'condonado' ? 'condonado' : 'aprobado'}`,
+      detalle: `${item.concepto} · ${item.monto} MXN`,
+      fecha: item.fecha_pago || item.fecha_limite,
+      prioridad: 'baja',
+    });
+  });
+
+  meritos.forEach((item) => {
+    notifs.push({
+      tipo: 'merito_otorgado',
+      titulo: `Merito: ${item.nombre}`,
+      detalle: item.tipo_merito || 'Reconocimiento academico',
+      fecha: item.fecha,
+      prioridad: 'baja',
+    });
+  });
+
+  anuncios.forEach((item) => {
+    notifs.push({
+      tipo: 'aviso_grupal',
+      titulo: item.titulo,
+      detalle: `${item.materia?.nombre_materia || 'Comunidad'} · ${item.descripcion}`,
+      fecha: item.fecha_publicacion,
+      prioridad: 'media',
+    });
+  });
+
+  tramites.forEach((item) => {
+    notifs.push({
+      tipo: 'tramite_actualizado',
+      titulo: `Tramite ${item.tipo}`,
+      detalle: `Estatus: ${item.estatus}`,
+      fecha: item.fecha_resolucion || item.fecha_solicitud,
+      prioridad: 'baja',
+    });
+  });
+
+  notifs.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+
+  return res.json({ items: notifs.slice(0, 40) });
+}
+
+async function dashboard(req, res) {
+  const validacion = await validarAccesoAlumno(req);
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const [horarioResp, tareasResp, pagosResp] = await Promise.all([
+    horarioAulas(req, {
+      status(code) {
+        this._status = code;
+        return this;
+      },
+      json(payload) {
+        this.payload = payload;
+        return this;
+      },
+    }),
+    tareasPendientes(req, {
+      status(code) {
+        this._status = code;
+        return this;
+      },
+      json(payload) {
+        this.payload = payload;
+        return this;
+      },
+    }),
+    PagoEstatus.findAll({
+      where: { id_alumno: validacion.idAlumno },
+      order: [['fecha_limite', 'ASC']],
+      limit: 10,
+    }),
+  ]);
+
+  return res.json({
+    perfil: validacion.estado.perfil,
+    usuario: validacion.estado.usuario,
+    bloqueo_plataforma: validacion.estado.bloqueo_plataforma,
+    bloqueo_calificaciones: validacion.estado.bloqueo_calificaciones,
+    horario_aulas: horarioResp?.payload?.items || [],
+    tareas_pendientes: tareasResp?.payload?.items || [],
+    pagos: pagosResp,
+  });
+}
+
+async function horarios(req, res) {
+  return horarioAulas(req, res);
+}
+
+async function tareas(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const { materiasIds, gruposPorMateria } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+  if (materiasIds.length === 0) {
+    return res.json({ items: [] });
+  }
+
+  const [tareasItems, entregas] = await Promise.all([
+    Tarea.findAll({
+      where: { id_materia: { [Op.in]: materiasIds } },
+      include: [{ model: Materia, as: 'materia' }],
+      order: [['fecha_limite', 'ASC']],
+    }),
+    EntregaTarea.findAll({ where: { id_alumno: validacion.idAlumno } }),
+  ]);
+
+  const entregasMap = new Map(entregas.map((item) => [item.id_tarea, item]));
+
+  const items = tareasItems
+    .filter((tareaItem) => {
+      if (!tareaItem.grupo_id) return true;
+      const gruposMateria = gruposPorMateria.get(tareaItem.id_materia);
+      return gruposMateria ? gruposMateria.has(String(tareaItem.grupo_id).trim()) : false;
+    })
+    .map((tareaItem) => ({
+      id_tarea: tareaItem.id_tarea,
+      id_materia: tareaItem.id_materia,
+      grupo_id: tareaItem.grupo_id,
+      titulo: tareaItem.titulo,
+      descripcion: tareaItem.descripcion,
+      fecha_limite: tareaItem.fecha_limite,
+      archivo_adjunto_url: tareaItem.archivo_adjunto_url,
+      materia: tareaItem.materia,
+      entrega: entregasMap.get(tareaItem.id_tarea) || null,
+      estatus: entregasMap.get(tareaItem.id_tarea)?.estatus || 'pendiente',
+      calificacion: entregasMap.get(tareaItem.id_tarea)?.calificacion || null,
+      retroalimentacion: entregasMap.get(tareaItem.id_tarea)?.retroalimentacion || null,
+    }));
+
+  return res.json({ items });
+}
+
+async function asistencias(req, res) {
+  return asistencia(req, res);
+}
+
+async function pagos(req, res) {
+  const validacion = await validarAccesoAlumno(req);
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const items = await PagoEstatus.findAll({
+    where: { id_alumno: validacion.idAlumno },
+    order: [['fecha_limite', 'ASC']],
+  });
+
+  const totalPagado = items
+    .filter((item) => ['pagado', 'condonado'].includes(item.estatus))
+    .reduce((acc, item) => acc + Number(item.monto || 0), 0);
+
+  const adeudoPendiente = items
+    .filter((item) => ['pendiente', 'vencido'].includes(item.estatus))
+    .reduce((acc, item) => acc + Number(item.monto || 0), 0);
+
+  return res.json({
+    items,
+    resumen: {
+      estado_general: adeudoPendiente > 0 ? 'adeudo' : 'al_corriente',
+      total_pagado: totalPagado,
+      adeudo_pendiente: adeudoPendiente,
+      periodo_activo: items[0]?.fecha_limite || null,
+    },
+  });
+}
+
+async function materiales(req, res) {
+  return materialesClase(req, res);
+}
+
+async function portafolio(_req, res) {
+  return res.json({ items: [] });
+}
+
+async function meritos(req, res) {
+  const validacion = await validarAccesoAlumno(req);
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const items = await MeritoAcademico.findAll({
+    where: { id_alumno: validacion.idAlumno },
+    order: [['fecha', 'DESC']],
+  });
+
+  return res.json({ items });
+}
+
+async function alertas(req, res) {
+  return notificaciones(req, res);
+}
+
+async function videoClases(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const { materiasIds, gruposPorMateria } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+  if (materiasIds.length === 0) {
+    return res.json({ items: [] });
+  }
+
+  const grupos = [...new Set([
+    ...[...gruposPorMateria.values()].flatMap((set) => [...set]),
+  ])];
+
+  const items = await SalaVideoDocente.findAll({
+    where: {
+      id_materia: { [Op.in]: materiasIds },
+      [Op.or]: [{ grupo_id: null }, { grupo_id: { [Op.in]: grupos } }],
+    },
+    include: [{ model: Materia, as: 'materia' }],
+    order: [['fecha_programada', 'DESC']],
+  });
+
+  return res.json({ items });
+}
+
+async function planEstudio(req, res) {
+  const validacion = await validarAccesoAlumno(req);
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const [materias, grupos] = await Promise.all([
+    Materia.findAll({ order: [['bimestre_pertenece', 'ASC'], ['nombre_materia', 'ASC']] }),
+    AlumnoGrupo.findAll({ where: { id_alumno: validacion.idAlumno } }),
+  ]);
+
+  const gruposMap = new Map(grupos.map((item) => [item.id_materia, item.grupo]));
+
+  const items = materias.map((materia) => {
+    let estatus = 'pendiente';
+    if (gruposMap.has(materia.id_materia)) {
+      estatus = 'en_curso';
+    } else if (Number(materia.bimestre_pertenece) < Number(validacion.estado.perfil.bimestre_actual || 0)) {
+      estatus = 'cursada';
+    }
+
+    return {
+      ...materia.toJSON(),
+      estatus,
+      grupo: gruposMap.get(materia.id_materia) || null,
+    };
+  });
+
+  const avanceBase = items.reduce((acc, item) => {
+    if (item.estatus === 'cursada') return acc + 1;
+    if (item.estatus === 'en_curso') return acc + 0.5;
+    return acc;
+  }, 0);
+
+  const porcentajeAvance = items.length > 0 ? Math.round((avanceBase / items.length) * 100) : 0;
+
+  return res.json({
+    carrera: validacion.estado.perfil.carrera,
+    bimestre_actual: validacion.estado.perfil.bimestre_actual,
+    porcentaje_avance: porcentajeAvance,
+    items,
+  });
+}
+
+async function listarTramites(req, res) {
+  return historialTramites(req, res);
+}
+
+async function crearTramite(req, res) {
+  return solicitarTramite(req, res);
+}
+
 module.exports = {
+  estadoAcceso,
+  horarioAulas,
+  tareasPendientes,
+  entregarTarea,
+  materialesClase,
+  calificaciones,
+  asistencia,
+  subirComprobantePago,
+  solicitarTramite,
+  historialTramites,
+  notificaciones,
+
   dashboard,
   horarios,
   tareas,
-  calificaciones,
   asistencias,
   pagos,
-  subirComprobantePago,
   materiales,
   portafolio,
   meritos,
   alertas,
   videoClases,
   planEstudio,
-  entregarTarea,
   listarTramites,
   crearTramite,
 };

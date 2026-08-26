@@ -1,0 +1,331 @@
+.alumno-page {
+  position: relative;
+  display: grid;
+  gap: 1rem;
+  padding-bottom: 5.6rem;
+  background: #090d16;
+  color: #f9fafb;
+}
+
+.alumno-card {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #111827;
+  padding: 1rem;
+}
+
+.alumno-header {
+  background: radial-gradient(circle at 10% 10%, rgba(37, 99, 235, 0.35), transparent 65%), #111827;
+}
+
+.alumno-header h2,
+.alumno-header p {
+  margin: 0;
+}
+
+.alumno-eyebrow {
+  margin: 0 0 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #93c5fd;
+  font-size: 0.76rem;
+}
+
+.alumno-tabs,
+.alumno-bottom-nav {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.alumno-tabs {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.alumno-tabs button,
+.alumno-bottom-nav button,
+.accordion-toggle {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid #374151;
+  background: transparent;
+  color: #cbd5e1;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.alumno-tabs button.is-active,
+.alumno-bottom-nav button.is-active {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.alumno-section-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.next-class-card .btn-primary,
+.alumno-inline-form .btn-primary,
+.alumno-form .btn-primary,
+.alumno-form .btn-secondary {
+  width: 100%;
+}
+
+.alumno-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.alumno-list.compact {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.scroll-area {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.alumno-list-item {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.alumno-list-item p,
+.alumno-list-item small {
+  margin: 0.22rem 0 0;
+  color: #9ca3af;
+}
+
+.alumno-list-head {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.urgency-chip {
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  border: 1px solid transparent;
+}
+
+.urgency-normal {
+  color: #d1d5db;
+  border-color: #4b5563;
+}
+
+.urgency-medium {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.5);
+}
+
+.urgency-high {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.55);
+}
+
+.alumno-inline-form {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.alumno-form {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+}
+
+.alumno-form input,
+.alumno-form select,
+.alumno-form textarea,
+.alumno-inline-form input {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid #374151;
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+}
+
+.alumno-empty {
+  margin: 0;
+  min-height: 100px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  color: #9ca3af;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.75rem;
+}
+
+.lock-empty {
+  border: 1px solid #374151;
+  background: #111827;
+}
+
+.badge-success,
+.badge-warn,
+.badge-danger,
+.badge-neutral {
+  border-radius: 999px;
+  padding: 0.26rem 0.58rem;
+  font-size: 0.74rem;
+}
+
+.badge-success {
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.45);
+}
+
+.badge-warn {
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+
+.badge-danger {
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+}
+
+.badge-neutral {
+  color: #9ca3af;
+  border: 1px solid rgba(156, 163, 175, 0.45);
+}
+
+.merito-chip {
+  border-radius: 12px;
+  border: 1px solid rgba(37, 99, 235, 0.45);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(14, 116, 144, 0.2));
+  padding: 0.68rem;
+  display: grid;
+  gap: 0.22rem;
+}
+
+.chips-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.payment-cards {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.payment-cards div {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.7rem;
+}
+
+.payment-cards span {
+  display: block;
+  color: #9ca3af;
+  font-size: 0.85rem;
+}
+
+.payment-cards strong {
+  display: block;
+  margin-top: 0.2rem;
+}
+
+.alumno-loading {
+  color: #93c5fd;
+  margin: 0;
+}
+
+.alumno-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(9, 13, 22, 0.94);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.alumno-overlay-card {
+  max-width: 560px;
+  width: 100%;
+  border-radius: 20px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: #111827;
+  padding: 1.2rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.alumno-overlay-card h2,
+.alumno-overlay-card p {
+  margin: 0;
+}
+
+.alumno-overlay-note {
+  color: #f59e0b;
+}
+
+.alumno-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  background: rgba(9, 13, 22, 0.98);
+  border-top: 1px solid #1f2937;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0.45rem 0.55rem;
+}
+
+.mobile-only {
+  display: grid;
+}
+
+.desktop-only {
+  display: none;
+}
+
+@media (min-width: 960px) {
+  .alumno-page {
+    padding-bottom: 0;
+  }
+
+  .desktop-only {
+    display: grid;
+  }
+
+  .mobile-only {
+    display: none;
+  }
+
+  .alumno-section-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .alumno-inline-form {
+    grid-template-columns: 2fr 1fr 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .chips-grid,
+  .payment-cards {
+    grid-template-columns: 1fr;
+  }
+}
