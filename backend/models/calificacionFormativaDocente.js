@@ -1,8 +1,8 @@
 'use strict';
 
 module.exports = (sequelize, DataTypes) => {
-  const CalificacionParcialDocente = sequelize.define(
-    'CalificacionParcialDocente',
+  const CalificacionFormativaDocente = sequelize.define(
+    'CalificacionFormativaDocente',
     {
       id_calificacion: {
         type: DataTypes.INTEGER,
@@ -26,7 +26,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(20),
         allowNull: false,
       },
-      parcial_numero: {
+      formativa_numero: {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 1,
@@ -45,24 +45,24 @@ module.exports = (sequelize, DataTypes) => {
       },
     },
     {
-      tableName: 'calificaciones_parciales_docente',
+      tableName: 'calificaciones_formativas_docente',
       timestamps: false,
     },
   );
 
-  CalificacionParcialDocente.associate = (models) => {
-    CalificacionParcialDocente.belongsTo(models.Materia, {
+  CalificacionFormativaDocente.associate = (models) => {
+    CalificacionFormativaDocente.belongsTo(models.Materia, {
       foreignKey: 'id_materia',
       targetKey: 'id_materia',
       as: 'materia',
     });
 
-    CalificacionParcialDocente.belongsTo(models.AlumnoPerfil, {
+    CalificacionFormativaDocente.belongsTo(models.AlumnoPerfil, {
       foreignKey: 'id_alumno',
       targetKey: 'id_alumno',
       as: 'alumno',
     });
   };
 
-  return CalificacionParcialDocente;
+  return CalificacionFormativaDocente;
 };

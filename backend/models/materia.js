@@ -34,6 +34,14 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
+      imagen_portada_url: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+      },
+      recursos_sep: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
       carrera: {
         type: DataTypes.STRING(120),
         allowNull: true,

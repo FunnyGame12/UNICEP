@@ -19,8 +19,9 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       modalidad_periodo: {
-        type: DataTypes.ENUM('semestral', 'cuatrimestral'),
+        type: DataTypes.ENUM('cuatrimestral'),
         allowNull: false,
+        defaultValue: 'cuatrimestral',
       },
       total_periodos: {
         type: DataTypes.INTEGER,

@@ -17,7 +17,7 @@ const {
   AsistenciaDocente,
   ConceptoPago,
   AnuncioDocente,
-  CalificacionParcialDocente,
+  CalificacionFormativaDocente,
 } = require('../../models');
 const { registrarEventoAuditoria } = require('../services/auditService');
 
@@ -51,7 +51,7 @@ async function obtenerEstadoAlumno(idAlumno) {
       attributes: ['id_usuario', 'nombre_completo', 'correo', 'folio_matricula', 'cuenta_activada', 'cuenta_bloqueada'],
     }),
     AlumnoPerfil.findByPk(idAlumno, {
-      attributes: ['id_alumno', 'carrera', 'bimestre_actual', 'bloqueo_plataforma', 'bloqueo_calificaciones', 'estatus_financiero'],
+      attributes: ['id_alumno', 'carrera', 'bimestre_actual', 'estado_academico', 'bloqueo_plataforma', 'bloqueo_calificaciones', 'estatus_financiero'],
     }),
   ]);
 
@@ -62,7 +62,7 @@ async function obtenerEstadoAlumno(idAlumno) {
   return {
     usuario,
     perfil,
-    bloqueo_plataforma: Boolean(usuario.cuenta_bloqueada || perfil.bloqueo_plataforma || !usuario.cuenta_activada),
+    bloqueo_plataforma: Boolean(usuario.cuenta_bloqueada || perfil.bloqueo_plataforma || !usuario.cuenta_activada || perfil.estado_academico === 'suspendido'),
     bloqueo_calificaciones: Boolean(perfil.bloqueo_calificaciones),
   };
 }
@@ -173,6 +173,7 @@ async function estadoAcceso(req, res) {
     bloqueo_plataforma: estado.bloqueo_plataforma,
     bloqueo_calificaciones: estado.bloqueo_calificaciones,
     estatus_financiero: estado.perfil.estatus_financiero || 'al_dia',
+    estado_academico: estado.perfil.estado_academico || 'activo',
     perfil: {
       nombre_completo: estado.usuario.nombre_completo,
       correo: estado.usuario.correo,
@@ -341,17 +342,17 @@ async function calificaciones(req, res) {
 
   const { materiasIds } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
   if (materiasIds.length === 0) {
-    return res.json({ parciales: [], finales: [], resumen: [] });
+    return res.json({ formativas: [], finales: [], resumen: [] });
   }
 
-  const [parciales, entregasCalificadas] = await Promise.all([
-    CalificacionParcialDocente.findAll({
+  const [formativas, entregasCalificadas] = await Promise.all([
+    CalificacionFormativaDocente.findAll({
       where: {
         id_alumno: validacion.idAlumno,
         id_materia: { [Op.in]: materiasIds },
       },
       include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia', 'codigo_materia'] }],
-      order: [['parcial_numero', 'ASC'], ['fecha_captura', 'DESC']],
+      order: [['formativa_numero', 'ASC'], ['fecha_captura', 'DESC']],
     }),
     EntregaTarea.findAll({
       where: {
@@ -402,11 +403,11 @@ async function calificaciones(req, res) {
     };
   });
 
-  const parcialesSerialized = parciales.map((item) => ({
+  const formativasSerialized = formativas.map((item) => ({
     id_calificacion: item.id_calificacion,
     id_materia: item.id_materia,
     materia: item.materia,
-    parcial_numero: item.parcial_numero,
+    formativa_numero: item.formativa_numero,
     calificacion: item.calificacion,
     retroalimentacion: item.retroalimentacion,
     fecha_captura: item.fecha_captura,
@@ -414,17 +415,17 @@ async function calificaciones(req, res) {
   }));
 
   const resumenMap = new Map();
-  parcialesSerialized.forEach((item) => {
+  formativasSerialized.forEach((item) => {
     const key = Number(item.id_materia);
     const current = resumenMap.get(key) || {
       id_materia: key,
       materia: item.materia?.nombre_materia || `Materia ${key}`,
-      parcial_suma: 0,
-      parcial_total: 0,
+      formativa_suma: 0,
+      formativa_total: 0,
       final_promedio: null,
     };
-    current.parcial_suma += Number(item.calificacion || 0);
-    current.parcial_total += 1;
+    current.formativa_suma += Number(item.calificacion || 0);
+    current.formativa_total += 1;
     resumenMap.set(key, current);
   });
 
@@ -432,8 +433,8 @@ async function calificaciones(req, res) {
     const current = resumenMap.get(item.id_materia) || {
       id_materia: item.id_materia,
       materia: item.materia,
-      parcial_suma: 0,
-      parcial_total: 0,
+      formativa_suma: 0,
+      formativa_total: 0,
       final_promedio: null,
     };
     current.final_promedio = item.promedio_final;
@@ -441,22 +442,22 @@ async function calificaciones(req, res) {
   });
 
   const resumen = [...resumenMap.values()].map((item) => {
-    const parcialPromedio = item.parcial_total > 0
-      ? Number((item.parcial_suma / item.parcial_total).toFixed(2))
+    const formativaPromedio = item.formativa_total > 0
+      ? Number((item.formativa_suma / item.formativa_total).toFixed(2))
       : null;
-    const base = item.final_promedio ?? parcialPromedio;
+    const base = item.final_promedio ?? formativaPromedio;
 
     return {
       id_materia: item.id_materia,
       materia: item.materia,
-      parcial_promedio: parcialPromedio,
+      formativa_promedio: formativaPromedio,
       final_promedio: item.final_promedio,
       estatus: estatusAcademico(base),
     };
   });
 
   return res.json({
-    parciales: parcialesSerialized,
+    formativas: formativasSerialized,
     finales,
     resumen,
   });

@@ -30,6 +30,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DATEONLY,
         allowNull: false,
       },
+      fecha_limite_calificaciones: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
       estatus: {
         type: DataTypes.ENUM('planeado', 'activo', 'cerrado'),
         allowNull: false,

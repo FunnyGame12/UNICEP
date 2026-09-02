@@ -128,8 +128,8 @@ export default function DocentePage() {
           alumnosItems.forEach((row) => {
             if (!next[row.id_alumno]) {
               next[row.id_alumno] = {
-                parcial_1: '',
-                parcial_2: '',
+                formativa_1: '',
+                formativa_2: '',
                 proyecto_final: '',
                 definitiva: '',
               };
@@ -199,8 +199,8 @@ export default function DocentePage() {
   function handleGradeChange(alumnoId, field, value) {
     setCalificacionesPorAlumno((prev) => {
       const current = prev[alumnoId] || {
-        parcial_1: '',
-        parcial_2: '',
+        formativa_1: '',
+        formativa_2: '',
         proyecto_final: '',
         definitiva: '',
       };
@@ -209,8 +209,8 @@ export default function DocentePage() {
 
       if (field !== 'definitiva') {
         const partialScores = [
-          Number(updated.parcial_1 ?? 0),
-          Number(updated.parcial_2 ?? 0),
+          Number(updated.formativa_1 ?? 0),
+          Number(updated.formativa_2 ?? 0),
           Number(updated.proyecto_final ?? 0),
         ].filter((number) => Number.isFinite(number));
 
@@ -235,19 +235,19 @@ export default function DocentePage() {
       return;
     }
 
-    const parcialMap = {
-      parcial_1: 1,
-      parcial_2: 2,
+    const formativaMap = {
+      formativa_1: 1,
+      formativa_2: 2,
       proyecto_final: 3,
     };
 
     try {
       setSending(true);
       setError('');
-      await api.put('/docente/calificaciones/parcial', {
+      await api.put('/docente/calificaciones/formativa', {
         materia_id: Number(selectedAsignacion.materia_id),
         grupo_id: selectedAsignacion.grupo_id,
-        parcial_numero: parcialMap[field],
+        formativa_numero: formativaMap[field],
         alumno_id: Number(alumnoId),
         calificacion: value,
         retroalimentacion: '',
@@ -438,8 +438,8 @@ export default function DocentePage() {
                 <thead>
                   <tr>
                     <th>Alumno</th>
-                    <th>Parcial 1</th>
-                    <th>Parcial 2</th>
+                    <th>Formativa 1</th>
+                    <th>Formativa 2</th>
                     <th>Proyecto Final</th>
                     <th>Calificación Final</th>
                     <th>Acción</th>
@@ -449,8 +449,8 @@ export default function DocentePage() {
                   {alumnos.map((row) => {
                     const alumno = row.alumno?.usuario;
                     const draft = calificacionesPorAlumno[row.id_alumno] || {
-                      parcial_1: '',
-                      parcial_2: '',
+                      formativa_1: '',
+                      formativa_2: '',
                       proyecto_final: '',
                       definitiva: '',
                     };
@@ -460,7 +460,7 @@ export default function DocentePage() {
                         <td>
                           <strong>{alumno?.nombre_completo || `Alumno ${row.id_alumno}`}</strong>
                         </td>
-                        {['parcial_1', 'parcial_2', 'proyecto_final', 'definitiva'].map((field) => (
+                        {['formativa_1', 'formativa_2', 'proyecto_final', 'definitiva'].map((field) => (
                           <td key={`${row.id_alumno}-${field}`}>
                             <input
                               className="grade-input"
@@ -489,7 +489,7 @@ export default function DocentePage() {
                             type="button"
                             className="save-mini"
                             onClick={() => {
-                              ['parcial_1', 'parcial_2', 'proyecto_final'].forEach((field) => {
+                              ['formativa_1', 'formativa_2', 'proyecto_final'].forEach((field) => {
                                 const value = calificacionesPorAlumno[row.id_alumno]?.[field];
                                 if (value !== '' && value !== undefined && value !== null) {
                                   guardarCalificacion(row.id_alumno, field);

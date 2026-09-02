@@ -94,7 +94,7 @@ export default function AlumnoPage() {
 
   const [acceso, setAcceso] = useState(null);
   const [horario, setHorario] = useState([]);
-  const [calificaciones, setCalificaciones] = useState({ parciales: [], finales: [], resumen: [] });
+  const [calificaciones, setCalificaciones] = useState({ formativas: [], finales: [], resumen: [] });
   const [calificacionesBloqueadas, setCalificacionesBloqueadas] = useState(false);
   const [asistencia, setAsistencia] = useState({ items: [], acumulado: [] });
   const [historialTramites, setHistorialTramites] = useState([]);
@@ -148,20 +148,20 @@ export default function AlumnoPage() {
   const kardexRows = useMemo(() => {
     const partialMap = new Map();
 
-    (calificaciones.parciales || []).forEach((item) => {
+    (calificaciones.formativas || []).forEach((item) => {
       const idMateria = Number(item.id_materia);
       const materiaKey = Number.isFinite(idMateria) ? idMateria : (item.materia?.nombre_materia || item.materia || 'materia');
       const current = partialMap.get(materiaKey) || {
         id_materia: idMateria || materiaKey,
         materia: item.materia?.nombre_materia || item.materia || 'Materia',
-        parcial_1: null,
-        parcial_2: null,
+        formativa_1: null,
+        formativa_2: null,
         final: null,
       };
 
-      const numeroParcial = Number(item.parcial_numero);
-      if (numeroParcial === 1) current.parcial_1 = Number(item.calificacion ?? 0);
-      if (numeroParcial === 2) current.parcial_2 = Number(item.calificacion ?? 0);
+      const numeroFormativa = Number(item.formativa_numero);
+      if (numeroFormativa === 1) current.formativa_1 = Number(item.calificacion ?? 0);
+      if (numeroFormativa === 2) current.formativa_2 = Number(item.calificacion ?? 0);
       partialMap.set(materiaKey, current);
     });
 
@@ -171,11 +171,11 @@ export default function AlumnoPage() {
       const current = partialMap.get(materiaKey) || {
         id_materia: idMateria || materiaKey,
         materia: item.materia || 'Materia',
-        parcial_1: null,
-        parcial_2: null,
+        formativa_1: null,
+        formativa_2: null,
         final: null,
       };
-      current.final = item.final_promedio ?? item.parcial_promedio ?? null;
+      current.final = item.final_promedio ?? item.formativa_promedio ?? null;
       partialMap.set(materiaKey, current);
     });
 
@@ -232,7 +232,7 @@ export default function AlumnoPage() {
 
       if (estadoResp.data?.bloqueo_plataforma) {
         setHorario([]);
-        setCalificaciones({ parciales: [], finales: [], resumen: [] });
+        setCalificaciones({ formativas: [], finales: [], resumen: [] });
         setAsistencia({ items: [], acumulado: [] });
         setNotificaciones([]);
         setCalificacionesBloqueadas(Boolean(estadoResp.data?.bloqueo_calificaciones));
@@ -246,7 +246,7 @@ export default function AlumnoPage() {
         api.get('/alumno/calificaciones').catch((requestError) => {
           if (requestError?.response?.status === 403) {
             setCalificacionesBloqueadas(true);
-            return { data: { parciales: [], finales: [], resumen: [] } };
+            return { data: { formativas: [], finales: [], resumen: [] } };
           }
           throw requestError;
         }),
@@ -255,7 +255,7 @@ export default function AlumnoPage() {
       setHorario(horarioResp.data?.items || []);
       setAsistencia(asistenciaResp.data || { items: [], acumulado: [] });
       setNotificaciones(notificacionesResp.data?.items || []);
-      setCalificaciones(calificacionesResp.data || { parciales: [], finales: [], resumen: [] });
+      setCalificaciones(calificacionesResp.data || { formativas: [], finales: [], resumen: [] });
       setCalificacionesBloqueadas(false);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo cargar el panel del alumno.');
@@ -340,8 +340,8 @@ export default function AlumnoPage() {
       `Alumno: ${acceso?.perfil?.nombre_completo || 'Estudiante'}`,
       `Carrera: ${acceso?.perfil?.carrera || 'N/D'}`,
       '',
-      'Materia;Docente;Parcial 1;Parcial 2;Calificación Final',
-      ...kardexRows.map((item) => `${item.materia};${item.docente};${item.parcial_1 ?? 'N/D'};${item.parcial_2 ?? 'N/D'};${item.final ?? 'N/D'}`),
+      'Materia;Docente;Formativa 1;Formativa 2;Calificación Final',
+      ...kardexRows.map((item) => `${item.materia};${item.docente};${item.formativa_1 ?? 'N/D'};${item.formativa_2 ?? 'N/D'};${item.final ?? 'N/D'}`),
     ].join('\n');
 
     const blob = new Blob([payload], { type: 'text/plain;charset=utf-8' });
@@ -471,8 +471,8 @@ export default function AlumnoPage() {
                       <tr>
                         <th>Materia</th>
                         <th>Docente</th>
-                        <th>Parcial 1</th>
-                        <th>Parcial 2</th>
+                        <th>Formativa 1</th>
+                        <th>Formativa 2</th>
                         <th>Calificación Final</th>
                       </tr>
                     </thead>
@@ -481,8 +481,8 @@ export default function AlumnoPage() {
                         <tr key={item.id_materia || item.materia}>
                           <td>{item.materia}</td>
                           <td>{item.docente}</td>
-                          <td>{item.parcial_1 ?? 'N/D'}</td>
-                          <td>{item.parcial_2 ?? 'N/D'}</td>
+                          <td>{item.formativa_1 ?? 'N/D'}</td>
+                          <td>{item.formativa_2 ?? 'N/D'}</td>
                           <td>{item.final ?? 'N/D'}</td>
                         </tr>
                       ))}

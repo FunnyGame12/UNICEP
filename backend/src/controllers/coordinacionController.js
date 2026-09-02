@@ -19,7 +19,7 @@ const {
 const DIAS_VALIDOS = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
 const ESTATUS_PROGRAMA_VALIDOS = new Set(['en_revision', 'horas_cubiertas', 'liberado', 'rechazado']);
 const TIPOS_NIVEL_VALIDOS = new Set(['preparatoria', 'licenciatura', 'ingenieria', 'maestria']);
-const MODALIDADES_PERIODO_VALIDAS = new Set(['semestral', 'cuatrimestral']);
+const MODALIDADES_PERIODO_VALIDAS = new Set(['cuatrimestral']);
 const ESTATUS_PROGRAMA_ACADEMICO_VALIDOS = new Set(['activo', 'inactivo']);
 
 function toInt(value) {
@@ -749,12 +749,13 @@ function serializeMateria(item) {
     nombre_materia: item.nombre_materia,
     creditos: item.creditos,
     horas_semanales: item.horas_semanales,
+    imagen_portada_url: item.imagen_portada_url,
+    recursos_sep: item.recursos_sep,
   };
 }
 
 function getPeriodoLabel(modalidad, numero) {
-  const base = modalidad === 'semestral' ? 'Semestre' : 'Cuatrimestre';
-  return `${base} ${numero}`;
+  return `Cuatrimestre ${numero}`;
 }
 
 async function listarProgramasAcademicos(_req, res) {
@@ -954,6 +955,8 @@ async function crearMateriaPrograma(req, res) {
     const nombreMateria = normalizeText(req.body.nombre_materia);
     const creditos = req.body.creditos !== undefined ? toInt(req.body.creditos) : null;
     const horasSemanales = req.body.horas_semanales !== undefined ? toInt(req.body.horas_semanales) : null;
+    const imagenPortadaUrl = req.body.imagen_portada_url !== undefined ? normalizeText(req.body.imagen_portada_url) : null;
+    const recursosSep = req.body.recursos_sep !== undefined ? normalizeText(req.body.recursos_sep) : null;
 
     if (!Number.isInteger(programaAcademicoId) || !Number.isInteger(periodoNumero) || !codigoMateria || !nombreMateria) {
       return res.status(400).json({ message: 'programa_academico_id, periodo_numero, codigo_materia y nombre_materia son obligatorios.' });
@@ -976,6 +979,8 @@ async function crearMateriaPrograma(req, res) {
       nombre_materia: nombreMateria,
       creditos: Number.isInteger(creditos) ? creditos : null,
       horas_semanales: Number.isInteger(horasSemanales) ? horasSemanales : null,
+      imagen_portada_url: imagenPortadaUrl,
+      recursos_sep: recursosSep,
       carrera: programa.nombre,
       activa: true,
     });
@@ -1008,6 +1013,8 @@ async function actualizarMateriaPrograma(req, res) {
     const periodoNumero = req.body.periodo_numero !== undefined ? toInt(req.body.periodo_numero) : null;
     const creditos = req.body.creditos !== undefined ? toInt(req.body.creditos) : null;
     const horasSemanales = req.body.horas_semanales !== undefined ? toInt(req.body.horas_semanales) : null;
+    const imagenPortadaUrl = req.body.imagen_portada_url !== undefined ? normalizeText(req.body.imagen_portada_url) : null;
+    const recursosSep = req.body.recursos_sep !== undefined ? normalizeText(req.body.recursos_sep) : null;
 
     if (
       nombreMateria === null
@@ -1015,6 +1022,8 @@ async function actualizarMateriaPrograma(req, res) {
       && periodoNumero === null
       && creditos === null
       && horasSemanales === null
+      && imagenPortadaUrl === null
+      && recursosSep === null
     ) {
       return res.status(400).json({ message: 'Proporciona al menos un campo editable.' });
     }
@@ -1035,6 +1044,8 @@ async function actualizarMateriaPrograma(req, res) {
     if (codigoMateria !== null) materia.codigo_materia = codigoMateria;
     if (creditos !== null) materia.creditos = Number.isInteger(creditos) ? creditos : null;
     if (horasSemanales !== null) materia.horas_semanales = Number.isInteger(horasSemanales) ? horasSemanales : null;
+    if (imagenPortadaUrl !== null) materia.imagen_portada_url = imagenPortadaUrl;
+    if (recursosSep !== null) materia.recursos_sep = recursosSep;
 
     await materia.save();
 

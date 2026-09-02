@@ -12,7 +12,7 @@ const {
   AlumnoPerfil,
   Usuario,
   TramiteSolicitud,
-  CalificacionParcialDocente,
+  CalificacionFormativaDocente,
   ActaCalificacion,
   PeriodoAcademico,
 } = require('../../models');
@@ -1134,21 +1134,26 @@ async function registrarAsistenciaGrupo(req, res) {
   return res.status(201).json(registro);
 }
 
-async function capturarCalificacionesParcial(req, res) {
+async function capturarCalificacionesFormativa(req, res) {
   const materiaId = Number(req.body.materia_id);
   const grupoId = normalizeGrupo(req.body.grupo_id);
-  const parcialNumero = Number(req.body.parcial_numero || 1);
+  const formativaNumero = Number(req.body.formativa_numero || 1);
   const calificaciones = Array.isArray(req.body.calificaciones)
     ? req.body.calificaciones
     : [{ alumno_id: req.body.alumno_id, calificacion: req.body.calificacion, retroalimentacion: req.body.retroalimentacion }];
 
-  if (!Number.isInteger(materiaId) || !grupoId || !Number.isInteger(parcialNumero) || parcialNumero < 1) {
-    return res.status(400).json({ message: 'materia_id, grupo_id y parcial_numero son obligatorios.' });
+  if (!Number.isInteger(materiaId) || !grupoId || !Number.isInteger(formativaNumero) || formativaNumero < 1) {
+    return res.status(400).json({ message: 'materia_id, grupo_id y formativa_numero son obligatorios.' });
   }
 
   const contexto = await obtenerContextoDocente(req.user.id_usuario);
   if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
     return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+  }
+
+  const periodo = await PeriodoAcademico.findOne({ where: { estatus: 'activo' }, order: [['id_periodo', 'DESC']] });
+  if (periodo?.fecha_limite_calificaciones && new Date() > new Date(periodo.fecha_limite_calificaciones)) {
+    return res.status(423).json({ message: 'La fecha limite para capturar calificaciones formativas ha vencido.' });
   }
 
   const upserts = [];
@@ -1165,12 +1170,12 @@ async function capturarCalificacionesParcial(req, res) {
     }
 
     // eslint-disable-next-line no-await-in-loop
-    const [item] = await CalificacionParcialDocente.findOrCreate({
+    const [item] = await CalificacionFormativaDocente.findOrCreate({
       where: {
         id_alumno: alumnoId,
         id_materia: materiaId,
         grupo_id: grupoId,
-        parcial_numero: parcialNumero,
+        formativa_numero: formativaNumero,
       },
       defaults: {
         id_docente: req.user.id_usuario,
@@ -1193,7 +1198,7 @@ async function capturarCalificacionesParcial(req, res) {
   }
 
   return res.json({
-    parcial_numero: parcialNumero,
+    formativa_numero: formativaNumero,
     materia_id: materiaId,
     grupo_id: grupoId,
     total_registros: upserts.length,
@@ -1225,12 +1230,12 @@ async function enviarActaCoordinacion(req, res) {
   const alumnosGrupo = await AlumnoGrupo.findAll({ where: { id_materia: materiaId, grupo: grupoId }, attributes: ['id_alumno'], raw: true });
   const alumnosIds = alumnosGrupo.map((item) => Number(item.id_alumno)).filter(Number.isInteger);
 
-  const parciales = alumnosIds.length > 0
-    ? await CalificacionParcialDocente.findAll({ where: { id_materia: materiaId, grupo_id: grupoId, id_alumno: { [Op.in]: alumnosIds } }, raw: true })
+  const formativas = alumnosIds.length > 0
+    ? await CalificacionFormativaDocente.findAll({ where: { id_materia: materiaId, grupo_id: grupoId, id_alumno: { [Op.in]: alumnosIds } }, raw: true })
     : [];
 
   const scoreByAlumno = new Map();
-  parciales.forEach((row) => {
+  formativas.forEach((row) => {
     const idAlumno = Number(row.id_alumno);
     const current = scoreByAlumno.get(idAlumno) || { sum: 0, total: 0 };
     current.sum += Number(row.calificacion || 0);
@@ -1251,7 +1256,7 @@ async function enviarActaCoordinacion(req, res) {
     materia_id: materiaId,
     materia: materia.nombre_materia,
     grupo_id: grupoId,
-    parcial_numero: Number(req.body.parcial_numero || 1),
+    formativa_numero: Number(req.body.formativa_numero || 1),
     enviado_por_docente: req.user.id_usuario,
     fecha_envio: new Date().toISOString(),
   };
@@ -1352,7 +1357,7 @@ module.exports = {
   alumnosPorGrupoMateria,
   listarAsistenciaGrupoFecha,
   registrarAsistenciaGrupo,
-  capturarCalificacionesParcial,
+  capturarCalificacionesFormativa,
   enviarActaCoordinacion,
   justificantesRecibidos,
   listarAvisosGrupales,

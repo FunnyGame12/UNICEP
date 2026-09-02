@@ -118,7 +118,7 @@ const alumnoGrupoSchema = z.object({
 const programaAcademicoSchema = z.object({
   tipo_nivel: z.enum(['preparatoria', 'licenciatura', 'ingenieria', 'maestria']),
   nombre: z.string().trim().min(3, 'Ingresa el nombre del programa.'),
-  modalidad_periodo: z.enum(['semestral', 'cuatrimestral']),
+  modalidad_periodo: z.literal('cuatrimestral'),
   total_periodos: z.preprocess(
     (value) => (value === '' || value === null || value === undefined ? NaN : Number(value)),
     z.number().int().min(1, 'Minimo 1 periodo.').max(20, 'Maximo 20 periodos.'),
@@ -141,6 +141,8 @@ const materiaPlanSchema = z.object({
     (value) => (value === '' || value === null || value === undefined ? undefined : Number(value)),
     z.number().int().min(0, 'No puede ser negativo.').optional(),
   ),
+  imagen_portada_url: z.string().trim().url('Ingresa una URL valida.').or(z.literal('')),
+  recursos_sep: z.string().trim().optional(),
 });
 
 export default function CoordinacionAcademicaPage() {
@@ -263,7 +265,7 @@ export default function CoordinacionAcademicaPage() {
     defaultValues: {
       tipo_nivel: 'licenciatura',
       nombre: '',
-      modalidad_periodo: 'semestral',
+      modalidad_periodo: 'cuatrimestral',
       total_periodos: 9,
     },
   });
@@ -643,8 +645,7 @@ export default function CoordinacionAcademicaPage() {
     if (!programa) return [];
     return Array.from({ length: Number(programa.total_periodos || 0) }, (_, index) => {
       const numero = index + 1;
-      const base = programa.modalidad_periodo === 'semestral' ? 'Semestre' : 'Cuatrimestre';
-      return { value: String(numero), label: `${base} ${numero}` };
+      return { value: String(numero), label: `Cuatrimestre ${numero}` };
     });
   }, [programasAcademicos, selectedProgramaCargaId]);
 
@@ -653,8 +654,7 @@ export default function CoordinacionAcademicaPage() {
     if (!programa) return [];
     return Array.from({ length: Number(programa.total_periodos || 0) }, (_, index) => {
       const numero = index + 1;
-      const base = programa.modalidad_periodo === 'semestral' ? 'Semestre' : 'Cuatrimestre';
-      return { value: String(numero), label: `${base} ${numero}` };
+      return { value: String(numero), label: `Cuatrimestre ${numero}` };
     });
   }, [programasAcademicos, selectedProgramaCalifId]);
 
@@ -812,6 +812,8 @@ export default function CoordinacionAcademicaPage() {
         nombre_materia: values.nombre_materia.trim(),
         creditos: values.creditos === undefined ? undefined : Number(values.creditos),
         horas_semanales: values.horas_semanales === undefined ? undefined : Number(values.horas_semanales),
+        imagen_portada_url: values.imagen_portada_url?.trim() || null,
+        recursos_sep: values.recursos_sep?.trim() || null,
       };
 
       if (editingMateriaPlanId) {
@@ -830,6 +832,8 @@ export default function CoordinacionAcademicaPage() {
         nombre_materia: '',
         creditos: 0,
         horas_semanales: 0,
+        imagen_portada_url: '',
+        recursos_sep: '',
       });
 
       await loadData();
@@ -928,7 +932,7 @@ export default function CoordinacionAcademicaPage() {
               </div>
 
               <div className="coord-form-group">
-                <label htmlFor="coord-carga-periodo">Periodo / Semestre</label>
+                <label htmlFor="coord-carga-periodo">Periodo / Cuatrimestre</label>
                 <select
                   id="coord-carga-periodo"
                   value={selectedPeriodoCarga}
@@ -1159,7 +1163,7 @@ export default function CoordinacionAcademicaPage() {
 
               <label>Dias de la semana</label>
               <div className="coord-days">
-                {['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'].map((day) => (
+                {['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'].map((day) => (
                   <label key={day} className="coord-checkbox">
                     <input type="checkbox" value={day} {...horarioForm.register('dias_semana')} />
                     <span>{day}</span>
@@ -1254,7 +1258,7 @@ export default function CoordinacionAcademicaPage() {
               </div>
 
               <div className="coord-form-group">
-                <label htmlFor="coord-calif-periodo">Periodo / Semestre</label>
+                <label htmlFor="coord-calif-periodo">Periodo / Cuatrimestre</label>
                 <select
                   id="coord-calif-periodo"
                   value={selectedPeriodoCalif}
@@ -1384,11 +1388,7 @@ export default function CoordinacionAcademicaPage() {
               <label>Modalidad de periodos</label>
               <div className="coord-days">
                 <label className="coord-checkbox">
-                  <input type="radio" value="semestral" {...programaAcademicoForm.register('modalidad_periodo')} />
-                  <span>Semestral</span>
-                </label>
-                <label className="coord-checkbox">
-                  <input type="radio" value="cuatrimestral" {...programaAcademicoForm.register('modalidad_periodo')} />
+                  <input type="radio" value="cuatrimestral" {...programaAcademicoForm.register('modalidad_periodo')} defaultChecked />
                   <span>Cuatrimestral</span>
                 </label>
               </div>
@@ -1410,7 +1410,7 @@ export default function CoordinacionAcademicaPage() {
                     programaAcademicoForm.reset({
                       tipo_nivel: 'licenciatura',
                       nombre: '',
-                      modalidad_periodo: 'semestral',
+                      modalidad_periodo: 'cuatrimestral',
                       total_periodos: 9,
                     });
                   }}
@@ -1504,6 +1504,17 @@ export default function CoordinacionAcademicaPage() {
                 <input id="coord-mat-horas" type="number" min="0" step="1" {...materiaPlanForm.register('horas_semanales')} />
               </div>
 
+              <div className="coord-form-group coord-col-span-2">
+                <label htmlFor="coord-mat-portada">URL de imagen de portada</label>
+                <input id="coord-mat-portada" type="url" placeholder="https://..." {...materiaPlanForm.register('imagen_portada_url')} />
+                {materiaPlanForm.formState.errors.imagen_portada_url ? <small>{materiaPlanForm.formState.errors.imagen_portada_url.message}</small> : null}
+              </div>
+
+              <div className="coord-form-group coord-col-span-2">
+                <label htmlFor="coord-mat-recursos-sep">Recursos SEP / temario oficial</label>
+                <textarea id="coord-mat-recursos-sep" rows="3" {...materiaPlanForm.register('recursos_sep')} />
+              </div>
+
               <button type="submit" className="btn-primary" disabled={loading || sending || !selectedProgramaOfertaId}>
                 {editingMateriaPlanId ? 'Actualizar materia' : 'Agregar Materia'}
               </button>
@@ -1521,6 +1532,8 @@ export default function CoordinacionAcademicaPage() {
                       nombre_materia: '',
                       creditos: 0,
                       horas_semanales: 0,
+                      imagen_portada_url: '',
+                      recursos_sep: '',
                     });
                   }}
                 >
@@ -1551,6 +1564,8 @@ export default function CoordinacionAcademicaPage() {
                               nombre_materia: materia.nombre_materia || '',
                               creditos: materia.creditos ?? 0,
                               horas_semanales: materia.horas_semanales ?? 0,
+                              imagen_portada_url: materia.imagen_portada_url || '',
+                              recursos_sep: materia.recursos_sep || '',
                             });
                           }}
                         >

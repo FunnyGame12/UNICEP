@@ -21,6 +21,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      estado_academico: {
+        type: DataTypes.ENUM('activo', 'suspendido'),
+        allowNull: false,
+        defaultValue: 'activo',
+      },
       estatus_financiero: {
         type: DataTypes.ENUM('al_dia', 'deudor', 'suspendido'),
         allowNull: false,
