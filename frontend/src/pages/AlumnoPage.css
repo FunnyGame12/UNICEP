@@ -37,6 +37,21 @@
   text-decoration: none;
 }
 
+.alumno-portafolio-tab {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.alumno-portafolio-tab p {
+  margin: 0;
+  color: #9ca3af;
+}
+
+.alumno-portafolio-cta {
+  text-decoration: none;
+  width: fit-content;
+}
+
 .alumno-tabs,
 .alumno-bottom-nav {
   display: grid;

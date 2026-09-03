@@ -721,8 +721,10 @@ async function listarAvisos(req, res) {
         {
           [Op.or]: [
             { remitente_tipo: 'coordinacion' },
-            { docente_id: null },
-            ...(docentesAlumno.length > 0 ? [{ docente_id: { [Op.in]: docentesAlumno } }] : []),
+            { remitente_tipo: 'control_escolar' },
+            ...(docentesAlumno.length > 0
+              ? [{ [Op.and]: [{ remitente_tipo: 'docente' }, { docente_id: { [Op.in]: docentesAlumno } }] }]
+              : []),
           ],
         },
       ],

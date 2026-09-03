@@ -18,6 +18,7 @@ const {
   CalificacionFormativaDocente,
   TramiteSolicitud,
   RecursoAcademico,
+  Aviso,
 } = require('../../models');
 const { registrarEventoAuditoria } = require('../services/auditService');
 
@@ -1534,6 +1535,29 @@ async function listarRecursosAcademicos(_req, res) {
   return res.json({ items });
 }
 
+async function publicarAviso(req, res) {
+  const titulo = normalizeText(req.body.titulo);
+  const mensaje = normalizeText(req.body.mensaje || req.body.descripcion);
+  const carreraId = normalizeText(req.body.carrera_id);
+  const grupoId = req.body.grupo_id ? normalizeGrupo(req.body.grupo_id) : null;
+
+  if (!titulo || !mensaje) {
+    return res.status(400).json({ message: 'titulo y mensaje son obligatorios.' });
+  }
+
+  const aviso = await Aviso.create({
+    titulo,
+    mensaje,
+    remitente_tipo: 'coordinacion',
+    carrera_id: carreraId,
+    grupo_id: grupoId,
+    docente_id: null,
+    created_at: new Date(),
+  });
+
+  return res.status(201).json(aviso);
+}
+
 module.exports = {
   docentesAsignaciones,
   asignarMateriaDocente,
@@ -1555,6 +1579,7 @@ module.exports = {
   finalizarTramite,
   publicarRecursoAcademico,
   listarRecursosAcademicos,
+  publicarAviso,
   alumnosProgreso,
   portafolioAlumno,
   actualizarEstadoAcademicoAlumno,

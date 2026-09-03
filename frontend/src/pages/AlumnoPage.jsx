@@ -8,6 +8,7 @@ import './AlumnoPage.css';
 
 const tabs = [
   { id: 'resumen', label: 'Mi Resumen' },
+  { id: 'portafolio', label: 'Portafolio y Documentos' },
   { id: 'calificaciones', label: 'Calificaciones y Asistencias' },
   { id: 'finanzas', label: 'Constancias de Pagos' },
   { id: 'ventanilla', label: 'Ventanilla y Trámites' },
@@ -104,7 +105,7 @@ export default function AlumnoPage() {
   const [asistencia, setAsistencia] = useState({ items: [], acumulado: [] });
   const [historialTramites, setHistorialTramites] = useState([]);
   const [tiposTramiteCatalogo, setTiposTramiteCatalogo] = useState([]);
-  const [notificaciones, setNotificaciones] = useState([]);
+  const [avisos, setAvisos] = useState([]);
   const [avisosDescartados, setAvisosDescartados] = useState(new Set());
   const [pagos, setPagos] = useState({ items: [], resumen: null });
   const [conceptosPago, setConceptosPago] = useState([]);
@@ -137,15 +138,18 @@ export default function AlumnoPage() {
     setTramiteArchivo(event.target.files?.[0] || null);
   }
 
-  function handleDescartarAviso(key) {
-    setAvisosDescartados((prev) => new Set(prev).add(key));
+  async function handleDescartarAviso(idAviso) {
+    try {
+      await api.post(`/alumno/avisos/${idAviso}/descartar`);
+      setAvisosDescartados((prev) => new Set(prev).add(idAviso));
+    } catch (_error) {
+      setError('No se pudo descartar el aviso. Intenta de nuevo.');
+    }
   }
 
   const avisosVisibles = useMemo(
-    () => notificaciones
-      .map((item, index) => ({ ...item, _key: `${item.tipo}-${index}` }))
-      .filter((item) => !avisosDescartados.has(item._key)),
-    [notificaciones, avisosDescartados],
+    () => avisos.filter((item) => !avisosDescartados.has(item.id_aviso)),
+    [avisos, avisosDescartados],
   );
 
   const kardexRows = useMemo(() => {
@@ -237,15 +241,15 @@ export default function AlumnoPage() {
         setHorario([]);
         setCalificaciones({ formativas: [], finales: [], resumen: [] });
         setAsistencia({ items: [], acumulado: [] });
-        setNotificaciones([]);
+        setAvisos([]);
         setCalificacionesBloqueadas(Boolean(estadoResp.data?.bloqueo_calificaciones));
         return;
       }
 
-      const [horarioResp, asistenciaResp, notificacionesResp, calificacionesResp] = await Promise.all([
+      const [horarioResp, asistenciaResp, avisosResp, calificacionesResp] = await Promise.all([
         api.get('/alumno/horario-aulas'),
         api.get('/alumno/asistencia'),
-        api.get('/alumno/notificaciones'),
+        api.get('/alumno/avisos').catch(() => ({ data: { items: [] } })),
         api.get('/alumno/calificaciones').catch((requestError) => {
           if (requestError?.response?.status === 403) {
             setCalificacionesBloqueadas(true);
@@ -257,7 +261,7 @@ export default function AlumnoPage() {
 
       setHorario(horarioResp.data?.items || []);
       setAsistencia(asistenciaResp.data || { items: [], acumulado: [] });
-      setNotificaciones(notificacionesResp.data?.items || []);
+      setAvisos(avisosResp.data?.items || []);
       setCalificaciones(calificacionesResp.data || { formativas: [], finales: [], resumen: [] });
       setCalificacionesBloqueadas(false);
     } catch (requestError) {
@@ -418,11 +422,11 @@ export default function AlumnoPage() {
           <article className="alumno-card full-width">
             <h3>Alertas y avisos</h3>
             {avisosVisibles.length === 0 ? (
-              <p className="alumno-empty">No hay alertas por mostrar.</p>
+              <p className="alumno-empty">No hay avisos recientes de Coordinación, Docentes o Control Escolar.</p>
             ) : (
               <div className="alumno-list scroll-area">
                 {avisosVisibles.map((item) => (
-                  <article key={item._key} className="alumno-list-item">
+                  <article key={item.id_aviso} className="alumno-list-item">
                     <div className="alumno-list-head">
                       <strong>{item.titulo}</strong>
                       <button
@@ -430,17 +434,35 @@ export default function AlumnoPage() {
                         className="dismiss-btn"
                         aria-label="Descartar aviso"
                         title="Descartar aviso"
-                        onClick={() => handleDescartarAviso(item._key)}
+                        onClick={() => handleDescartarAviso(item.id_aviso)}
                       >
                         ✕
                       </button>
                     </div>
-                    <p>{item.detalle}</p>
-                    <small>{formatDate(item.fecha, true)}</small>
+                    <p>{item.mensaje}</p>
+                    <small>
+                      {item.remitente_tipo === 'coordinacion' ? 'Coordinación Académica' : item.remitente_tipo === 'control_escolar' ? 'Control Escolar' : 'Docente'}
+                      {' · '}
+                      {formatDate(item.created_at, true)}
+                    </small>
                   </article>
                 ))}
               </div>
             )}
+          </article>
+        </div>
+      ) : null}
+
+      {activeTab === 'portafolio' ? (
+        <div className="alumno-section-grid">
+          <article className="alumno-card full-width alumno-portafolio-tab">
+            <h3>Portafolio y Documentos</h3>
+            <p>
+              Ingresa para capturar evidencias por materia y descargar recursos oficiales compartidos por Coordinación y Docentes.
+            </p>
+            <Link to="/alumno/portafolio-recursos" className="btn-primary alumno-portafolio-cta">
+              Abrir pestaña de Portafolio y Documentos
+            </Link>
           </article>
         </div>
       ) : null}

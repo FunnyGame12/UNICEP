@@ -29,6 +29,7 @@ router.post('/alumnos/:alumnoId/portafolio', handlePortafolioUpload, controlEsco
 router.get('/tramites', controlEscolarController.listarTramites);
 router.put('/tramites/:tramiteId/validar-pago', controlEscolarController.validarPagoTramite);
 router.put('/tramites/:tramiteId/estatus', handleTramiteRespuestaUpload, controlEscolarController.actualizarEstatusTramite);
+router.post('/avisos', controlEscolarController.publicarAviso);
 
 router.get('/recursos-institucionales', controlEscolarController.obtenerRecursosInstitucionales);
 router.put('/recursos-institucionales/biblioteca-virtual', controlEscolarController.actualizarBibliotecaVirtual);

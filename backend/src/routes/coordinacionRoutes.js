@@ -53,5 +53,6 @@ router.post('/asignar-merito', coordinacionController.asignarMerito);
 
 router.get('/recursos-academicos', coordinacionController.listarRecursosAcademicos);
 router.post('/recursos-academicos', handlePortafolioUpload, coordinacionController.publicarRecursoAcademico);
+router.post('/avisos', coordinacionController.publicarAviso);
 
 module.exports = router;

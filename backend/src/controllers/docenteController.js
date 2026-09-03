@@ -16,6 +16,7 @@ const {
   ActaCalificacion,
   PeriodoAcademico,
   RecursoAcademico,
+  Aviso,
 } = require('../../models');
 const { Op } = require('sequelize');
 const { registrarEventoAuditoria } = require('../services/auditService');
@@ -1365,10 +1366,16 @@ async function publicarAvisoGrupal(req, res) {
     return res.status(400).json({ message: 'materia_id invalido.' });
   }
 
+  let carreraId = null;
   if (materiaId !== null) {
     const contexto = await obtenerContextoDocente(req.user.id_usuario);
     if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
       return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+    }
+
+    const materia = await Materia.findByPk(materiaId, { attributes: ['id_materia', 'carrera'] });
+    if (materia) {
+      carreraId = materia.carrera || null;
     }
   }
 
@@ -1378,6 +1385,16 @@ async function publicarAvisoGrupal(req, res) {
     titulo,
     descripcion: grupoId ? `[${grupoId}] ${descripcion}` : descripcion,
     fecha_publicacion: new Date(),
+  });
+
+  await Aviso.create({
+    titulo,
+    mensaje: descripcion,
+    remitente_tipo: 'docente',
+    carrera_id: carreraId,
+    grupo_id: grupoId || null,
+    docente_id: req.user.id_usuario,
+    created_at: new Date(),
   });
 
   return res.status(201).json(item);
