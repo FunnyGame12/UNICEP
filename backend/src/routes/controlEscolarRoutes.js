@@ -10,6 +10,7 @@ router.use(auth());
 router.use(authorizeRoles('control_escolar'));
 
 router.get('/conceptos-activos', controlEscolarController.conceptosActivos);
+router.get('/catalogos-extraordinario', controlEscolarController.catalogosExtraordinario);
 router.get('/comprobantes-pendientes', controlEscolarController.comprobantesPendientes);
 router.post('/registrar-cobro-caja', controlEscolarController.registrarCobroCaja);
 router.put('/validar-comprobante/:pagoId', controlEscolarController.validarComprobante);

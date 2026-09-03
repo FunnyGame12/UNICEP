@@ -16,6 +16,8 @@ const cobroCajaSchema = z.object({
   metodo_pago: z.enum(['efectivo', 'transferencia', 'tarjeta']),
   comentarios: z.string().optional(),
   enlace_classroom: z.string().optional(),
+  materia_id: z.string().optional(),
+  docente_id: z.string().optional(),
 }).superRefine((data, ctx) => {
   const enlace = data.enlace_classroom?.trim();
   if (!enlace) return;
@@ -105,6 +107,8 @@ export default function ControlEscolarPage() {
 
   const [alumnos, setAlumnos] = useState([]);
   const [conceptos, setConceptos] = useState([]);
+  const [materiasCatalogo, setMateriasCatalogo] = useState([]);
+  const [docentesCatalogo, setDocentesCatalogo] = useState([]);
   const [comprobantes, setComprobantes] = useState([]);
   const [tramites, setTramites] = useState([]);
 
@@ -138,6 +142,8 @@ export default function ControlEscolarPage() {
       metodo_pago: 'efectivo',
       comentarios: '',
       enlace_classroom: '',
+      materia_id: '',
+      docente_id: '',
     },
   });
 
@@ -204,9 +210,10 @@ export default function ControlEscolarPage() {
     setError('');
 
     try {
-      const [alumnosResp, conceptosResp, comprobantesResp, tramitesResp, recursosResp] = await Promise.all([
+      const [alumnosResp, conceptosResp, catalogosExtraResp, comprobantesResp, tramitesResp, recursosResp] = await Promise.all([
         api.get('/control-escolar/alumnos-estatus'),
         api.get('/control-escolar/conceptos-activos'),
+        api.get('/control-escolar/catalogos-extraordinario'),
         api.get('/control-escolar/comprobantes-pendientes'),
         api.get('/control-escolar/tramites'),
         api.get('/control-escolar/recursos-institucionales'),
@@ -215,6 +222,8 @@ export default function ControlEscolarPage() {
       const alumnosItems = alumnosResp?.data?.items || [];
       setAlumnos(alumnosItems);
       setConceptos(conceptosResp?.data?.items || []);
+      setMateriasCatalogo(catalogosExtraResp?.data?.materias || []);
+      setDocentesCatalogo(catalogosExtraResp?.data?.docentes || []);
       setComprobantes(comprobantesResp?.data?.items || []);
       setTramites(tramitesResp?.data?.items || []);
       setRecursosInstitucionales({
@@ -299,6 +308,8 @@ export default function ControlEscolarPage() {
         monto_recibido: Number(values.monto_recibido),
         metodo_pago: values.metodo_pago,
         ...(esExtraordinarioCobro ? {
+          materia_id: values.materia_id ? Number(values.materia_id) : undefined,
+          docente_id: values.docente_id ? Number(values.docente_id) : undefined,
           comentarios: values.comentarios?.trim() || undefined,
           enlace_classroom: values.enlace_classroom?.trim() || undefined,
         } : {}),
@@ -314,6 +325,8 @@ export default function ControlEscolarPage() {
         metodo_pago: 'efectivo',
         comentarios: '',
         enlace_classroom: '',
+        materia_id: '',
+        docente_id: '',
       });
       await loadAll();
     } catch (requestError) {
@@ -650,7 +663,35 @@ export default function ControlEscolarPage() {
               </select>
 
               {esExtraordinarioCobro ? (
-                <>
+                <div className="ce-extra-config">
+                  <h4>Configuración de Extraordinario</h4>
+
+                  <div className="ce-extra-grid">
+                    <div className="field-group">
+                      <label htmlFor="ce-extra-materia">Materia a presentar</label>
+                      <select id="ce-extra-materia" {...cobroForm.register('materia_id')}>
+                        <option value="">Selecciona materia...</option>
+                        {materiasCatalogo.map((materia) => (
+                          <option key={materia.id_materia} value={String(materia.id_materia)}>
+                            {materia.nombre_materia}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="field-group">
+                      <label htmlFor="ce-extra-docente">Docente asignado</label>
+                      <select id="ce-extra-docente" {...cobroForm.register('docente_id')}>
+                        <option value="">Selecciona docente...</option>
+                        {docentesCatalogo.map((docente) => (
+                          <option key={docente.id_docente} value={String(docente.id_docente)}>
+                            {docente.nombre_completo}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
                   <label htmlFor="ce-extra-comentarios">Comentarios/Observaciones</label>
                   <textarea
                     className="ce-textarea"
@@ -668,7 +709,7 @@ export default function ControlEscolarPage() {
                     {...cobroForm.register('enlace_classroom')}
                   />
                   {cobroForm.formState.errors.enlace_classroom ? <small>{cobroForm.formState.errors.enlace_classroom.message}</small> : null}
-                </>
+                </div>
               ) : null}
 
               <button type="submit" className="btn-primary" disabled={sending || loading}>

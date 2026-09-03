@@ -8,6 +8,7 @@ const {
   PortafolioEvidencia,
   NotificacionAlumno,
   Materia,
+  DocentePerfil,
   ConfiguracionInstitucional,
 } = require('../../models');
 const { generarWorkbookBoleta } = require('../services/boletaService');
@@ -125,6 +126,38 @@ async function conceptosActivos(_req, res) {
   return res.json({ items });
 }
 
+async function catalogosExtraordinario(_req, res) {
+  const [materias, docentes] = await Promise.all([
+    Materia.findAll({
+      attributes: ['id_materia', 'nombre_materia', 'codigo_materia'],
+      order: [['nombre_materia', 'ASC']],
+      limit: 500,
+    }),
+    DocentePerfil.findAll({
+      where: { estatus_laboral: 'activo' },
+      include: [{
+        model: Usuario,
+        as: 'usuario',
+        attributes: ['id_usuario', 'nombre_completo'],
+      }],
+      order: [[{ model: Usuario, as: 'usuario' }, 'nombre_completo', 'ASC']],
+      limit: 500,
+    }),
+  ]);
+
+  return res.json({
+    materias: materias.map((item) => ({
+      id_materia: item.id_materia,
+      nombre_materia: item.nombre_materia,
+      codigo_materia: item.codigo_materia,
+    })),
+    docentes: docentes.map((item) => ({
+      id_docente: item.id_docente,
+      nombre_completo: item.usuario?.nombre_completo || `Docente ${item.id_docente}`,
+    })),
+  });
+}
+
 async function registrarCobroCaja(req, res) {
   const idAlumno = toNumber(req.body.alumno_id);
   const idConceptoPago = toNumber(req.body.concepto_folio_id);
@@ -168,12 +201,37 @@ async function registrarCobroCaja(req, res) {
   const esExtraordinario = esConceptoExtraordinario(concepto);
   const comentariosExtra = esExtraordinario ? normalizeText(req.body.comentarios) : null;
   const enlaceClassroom = esExtraordinario ? normalizeText(req.body.enlace_classroom) : null;
+  const idMateriaExtra = esExtraordinario ? toNumber(req.body.materia_id) : NaN;
+  const idDocenteExtra = esExtraordinario ? toNumber(req.body.docente_id) : NaN;
 
   if (enlaceClassroom && !esUrlValida(enlaceClassroom)) {
     return res.status(400).json({ message: 'enlace_classroom debe ser una URL valida.' });
   }
 
+  let materiaExtra = null;
+  let docenteExtra = null;
+  if (esExtraordinario) {
+    [materiaExtra, docenteExtra] = await Promise.all([
+      Number.isInteger(idMateriaExtra) ? Materia.findByPk(idMateriaExtra) : Promise.resolve(null),
+      Number.isInteger(idDocenteExtra)
+        ? DocentePerfil.findOne({
+          where: { id_docente: idDocenteExtra, estatus_laboral: 'activo' },
+          include: [{ model: Usuario, as: 'usuario', attributes: ['id_usuario', 'nombre_completo'] }],
+        })
+        : Promise.resolve(null),
+    ]);
+
+    if (Number.isInteger(idMateriaExtra) && !materiaExtra) {
+      return res.status(404).json({ message: 'materia_id no encontrada.' });
+    }
+    if (Number.isInteger(idDocenteExtra) && !docenteExtra) {
+      return res.status(404).json({ message: 'docente_id no encontrado o inactivo.' });
+    }
+  }
+
   const observacionesPartes = [metodoPago ? `Cobro en caja (${metodoPago}).` : 'Cobro en caja.'];
+  if (materiaExtra) observacionesPartes.push(`Materia: ${materiaExtra.nombre_materia}`);
+  if (docenteExtra) observacionesPartes.push(`Docente asignado: ${docenteExtra.usuario?.nombre_completo || `Docente ${docenteExtra.id_docente}`}`);
   if (comentariosExtra) observacionesPartes.push(`Comentarios: ${comentariosExtra}`);
   if (enlaceClassroom) observacionesPartes.push(`Google Classroom: ${enlaceClassroom}`);
 
@@ -191,6 +249,8 @@ async function registrarCobroCaja(req, res) {
 
   if (esExtraordinario) {
     const detallePartes = [`Se registro tu pago de ${concepto.nombre}.`];
+    if (materiaExtra) detallePartes.push(`Materia: ${materiaExtra.nombre_materia}`);
+    if (docenteExtra) detallePartes.push(`Docente asignado: ${docenteExtra.usuario?.nombre_completo || `Docente ${docenteExtra.id_docente}`}`);
     if (comentariosExtra) detallePartes.push(`Observaciones: ${comentariosExtra}`);
     if (enlaceClassroom) detallePartes.push(`Enlace de Google Classroom: ${enlaceClassroom}`);
 
@@ -681,6 +741,7 @@ async function subirManualServicioSocial(req, res) {
 
 module.exports = {
   conceptosActivos,
+  catalogosExtraordinario,
   comprobantesPendientes,
   registrarCobroCaja,
   validarComprobante,
