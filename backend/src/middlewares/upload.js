@@ -6,6 +6,7 @@ const multer = require('multer');
 
 const UPLOAD_ROOT = path.join(__dirname, '../../uploads');
 const PORTAFOLIO_DIR = path.join(UPLOAD_ROOT, 'portafolio');
+const INSTITUCIONAL_DIR = path.join(UPLOAD_ROOT, 'institucional');
 
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
@@ -65,4 +66,49 @@ function handlePortafolioUpload(req, res, next) {
   });
 }
 
-module.exports = { uploadPortafolio, handlePortafolioUpload, PORTAFOLIO_DIR };
+const institucionalStorage = multer.diskStorage({
+  destination(_req, _file, cb) {
+    fs.mkdirSync(INSTITUCIONAL_DIR, { recursive: true });
+    cb(null, INSTITUCIONAL_DIR);
+  },
+  filename(_req, file, cb) {
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}.pdf`;
+    cb(null, uniqueName);
+  },
+});
+
+const uploadInstitucional = multer({
+  storage: institucionalStorage,
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    if (file.mimetype !== 'application/pdf') {
+      cb(new Error('Solo se permite subir archivos PDF.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+function handleManualServicioSocialUpload(req, res, next) {
+  uploadInstitucional.single('archivo')(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({ message: 'El archivo excede el tamano maximo permitido (15MB).' });
+      return;
+    }
+
+    res.status(400).json({ message: error.message || 'No se pudo procesar el archivo.' });
+  });
+}
+
+module.exports = {
+  uploadPortafolio,
+  handlePortafolioUpload,
+  handleManualServicioSocialUpload,
+  PORTAFOLIO_DIR,
+  INSTITUCIONAL_DIR,
+};

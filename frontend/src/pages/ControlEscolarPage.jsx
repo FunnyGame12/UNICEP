@@ -35,6 +35,10 @@ const driveFolderSchema = z.object({
   drive_folder_url: z.string().trim().url('Ingresa una URL valida.').or(z.literal('')),
 });
 
+const bibliotecaVirtualSchema = z.object({
+  biblioteca_virtual_url: z.string().trim().url('Ingresa una URL valida.'),
+});
+
 const rechazoComprobanteSchema = z.object({
   motivo: z.string().trim().min(8, 'La justificación debe tener al menos 8 caracteres.'),
 });
@@ -49,6 +53,7 @@ const tabs = [
   { id: 'accesos', label: 'Control de Accesos Financieros' },
   { id: 'tramites', label: 'Trámites Institucionales' },
   { id: 'portafolio', label: 'Portafolio de Alumnos' },
+  { id: 'institucional', label: 'Recursos Institucionales' },
 ];
 
 function buildCajaReference() {
@@ -116,6 +121,12 @@ export default function ControlEscolarPage() {
   const [portafolioLoading, setPortafolioLoading] = useState(false);
   const [portafolioArchivo, setPortafolioArchivo] = useState(null);
 
+  const [recursosInstitucionales, setRecursosInstitucionales] = useState({
+    biblioteca_virtual_url: null,
+    manual_servicio_social_url: null,
+  });
+  const [manualServicioSocialArchivo, setManualServicioSocialArchivo] = useState(null);
+
   const cobroForm = useForm({
     resolver: zodResolver(cobroCajaSchema),
     defaultValues: {
@@ -132,6 +143,11 @@ export default function ControlEscolarPage() {
   const driveFolderForm = useForm({
     resolver: zodResolver(driveFolderSchema),
     defaultValues: { drive_folder_url: '' },
+  });
+
+  const bibliotecaForm = useForm({
+    resolver: zodResolver(bibliotecaVirtualSchema),
+    defaultValues: { biblioteca_virtual_url: '' },
   });
 
   const alumnoActualWatch = cobroForm.watch('alumno_id');
@@ -187,11 +203,12 @@ export default function ControlEscolarPage() {
     setError('');
 
     try {
-      const [alumnosResp, conceptosResp, comprobantesResp, tramitesResp] = await Promise.all([
+      const [alumnosResp, conceptosResp, comprobantesResp, tramitesResp, recursosResp] = await Promise.all([
         api.get('/control-escolar/alumnos-estatus'),
         api.get('/control-escolar/conceptos-activos'),
         api.get('/control-escolar/comprobantes-pendientes'),
         api.get('/control-escolar/tramites'),
+        api.get('/control-escolar/recursos-institucionales'),
       ]);
 
       const alumnosItems = alumnosResp?.data?.items || [];
@@ -199,6 +216,11 @@ export default function ControlEscolarPage() {
       setConceptos(conceptosResp?.data?.items || []);
       setComprobantes(comprobantesResp?.data?.items || []);
       setTramites(tramitesResp?.data?.items || []);
+      setRecursosInstitucionales({
+        biblioteca_virtual_url: recursosResp?.data?.biblioteca_virtual_url || null,
+        manual_servicio_social_url: recursosResp?.data?.manual_servicio_social_url || null,
+      });
+      bibliotecaForm.reset({ biblioteca_virtual_url: recursosResp?.data?.biblioteca_virtual_url || '' });
 
       setDraftAccesos(
         alumnosItems.reduce((acc, item) => {
@@ -355,6 +377,54 @@ export default function ControlEscolarPage() {
       await abrirPortafolioAlumno(selectedPortafolioAlumnoId);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo subir el archivo.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function guardarBibliotecaVirtual(values) {
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const response = await api.put('/control-escolar/recursos-institucionales/biblioteca-virtual', {
+        biblioteca_virtual_url: values.biblioteca_virtual_url.trim(),
+      });
+      setRecursosInstitucionales((prev) => ({
+        ...prev,
+        biblioteca_virtual_url: response?.data?.biblioteca_virtual_url || null,
+      }));
+      setMessage('Enlace de Biblioteca Virtual actualizado correctamente.');
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo actualizar el enlace de la Biblioteca Virtual.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function subirManualServicioSocial() {
+    if (!manualServicioSocialArchivo) {
+      setError('Selecciona el archivo PDF del manual de Servicio Social.');
+      return;
+    }
+
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const formData = new FormData();
+      formData.append('archivo', manualServicioSocialArchivo);
+      const response = await api.post('/control-escolar/recursos-institucionales/manual-servicio-social', formData);
+      setRecursosInstitucionales((prev) => ({
+        ...prev,
+        manual_servicio_social_url: response?.data?.manual_servicio_social_url || null,
+      }));
+      setManualServicioSocialArchivo(null);
+      setMessage('Manual de Servicio Social actualizado correctamente.');
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo subir el manual de Servicio Social.');
     } finally {
       setSending(false);
     }
@@ -888,6 +958,67 @@ export default function ControlEscolarPage() {
                 </div>
               </>
             ) : null}
+          </article>
+        </div>
+      ) : null}
+
+      {activeTab === 'institucional' ? (
+        <div className="ce-grid-2">
+          <article className="ce-card">
+            <h3>Biblioteca Virtual</h3>
+            <p>Este enlace se muestra como acceso destacado en el panel del alumno.</p>
+            <form className="form-grid" onSubmit={bibliotecaForm.handleSubmit(guardarBibliotecaVirtual)}>
+              <label htmlFor="ce-biblioteca-url">URL de la Biblioteca Virtual</label>
+              <input
+                id="ce-biblioteca-url"
+                type="url"
+                placeholder="https://www.unicepmerida.com/biblioteca-virtual"
+                {...bibliotecaForm.register('biblioteca_virtual_url')}
+              />
+              {bibliotecaForm.formState.errors.biblioteca_virtual_url ? (
+                <small>{bibliotecaForm.formState.errors.biblioteca_virtual_url.message}</small>
+              ) : null}
+              <button type="submit" className="btn-primary" disabled={sending}>Guardar enlace</button>
+            </form>
+
+            {recursosInstitucionales.biblioteca_virtual_url ? (
+              <p>
+                <strong>Enlace actual:</strong>{' '}
+                <a href={recursosInstitucionales.biblioteca_virtual_url} target="_blank" rel="noreferrer">
+                  {recursosInstitucionales.biblioteca_virtual_url}
+                </a>
+              </p>
+            ) : (
+              <p>Aun no se ha configurado un enlace de Biblioteca Virtual.</p>
+            )}
+          </article>
+
+          <article className="ce-card">
+            <h3>Manual de Servicio Social y Practicas</h3>
+            <p>El PDF cargado aqui se descarga desde la pestana "Servicio Social" del panel del alumno.</p>
+            <div className="ce-preview">
+              <label htmlFor="ce-manual-servicio-social">Archivo PDF del manual</label>
+              <input
+                id="ce-manual-servicio-social"
+                type="file"
+                accept=".pdf"
+                onChange={(event) => setManualServicioSocialArchivo(event.target.files?.[0] || null)}
+              />
+              <button type="button" className="btn-primary" disabled={sending} onClick={subirManualServicioSocial}>
+                Subir manual
+              </button>
+            </div>
+
+            {recursosInstitucionales.manual_servicio_social_url ? (
+              <p>
+                <strong>Manual actual:</strong>{' '}
+                <a href={recursosInstitucionales.manual_servicio_social_url} target="_blank" rel="noreferrer">
+                  Ver PDF vigente
+                </a>
+              </p>
+            ) : (
+              <p>Aun no se ha cargado el manual de Servicio Social.</p>
+            )}
           </article>
         </div>
       ) : null}

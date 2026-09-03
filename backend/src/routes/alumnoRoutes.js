@@ -33,5 +33,6 @@ router.get('/plan-estudio', requirePermission(PERMISSIONS.ALUMNO_PLAN_ESTUDIO_RE
 router.get('/pagos', requirePermission(PERMISSIONS.ALUMNO_PAGOS_READ), alumnoController.pagos);
 router.get('/tramites', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_READ), alumnoController.listarTramites);
 router.post('/tramites', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), alumnoController.crearTramite);
+router.get('/recursos-institucionales', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ), alumnoController.recursosInstitucionales);
 
 module.exports = router;

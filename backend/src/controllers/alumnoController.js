@@ -20,6 +20,7 @@ const {
   CalificacionFormativaDocente,
   NotificacionAlumno,
   PortafolioEvidencia,
+  ConfiguracionInstitucional,
 } = require('../../models');
 const { registrarEventoAuditoria } = require('../services/auditService');
 
@@ -1075,6 +1076,19 @@ async function crearTramite(req, res) {
   return solicitarTramite(req, res);
 }
 
+async function recursosInstitucionales(_req, res) {
+  const filas = await ConfiguracionInstitucional.findAll({
+    where: { clave: { [Op.in]: ['biblioteca_virtual_url', 'manual_servicio_social_url'] } },
+  });
+
+  const valores = new Map(filas.map((item) => [item.clave, item.valor]));
+
+  return res.json({
+    biblioteca_virtual_url: valores.get('biblioteca_virtual_url') || null,
+    manual_servicio_social_url: valores.get('manual_servicio_social_url') || null,
+  });
+}
+
 module.exports = {
   estadoAcceso,
   horarioAulas,
@@ -1100,4 +1114,5 @@ module.exports = {
   planEstudio,
   listarTramites,
   crearTramite,
+  recursosInstitucionales,
 };

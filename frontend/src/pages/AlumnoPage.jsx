@@ -14,9 +14,6 @@ const tabs = [
   { id: 'servicio_social', label: 'Servicio Social' },
 ];
 
-const BIBLIOTECA_VIRTUAL_URL = 'https://www.unicepmerida.com/biblioteca-virtual';
-const MANUAL_SERVICIO_SOCIAL_URL = '/pdf/MANUAL_SERVICIO_SOCIAL_Y_PRACTICAS.pdf';
-
 const tramiteLabels = {
   constancia: 'Constancia',
   uniforme: 'Uniforme',
@@ -126,6 +123,10 @@ export default function AlumnoPage() {
   const [pagos, setPagos] = useState({ items: [], resumen: null });
   const [conceptosPago, setConceptosPago] = useState([]);
   const [portafolio, setPortafolio] = useState({ documentos: [], items: [] });
+  const [recursosInstitucionales, setRecursosInstitucionales] = useState({
+    biblioteca_virtual_url: null,
+    manual_servicio_social_url: null,
+  });
 
   const [openPagoAccordion, setOpenPagoAccordion] = useState(true);
   const [openTramiteAccordion, setOpenTramiteAccordion] = useState(true);
@@ -269,6 +270,15 @@ export default function AlumnoPage() {
         documentos: portafolioResp.data?.documentos || [],
         items: portafolioResp.data?.items || [],
       });
+
+      api.get('/alumno/recursos-institucionales')
+        .then((response) => {
+          setRecursosInstitucionales({
+            biblioteca_virtual_url: response.data?.biblioteca_virtual_url || null,
+            manual_servicio_social_url: response.data?.manual_servicio_social_url || null,
+          });
+        })
+        .catch(() => setRecursosInstitucionales({ biblioteca_virtual_url: null, manual_servicio_social_url: null }));
 
       if (estadoResp.data?.bloqueo_plataforma) {
         setHorario([]);
@@ -514,14 +524,18 @@ export default function AlumnoPage() {
 
           <article className="alumno-card alumno-institucional-card">
             <h3>Accesos Institucionales</h3>
-            <a
-              className="btn-highlight"
-              href={BIBLIOTECA_VIRTUAL_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              📚 Biblioteca Virtual
-            </a>
+            {recursosInstitucionales.biblioteca_virtual_url ? (
+              <a
+                className="btn-highlight"
+                href={recursosInstitucionales.biblioteca_virtual_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                📚 Biblioteca Virtual
+              </a>
+            ) : (
+              <p className="alumno-empty">Control Escolar aún no configura el enlace de la Biblioteca Virtual.</p>
+            )}
           </article>
 
           <article className="alumno-card full-width">
@@ -880,15 +894,19 @@ export default function AlumnoPage() {
               Consulta los lineamientos institucionales antes de iniciar tu Servicio Social o tus Prácticas
               Profesionales. Descarga el manual oficial para conocer requisitos, horas mínimas y proceso de liberación.
             </p>
-            <a
-              className="btn-primary"
-              href={MANUAL_SERVICIO_SOCIAL_URL}
-              target="_blank"
-              rel="noreferrer"
-              download
-            >
-              📘 Descargar Manual de Servicio Social y Prácticas
-            </a>
+            {recursosInstitucionales.manual_servicio_social_url ? (
+              <a
+                className="btn-primary"
+                href={recursosInstitucionales.manual_servicio_social_url}
+                target="_blank"
+                rel="noreferrer"
+                download
+              >
+                📘 Descargar Manual de Servicio Social y Prácticas
+              </a>
+            ) : (
+              <p className="alumno-empty">Control Escolar aún no carga el manual de Servicio Social.</p>
+            )}
           </article>
         </div>
       ) : null}

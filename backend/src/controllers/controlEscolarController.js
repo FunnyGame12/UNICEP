@@ -8,12 +8,15 @@ const {
   PortafolioEvidencia,
   NotificacionAlumno,
   Materia,
+  ConfiguracionInstitucional,
 } = require('../../models');
 
 const TRAMITES_ESCOLARES = ['constancia', 'credencial', 'uniforme', 'papeleria_oficial'];
 const TRAMITE_STATUS_PERMITIDOS = new Set(['en_proceso', 'listo_para_entrega', 'entregado', 'cancelado']);
 const ESTATUS_FINANCIERO_PERMITIDO = new Set(['al_dia', 'deudor', 'suspendido']);
 const CONCEPTO_EXTRAORDINARIO_MATCH = /extraordinario/i;
+const CLAVE_BIBLIOTECA_VIRTUAL = 'biblioteca_virtual_url';
+const CLAVE_MANUAL_SERVICIO_SOCIAL = 'manual_servicio_social_url';
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -549,6 +552,58 @@ async function actualizarEstatusTramite(req, res) {
   });
 }
 
+async function obtenerRecursosInstitucionales(_req, res) {
+  const filas = await ConfiguracionInstitucional.findAll({
+    where: { clave: { [Op.in]: [CLAVE_BIBLIOTECA_VIRTUAL, CLAVE_MANUAL_SERVICIO_SOCIAL] } },
+  });
+
+  const valores = new Map(filas.map((item) => [item.clave, item.valor]));
+
+  return res.json({
+    biblioteca_virtual_url: valores.get(CLAVE_BIBLIOTECA_VIRTUAL) || null,
+    manual_servicio_social_url: valores.get(CLAVE_MANUAL_SERVICIO_SOCIAL) || null,
+  });
+}
+
+async function actualizarBibliotecaVirtual(req, res) {
+  const bibliotecaVirtualUrl = normalizeText(req.body.biblioteca_virtual_url);
+  if (!bibliotecaVirtualUrl || !esUrlValida(bibliotecaVirtualUrl)) {
+    return res.status(400).json({ message: 'biblioteca_virtual_url debe ser una URL valida.' });
+  }
+
+  const [registro] = await ConfiguracionInstitucional.findOrCreate({
+    where: { clave: CLAVE_BIBLIOTECA_VIRTUAL },
+    defaults: { valor: bibliotecaVirtualUrl, fecha_actualizacion: new Date(), id_actualizado_por: req.user.id_usuario },
+  });
+
+  registro.valor = bibliotecaVirtualUrl;
+  registro.fecha_actualizacion = new Date();
+  registro.id_actualizado_por = req.user.id_usuario;
+  await registro.save();
+
+  return res.json({ biblioteca_virtual_url: registro.valor });
+}
+
+async function subirManualServicioSocial(req, res) {
+  if (!req.file) {
+    return res.status(400).json({ message: 'Selecciona un archivo PDF para el manual.' });
+  }
+
+  const manualUrl = `/uploads/institucional/${req.file.filename}`;
+
+  const [registro] = await ConfiguracionInstitucional.findOrCreate({
+    where: { clave: CLAVE_MANUAL_SERVICIO_SOCIAL },
+    defaults: { valor: manualUrl, fecha_actualizacion: new Date(), id_actualizado_por: req.user.id_usuario },
+  });
+
+  registro.valor = manualUrl;
+  registro.fecha_actualizacion = new Date();
+  registro.id_actualizado_por = req.user.id_usuario;
+  await registro.save();
+
+  return res.status(201).json({ manual_servicio_social_url: registro.valor });
+}
+
 module.exports = {
   conceptosActivos,
   comprobantesPendientes,
@@ -561,4 +616,7 @@ module.exports = {
   subirArchivoPortafolio,
   listarTramites,
   actualizarEstatusTramite,
+  obtenerRecursosInstitucionales,
+  actualizarBibliotecaVirtual,
+  subirManualServicioSocial,
 };

@@ -2,7 +2,7 @@ const express = require('express');
 const auth = require('../middlewares/auth');
 const { authorizeRoles } = require('../middlewares/auth');
 const controlEscolarController = require('../controllers/controlEscolarController');
-const { handlePortafolioUpload } = require('../middlewares/upload');
+const { handlePortafolioUpload, handleManualServicioSocialUpload } = require('../middlewares/upload');
 
 const router = express.Router();
 
@@ -23,5 +23,13 @@ router.post('/alumnos/:alumnoId/portafolio', handlePortafolioUpload, controlEsco
 
 router.get('/tramites', controlEscolarController.listarTramites);
 router.put('/tramites/:tramiteId/estatus', controlEscolarController.actualizarEstatusTramite);
+
+router.get('/recursos-institucionales', controlEscolarController.obtenerRecursosInstitucionales);
+router.put('/recursos-institucionales/biblioteca-virtual', controlEscolarController.actualizarBibliotecaVirtual);
+router.post(
+  '/recursos-institucionales/manual-servicio-social',
+  handleManualServicioSocialUpload,
+  controlEscolarController.subirManualServicioSocial,
+);
 
 module.exports = router;
