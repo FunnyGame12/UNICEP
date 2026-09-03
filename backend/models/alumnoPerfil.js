@@ -45,6 +45,16 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(500),
         allowNull: true,
       },
+      modalidad_boleta: {
+        type: DataTypes.ENUM('ONLINE', 'PRESENCIAL', 'MIXTA'),
+        allowNull: false,
+        defaultValue: 'ONLINE',
+      },
+      campus_boleta: {
+        type: DataTypes.STRING(120),
+        allowNull: false,
+        defaultValue: 'UNICEP MERIDA',
+      },
     },
     {
       tableName: 'alumnos_perfil',

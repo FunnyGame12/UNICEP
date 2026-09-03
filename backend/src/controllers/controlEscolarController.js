@@ -25,6 +25,7 @@ const ESTATUS_FINANCIERO_PERMITIDO = new Set(['al_dia', 'deudor', 'suspendido'])
 const CONCEPTO_EXTRAORDINARIO_MATCH = /extraordinario/i;
 const CLAVE_BIBLIOTECA_VIRTUAL = 'biblioteca_virtual_url';
 const CLAVE_MANUAL_SERVICIO_SOCIAL = 'manual_servicio_social_url';
+const MODALIDADES_BOLETA_PERMITIDAS = new Set(['ONLINE', 'PRESENCIAL', 'MIXTA']);
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -341,6 +342,8 @@ async function alumnosEstatus(req, res) {
       estatus_financiero: perfil.estatus_financiero || 'al_dia',
       bloqueo_plataforma: Boolean(perfil.bloqueo_plataforma),
       bloqueo_calificaciones: Boolean(perfil.bloqueo_calificaciones),
+      modalidad_boleta: perfil.modalidad_boleta || 'ONLINE',
+      campus_boleta: perfil.campus_boleta || 'UNICEP MERIDA',
     }))
     .filter((item) => {
       const matchesQ = !q
@@ -397,6 +400,55 @@ async function actualizarAccesosAlumno(req, res) {
     estatus_financiero: alumno.estatus_financiero,
     bloqueo_plataforma: Boolean(alumno.bloqueo_plataforma),
     bloqueo_calificaciones: Boolean(alumno.bloqueo_calificaciones),
+  });
+}
+
+async function actualizarConfiguracionBoletaAlumno(req, res) {
+  const idAlumno = toNumber(req.params.alumnoId);
+  if (!Number.isInteger(idAlumno)) {
+    return res.status(400).json({ message: 'alumnoId invalido.' });
+  }
+
+  const alumno = await AlumnoPerfil.findByPk(idAlumno);
+  if (!alumno) {
+    return res.status(404).json({ message: 'Alumno no encontrado.' });
+  }
+
+  const modalidadRaw = req.body.modalidad_boleta;
+  const campusRaw = req.body.campus_boleta;
+  const cambios = {};
+
+  if (modalidadRaw !== undefined) {
+    const modalidad = String(modalidadRaw || '').trim().toUpperCase();
+    if (!MODALIDADES_BOLETA_PERMITIDAS.has(modalidad)) {
+      return res.status(400).json({ message: 'modalidad_boleta invalida. Usa: ONLINE, PRESENCIAL, MIXTA.' });
+    }
+    alumno.modalidad_boleta = modalidad;
+    cambios.modalidad_boleta = modalidad;
+  }
+
+  if (campusRaw !== undefined) {
+    const campus = normalizeText(campusRaw);
+    if (!campus) {
+      return res.status(400).json({ message: 'campus_boleta no puede ser vacio.' });
+    }
+    if (campus.length > 120) {
+      return res.status(400).json({ message: 'campus_boleta excede 120 caracteres.' });
+    }
+    alumno.campus_boleta = campus;
+    cambios.campus_boleta = campus;
+  }
+
+  if (Object.keys(cambios).length === 0) {
+    return res.status(400).json({ message: 'No hay cambios para aplicar en la boleta.' });
+  }
+
+  await alumno.save();
+
+  return res.json({
+    id_alumno: alumno.id_alumno,
+    modalidad_boleta: alumno.modalidad_boleta,
+    campus_boleta: alumno.campus_boleta,
   });
 }
 
@@ -685,14 +737,16 @@ async function descargarBoletaAlumno(req, res) {
     || alumno.carrera
     || 'PSICOLOGIA';
   const grupoAlumno = materiasParaBoleta[0]?.grupo || gruposCuatrimestre[0]?.grupo || '-';
+  const modalidadBoleta = alumno.modalidad_boleta || 'ONLINE';
+  const campusBoleta = alumno.campus_boleta || 'UNICEP MERIDA';
 
   worksheet.getCell('C3').value = `${cuatrimestreActual}o. CUATRIMESTRE DE ${programaNombre}\nCICLO ESCOLAR 2025-2026`;
   worksheet.getCell('O4').value = cuatrimestreActual;
 
   worksheet.getCell('F5').value = alumno.usuario?.nombre_completo || `Alumno ${alumno.id_alumno}`;
   worksheet.getCell('M5').value = alumno.usuario?.curp || '-';
-  worksheet.getCell('E7').value = 'UNICEP MERIDA';
-  worksheet.getCell('K7').value = 'ONLINE';
+  worksheet.getCell('E7').value = campusBoleta;
+  worksheet.getCell('K7').value = modalidadBoleta;
   worksheet.getCell('O7').value = grupoAlumno;
 
   const columnasMaterias = ['D', 'E', 'F', 'G', 'H'];
@@ -850,6 +904,7 @@ module.exports = {
   validarComprobante,
   alumnosEstatus,
   actualizarAccesosAlumno,
+  actualizarConfiguracionBoletaAlumno,
   descargarBoletaAlumno,
   portafolioAlumno,
   actualizarDriveFolder,
