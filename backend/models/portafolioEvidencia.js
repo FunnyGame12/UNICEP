@@ -30,8 +30,12 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(255),
         allowNull: true,
       },
+      tipo_documento: {
+        type: DataTypes.STRING(60),
+        allowNull: true,
+      },
       origen: {
-        type: DataTypes.ENUM('docente', 'control_escolar'),
+        type: DataTypes.ENUM('docente', 'control_escolar', 'alumno'),
         allowNull: false,
         defaultValue: 'docente',
       },

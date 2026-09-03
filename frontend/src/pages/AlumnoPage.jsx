@@ -10,6 +10,7 @@ const tabs = [
   { id: 'calificaciones', label: 'Calificaciones y Kardex' },
   { id: 'finanzas', label: 'Finanzas y Pagos' },
   { id: 'ventanilla', label: 'Ventanilla y Trámites' },
+  { id: 'portafolio', label: 'Portafolio y Documentos' },
 ];
 
 const tramiteLabels = {
@@ -27,12 +28,19 @@ const estatusTramiteLabels = {
   cancelado: 'Cancelado',
 };
 
-const expedienteDocumentos = [
-  { key: 'curp', label: 'CURP', detalle: 'Identificación oficial', estatus: 'faltante' },
-  { key: 'acta', label: 'Acta de nacimiento', detalle: 'Documentación de registro', estatus: 'pendiente' },
-  { key: 'certificado', label: 'Certificado de bachillerato', detalle: 'Boleta de preparatoria', estatus: 'entregado' },
-  { key: 'foto', label: 'Foto oficial', detalle: 'Formato escolar vigente', estatus: 'pendiente' },
+const documentoPortafolioOptions = [
+  { value: 'curp', label: 'CURP' },
+  { value: 'acta_nacimiento', label: 'Acta de nacimiento' },
+  { value: 'certificado_bachillerato', label: 'Certificado de bachillerato' },
+  { value: 'foto_oficial', label: 'Foto oficial' },
 ];
+
+const documentoPortafolioLabels = {
+  curp: 'CURP',
+  acta_nacimiento: 'Acta de nacimiento',
+  certificado_bachillerato: 'Certificado de bachillerato',
+  foto_oficial: 'Foto oficial',
+};
 
 const pagoSchema = z.object({
   id_concepto_pago: z.string().min(1, 'Selecciona un concepto de pago.'),
@@ -102,12 +110,14 @@ export default function AlumnoPage() {
   const [meritos, setMeritos] = useState([]);
   const [pagos, setPagos] = useState({ items: [], resumen: null });
   const [conceptosPago, setConceptosPago] = useState([]);
+  const [portafolio, setPortafolio] = useState({ documentos: [], items: [] });
 
   const [openPagoAccordion, setOpenPagoAccordion] = useState(true);
   const [openTramiteAccordion, setOpenTramiteAccordion] = useState(true);
 
   const [pagoArchivo, setPagoArchivo] = useState(null);
   const [tramiteArchivo, setTramiteArchivo] = useState(null);
+  const [portafolioArchivo, setPortafolioArchivo] = useState(null);
 
   const pagoForm = useForm({
     resolver: zodResolver(pagoSchema),
@@ -125,12 +135,22 @@ export default function AlumnoPage() {
     },
   });
 
+  const portafolioForm = useForm({
+    defaultValues: {
+      tipo_documento: 'curp',
+    },
+  });
+
   function handlePagoFileChange(event) {
     setPagoArchivo(event.target.files?.[0] || null);
   }
 
   function handleTramiteFileChange(event) {
     setTramiteArchivo(event.target.files?.[0] || null);
+  }
+
+  function handlePortafolioFileChange(event) {
+    setPortafolioArchivo(event.target.files?.[0] || null);
   }
 
   const primeraClase = useMemo(() => {
@@ -222,13 +242,18 @@ export default function AlumnoPage() {
       });
       setConceptosPago(conceptosUnicos);
 
-      const [tramitesResp, meritosResp] = await Promise.all([
+      const [tramitesResp, meritosResp, portafolioResp] = await Promise.all([
         api.get('/alumno/historial-tramites'),
         api.get('/alumno/meritos').catch(() => ({ data: { items: [] } })),
+        api.get('/alumno/portafolio').catch(() => ({ data: { documentos: [], items: [] } })),
       ]);
 
       setHistorialTramites(tramitesResp.data?.items || []);
       setMeritos(meritosResp.data?.items || []);
+      setPortafolio({
+        documentos: portafolioResp.data?.documentos || [],
+        items: portafolioResp.data?.items || [],
+      });
 
       if (estadoResp.data?.bloqueo_plataforma) {
         setHorario([]);
@@ -324,6 +349,34 @@ export default function AlumnoPage() {
       await loadBase();
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo registrar el tramite.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function submitDocumentoPortafolio(values) {
+    if (!portafolioArchivo) {
+      setError('Debes seleccionar un archivo para tu expediente.');
+      return;
+    }
+
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const formData = new FormData();
+      formData.append('archivo', portafolioArchivo);
+      formData.append('tipo_documento', values.tipo_documento);
+
+      await api.post('/alumno/portafolio', formData);
+
+      setPortafolioArchivo(null);
+      portafolioForm.reset({ tipo_documento: values.tipo_documento });
+      setMessage('Documento cargado al portafolio correctamente.');
+      await loadBase();
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo cargar el documento al portafolio.');
     } finally {
       setSending(false);
     }
@@ -636,19 +689,7 @@ export default function AlumnoPage() {
 
           <article className="alumno-card">
             <h3>Mi Expediente</h3>
-            <div className="document-list">
-              {expedienteDocumentos.map((item) => (
-                <div key={item.key} className="doc-card">
-                  <div className="doc-meta">
-                    <strong>{item.label}</strong>
-                    <span>{item.detalle}</span>
-                  </div>
-                  <span className={getDocumentStatusClass(item.estatus)}>
-                    {item.estatus === 'entregado' ? 'Entregado' : item.estatus === 'pendiente' ? 'Pendiente' : 'Falta'}
-                  </span>
-                </div>
-              ))}
-            </div>
+            <p>Consulta y carga tus documentos oficiales en la pestaña Portafolio y Documentos.</p>
           </article>
 
           <article className="alumno-card full-width">
@@ -670,6 +711,86 @@ export default function AlumnoPage() {
                       <a href={resolveBackendFileUrl(item.adjunto_url)} target="_blank" rel="noreferrer">Ver adjunto</a>
                     ) : null}
                     <small>{formatDate(item.fecha_resolucion || item.fecha_solicitud, true)}</small>
+                  </article>
+                ))}
+              </div>
+            )}
+          </article>
+        </div>
+      ) : null}
+
+      {activeTab === 'portafolio' ? (
+        <div className="alumno-section-grid">
+          <article className="alumno-card">
+            <h3>Subir documento oficial</h3>
+            <form className="alumno-form" onSubmit={portafolioForm.handleSubmit(submitDocumentoPortafolio)}>
+              <label htmlFor="portafolio-tipo">Documento</label>
+              <select id="portafolio-tipo" {...portafolioForm.register('tipo_documento')}>
+                {documentoPortafolioOptions.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+
+              <label htmlFor="portafolio-adjunto">Archivo (PDF, imagen o Word)</label>
+              <div className="file-upload-wrapper">
+                <label className="btn-file-custom" htmlFor="portafolio-adjunto">
+                  <input
+                    id="portafolio-adjunto"
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                    onChange={handlePortafolioFileChange}
+                    style={{ display: 'none' }}
+                  />
+                  📎 {portafolioArchivo ? 'Cambiar archivo' : 'Seleccionar archivo'}
+                </label>
+                <span className="file-name-display">
+                  {portafolioArchivo?.name || 'Ningun archivo seleccionado'}
+                </span>
+              </div>
+
+              <button type="submit" className="btn-primary" disabled={sending}>Subir documento</button>
+            </form>
+          </article>
+
+          <article className="alumno-card">
+            <h3>Estado de documentos</h3>
+            <div className="document-list">
+              {(portafolio.documentos || []).map((item) => (
+                <div key={item.key} className="doc-card">
+                  <div className="doc-meta">
+                    <strong>{item.label}</strong>
+                    <span>{item.detalle}</span>
+                    {item.archivo_url ? (
+                      <a href={resolveBackendFileUrl(item.archivo_url)} target="_blank" rel="noreferrer">
+                        Descargar ultimo archivo
+                      </a>
+                    ) : null}
+                  </div>
+                  <span className={getDocumentStatusClass(item.estatus)}>
+                    {item.estatus === 'entregado' ? 'Entregado' : 'Falta'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="alumno-card full-width">
+            <h3>Archivos en mi portafolio</h3>
+            {(portafolio.items || []).length === 0 ? (
+              <p className="alumno-empty">Sin archivos en el portafolio.</p>
+            ) : (
+              <div className="alumno-list compact">
+                {(portafolio.items || []).map((item) => (
+                  <article key={item.id_evidencia} className="alumno-list-item">
+                    <div className="alumno-list-head">
+                      <strong>{item.nombre_archivo || 'Archivo sin nombre'}</strong>
+                      <span className={`status-badge ${getStatusBadgeClass('en_proceso')}`}>
+                        {item.origen === 'alumno' ? 'Subido por mi' : item.origen === 'control_escolar' ? 'Control Escolar' : 'Docente'}
+                      </span>
+                    </div>
+                    <p>{documentoPortafolioLabels[item.tipo_documento] || item.materia || 'Documento general'}</p>
+                    <a href={resolveBackendFileUrl(item.archivo_url)} target="_blank" rel="noreferrer">Descargar archivo</a>
+                    <small>{formatDate(item.fecha_creacion, true)}</small>
                   </article>
                 ))}
               </div>

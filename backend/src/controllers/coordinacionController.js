@@ -14,7 +14,15 @@ const {
   ProgramaAcademico,
   PeriodoAcademico,
   EntregaTarea,
+  PortafolioEvidencia,
 } = require('../../models');
+
+const DOCUMENTOS_REQUERIDOS = [
+  { clave: 'curp', nombre: 'CURP', detalle: 'Identificacion oficial' },
+  { clave: 'acta_nacimiento', nombre: 'Acta de nacimiento', detalle: 'Documentacion de registro' },
+  { clave: 'certificado_bachillerato', nombre: 'Certificado de bachillerato', detalle: 'Boleta de preparatoria' },
+  { clave: 'foto_oficial', nombre: 'Foto oficial', detalle: 'Formato escolar vigente' },
+];
 
 const DIAS_VALIDOS = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB', 'DOM'];
 const ESTATUS_PROGRAMA_VALIDOS = new Set(['en_revision', 'horas_cubiertas', 'liberado', 'rechazado']);
@@ -643,6 +651,72 @@ async function alumnosProgreso(_req, res) {
   return res.json({ items });
 }
 
+async function portafolioAlumno(req, res) {
+  const alumnoId = toInt(req.params.alumnoId);
+  if (!Number.isInteger(alumnoId)) {
+    return res.status(400).json({ message: 'alumnoId invalido.' });
+  }
+
+  const alumno = await AlumnoPerfil.findByPk(alumnoId, {
+    include: [{
+      model: Usuario,
+      as: 'usuario',
+      attributes: ['id_usuario', 'folio_matricula', 'nombre_completo', 'correo'],
+    }],
+  });
+
+  if (!alumno) {
+    return res.status(404).json({ message: 'Alumno no encontrado.' });
+  }
+
+  const evidencias = await PortafolioEvidencia.findAll({
+    where: { id_alumno: alumnoId },
+    include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia'], required: false }],
+    order: [['id_evidencia', 'DESC']],
+    limit: 300,
+  });
+
+  const evidenciaPorDocumento = new Map();
+  evidencias.forEach((item) => {
+    const tipo = String(item.tipo_documento || '').trim().toLowerCase();
+    if (!tipo || evidenciaPorDocumento.has(tipo)) return;
+    evidenciaPorDocumento.set(tipo, item);
+  });
+
+  const documentos = DOCUMENTOS_REQUERIDOS.map((documento) => {
+    const evidencia = evidenciaPorDocumento.get(documento.clave) || null;
+    return {
+      key: documento.clave,
+      label: documento.nombre,
+      detalle: documento.detalle,
+      estatus: evidencia ? 'entregado' : 'faltante',
+      archivo_url: evidencia ? evidencia.archivo_url : null,
+      nombre_archivo: evidencia ? evidencia.nombre_archivo : null,
+      fecha_entrega: evidencia ? evidencia.fecha_creacion : null,
+    };
+  });
+
+  return res.json({
+    alumno: {
+      id_alumno: alumno.id_alumno,
+      folio_matricula: alumno.usuario?.folio_matricula || null,
+      nombre_completo: alumno.usuario?.nombre_completo || null,
+      correo: alumno.usuario?.correo || null,
+      drive_folder_url: alumno.drive_folder_url || null,
+    },
+    documentos,
+    items: evidencias.map((item) => ({
+      id_evidencia: item.id_evidencia,
+      archivo_url: item.archivo_url,
+      nombre_archivo: item.nombre_archivo,
+      tipo_documento: item.tipo_documento,
+      origen: item.origen,
+      materia: item.materia?.nombre_materia || null,
+      fecha_creacion: item.fecha_creacion,
+    })),
+  });
+}
+
 async function meritosRecientes(_req, res) {
   const rows = await MeritoAcademico.findAll({
     include: [{
@@ -1103,6 +1177,7 @@ module.exports = {
   actualizarMateriaPrograma,
   eliminarMateriaPrograma,
   alumnosProgreso,
+  portafolioAlumno,
   meritosRecientes,
   asignarMerito,
 };

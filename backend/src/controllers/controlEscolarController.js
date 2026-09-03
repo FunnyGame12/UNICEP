@@ -419,6 +419,7 @@ async function portafolioAlumno(req, res) {
       id_evidencia: item.id_evidencia,
       archivo_url: item.archivo_url,
       nombre_archivo: item.nombre_archivo,
+      tipo_documento: item.tipo_documento,
       origen: item.origen,
       materia: item.materia?.nombre_materia || null,
       fecha_creacion: item.fecha_creacion,

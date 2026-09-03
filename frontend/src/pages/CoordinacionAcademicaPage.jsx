@@ -13,6 +13,30 @@ const tabs = [
   { id: 'progreso', label: 'Progreso y Reconocimientos' },
 ];
 
+const documentoPortafolioLabels = {
+  curp: 'CURP',
+  acta_nacimiento: 'Acta de nacimiento',
+  certificado_bachillerato: 'Certificado de bachillerato',
+  foto_oficial: 'Foto oficial',
+};
+
+function resolveBackendFileUrl(filePath) {
+  const raw = String(filePath || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  const baseUrl = String(api.defaults.baseURL || '').trim();
+  const absoluteBase = /^https?:\/\//i.test(baseUrl)
+    ? baseUrl
+    : `${window.location.origin}${baseUrl.startsWith('/') ? baseUrl : `/${baseUrl}`}`;
+
+  try {
+    return new URL(raw, absoluteBase).toString();
+  } catch (_error) {
+    return raw;
+  }
+}
+
 const programaStatusOptions = [
   { value: 'en_revision', label: 'En revision' },
   { value: 'horas_cubiertas', label: 'Horas cubiertas' },
@@ -171,6 +195,9 @@ export default function CoordinacionAcademicaPage() {
   const [alumnosProgreso, setAlumnosProgreso] = useState([]);
   const [meritosRecientes, setMeritosRecientes] = useState([]);
   const [selectedPrograma, setSelectedPrograma] = useState(null);
+  const [selectedPortafolioAlumnoId, setSelectedPortafolioAlumnoId] = useState('');
+  const [portafolioAlumnoData, setPortafolioAlumnoData] = useState(null);
+  const [portafolioAlumnoLoading, setPortafolioAlumnoLoading] = useState(false);
 
   const [alumnoGrupoItems, setAlumnoGrupoItems] = useState([]);
   const [alumnoGrupoSearch, setAlumnoGrupoSearch] = useState('');
@@ -372,6 +399,42 @@ export default function CoordinacionAcademicaPage() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!alumnos.length) {
+      setSelectedPortafolioAlumnoId('');
+      setPortafolioAlumnoData(null);
+      return;
+    }
+
+    setSelectedPortafolioAlumnoId((current) => {
+      if (current && alumnos.some((item) => String(item.id_alumno) === String(current))) {
+        return current;
+      }
+      return String(alumnos[0].id_alumno);
+    });
+  }, [alumnos]);
+
+  useEffect(() => {
+    async function cargarPortafolioAlumno() {
+      if (!selectedPortafolioAlumnoId) {
+        setPortafolioAlumnoData(null);
+        return;
+      }
+
+      setPortafolioAlumnoLoading(true);
+      try {
+        const response = await api.get(`/coordinacion/alumnos/${Number(selectedPortafolioAlumnoId)}/portafolio`);
+        setPortafolioAlumnoData(response?.data || null);
+      } catch {
+        setPortafolioAlumnoData(null);
+      } finally {
+        setPortafolioAlumnoLoading(false);
+      }
+    }
+
+    cargarPortafolioAlumno();
+  }, [selectedPortafolioAlumnoId]);
 
   useEffect(() => {
     async function loadAlumnoGrupoCatalogos() {
@@ -1751,6 +1814,54 @@ export default function CoordinacionAcademicaPage() {
                   ))}
                 </div>
               )}
+            </div>
+
+            <div>
+              <h3>Portafolio documental por alumno</h3>
+              <div className="form-grid">
+                <label htmlFor="coord-portafolio-alumno">Alumno</label>
+                <select
+                  id="coord-portafolio-alumno"
+                  value={selectedPortafolioAlumnoId}
+                  onChange={(event) => setSelectedPortafolioAlumnoId(event.target.value)}
+                >
+                  <option value="">Selecciona alumno</option>
+                  {alumnos.map((alumno) => (
+                    <option key={`pa-${alumno.id_alumno}`} value={String(alumno.id_alumno)}>
+                      {`${alumno.folio_matricula || 'SIN-FOLIO'} · ${alumno.nombre_completo}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {portafolioAlumnoLoading ? <p>Cargando portafolio...</p> : null}
+              {!portafolioAlumnoLoading && !portafolioAlumnoData ? <p className="coord-empty-state">Sin datos de portafolio para mostrar.</p> : null}
+
+              {portafolioAlumnoData ? (
+                <>
+                  <div className="coord-list">
+                    {(portafolioAlumnoData.documentos || []).map((item) => (
+                      <div key={`doc-${item.key}`} className="coord-list-item">
+                        <strong>{item.label}</strong>
+                        <span>{item.estatus === 'entregado' ? 'Entregado' : 'Faltante'}</span>
+                        {item.archivo_url ? (
+                          <a href={resolveBackendFileUrl(item.archivo_url)} target="_blank" rel="noreferrer">Descargar documento</a>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="coord-list" style={{ marginTop: 12 }}>
+                    {(portafolioAlumnoData.items || []).map((item) => (
+                      <div key={`ev-${item.id_evidencia}`} className="coord-list-item">
+                        <strong>{item.nombre_archivo || 'Archivo sin nombre'}</strong>
+                        <span>{documentoPortafolioLabels[item.tipo_documento] || item.materia || 'Documento general'}</span>
+                        <a href={resolveBackendFileUrl(item.archivo_url)} target="_blank" rel="noreferrer">Descargar archivo</a>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
             </div>
           </article>
         </div>

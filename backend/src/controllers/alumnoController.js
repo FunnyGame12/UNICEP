@@ -19,8 +19,18 @@ const {
   AnuncioDocente,
   CalificacionFormativaDocente,
   NotificacionAlumno,
+  PortafolioEvidencia,
 } = require('../../models');
 const { registrarEventoAuditoria } = require('../services/auditService');
+
+const DOCUMENTOS_REQUERIDOS = [
+  { clave: 'curp', nombre: 'CURP', detalle: 'Identificacion oficial' },
+  { clave: 'acta_nacimiento', nombre: 'Acta de nacimiento', detalle: 'Documentacion de registro' },
+  { clave: 'certificado_bachillerato', nombre: 'Certificado de bachillerato', detalle: 'Boleta de preparatoria' },
+  { clave: 'foto_oficial', nombre: 'Foto oficial', detalle: 'Formato escolar vigente' },
+];
+
+const TIPOS_DOCUMENTO_PERMITIDOS = new Set(DOCUMENTOS_REQUERIDOS.map((item) => item.clave));
 
 function normalizeText(value) {
   return String(value || '').trim();
@@ -887,7 +897,84 @@ async function materiales(req, res) {
 }
 
 async function portafolio(_req, res) {
-  return res.json({ items: [] });
+  const validacion = await validarAccesoAlumno(_req);
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const evidencias = await PortafolioEvidencia.findAll({
+    where: { id_alumno: validacion.idAlumno },
+    include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia'], required: false }],
+    order: [['id_evidencia', 'DESC']],
+    limit: 300,
+  });
+
+  const evidenciaPorDocumento = new Map();
+  evidencias.forEach((item) => {
+    const tipo = String(item.tipo_documento || '').trim().toLowerCase();
+    if (!tipo || evidenciaPorDocumento.has(tipo)) return;
+    evidenciaPorDocumento.set(tipo, item);
+  });
+
+  const documentos = DOCUMENTOS_REQUERIDOS.map((documento) => {
+    const evidencia = evidenciaPorDocumento.get(documento.clave) || null;
+    return {
+      key: documento.clave,
+      label: documento.nombre,
+      detalle: documento.detalle,
+      estatus: evidencia ? 'entregado' : 'faltante',
+      archivo_url: evidencia ? evidencia.archivo_url : null,
+      nombre_archivo: evidencia ? evidencia.nombre_archivo : null,
+      fecha_entrega: evidencia ? evidencia.fecha_creacion : null,
+    };
+  });
+
+  return res.json({
+    documentos,
+    items: evidencias.map((item) => ({
+      id_evidencia: item.id_evidencia,
+      archivo_url: item.archivo_url,
+      nombre_archivo: item.nombre_archivo,
+      tipo_documento: item.tipo_documento,
+      origen: item.origen,
+      materia: item.materia?.nombre_materia || null,
+      fecha_creacion: item.fecha_creacion,
+    })),
+  });
+}
+
+async function subirDocumentoPortafolio(req, res) {
+  const validacion = await validarAccesoAlumno(req);
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const tipoDocumento = normalizeText(req.body.tipo_documento)?.toLowerCase() || null;
+  if (!tipoDocumento || !TIPOS_DOCUMENTO_PERMITIDOS.has(tipoDocumento)) {
+    return res.status(400).json({ message: 'tipo_documento invalido.' });
+  }
+
+  if (!req.file) {
+    return res.status(400).json({ message: 'Selecciona un archivo para subir.' });
+  }
+
+  const evidencia = await PortafolioEvidencia.create({
+    id_alumno: validacion.idAlumno,
+    archivo_url: `/uploads/portafolio/${req.file.filename}`,
+    nombre_archivo: req.file.originalname,
+    tipo_documento: tipoDocumento,
+    origen: 'alumno',
+    id_subido_por: req.user.id_usuario,
+    fecha_creacion: new Date(),
+  });
+
+  return res.status(201).json({
+    id_evidencia: evidencia.id_evidencia,
+    archivo_url: evidencia.archivo_url,
+    nombre_archivo: evidencia.nombre_archivo,
+    tipo_documento: evidencia.tipo_documento,
+    origen: evidencia.origen,
+  });
 }
 
 async function meritos(req, res) {
@@ -1005,6 +1092,7 @@ module.exports = {
   asistencias,
   pagos,
   portafolio,
+  subirDocumentoPortafolio,
   meritos,
   alertas,
   videoClases,
