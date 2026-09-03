@@ -7,7 +7,7 @@ const ofertas = [
   { label: 'Derecho', file: 'DERECHO.PDF' },
   { label: 'Pedagogía', file: 'PEDAGOGIA.PDF' },
   { label: 'Psicología', file: 'PSICOLOGIA.PDF' },
-  { label: 'Prepa', file: 'PREPA.PDF' },
+  { label: 'Prepa', file: 'prepa.pdf' },
 ];
 
 const campusAreas = [
