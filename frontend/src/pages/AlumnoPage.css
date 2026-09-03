@@ -42,6 +42,71 @@
   gap: 0.65rem;
 }
 
+.animate-fade-in {
+  animation: alumnoFadeIn 220ms ease-out;
+}
+
+@keyframes alumnoFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.alumno-portafolio-intro p {
+  margin: 0.25rem 0 0;
+  color: #9ca3af;
+}
+
+.alumno-portafolio-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.alumno-portafolio-column h4 {
+  margin: 0 0 0.85rem;
+}
+
+.alumno-portafolio-item {
+  gap: 0.5rem;
+}
+
+.alumno-portafolio-item-head {
+  align-items: flex-start;
+}
+
+.alumno-portafolio-item-head small {
+  display: block;
+  margin-top: 0.25rem;
+  color: #9ca3af;
+}
+
+.alumno-portafolio-form-row {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.alumno-portafolio-form-row input {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid #374151;
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+}
+
+.alumno-portafolio-item label {
+  font-size: 0.8rem;
+  color: #cbd5e1;
+}
+
 .alumno-portafolio-tab p {
   margin: 0;
   color: #9ca3af;
@@ -474,6 +539,10 @@
 
   .desktop-only {
     display: grid;
+  }
+
+  .alumno-portafolio-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .mobile-only {

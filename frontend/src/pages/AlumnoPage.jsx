@@ -40,6 +40,12 @@ const pagoEstatusBadgeClass = {
   aprobado: 'badge-success',
 };
 
+const portafolioBadgeInfo = {
+  validado: { label: 'Validado para Boleta', className: 'badge-success' },
+  entregado: { label: 'Entregado, en revision', className: 'badge-warn' },
+  pendiente: { label: 'Pendiente de entrega', className: 'badge-neutral' },
+};
+
 const pagoSchema = z.object({
   id_concepto_pago: z.string().min(1, 'Selecciona un concepto de pago.'),
   monto_pagado: z.preprocess(
@@ -91,6 +97,16 @@ function resolveBackendFileUrl(filePath) {
   }
 }
 
+function esUrlValida(value) {
+  try {
+    // eslint-disable-next-line no-new
+    new URL(value);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
 export default function AlumnoPage() {
   const [activeTab, setActiveTab] = useState('resumen');
   const [loading, setLoading] = useState(true);
@@ -109,6 +125,10 @@ export default function AlumnoPage() {
   const [avisosDescartados, setAvisosDescartados] = useState(new Set());
   const [pagos, setPagos] = useState({ items: [], resumen: null });
   const [conceptosPago, setConceptosPago] = useState([]);
+  const [misEvidencias, setMisEvidencias] = useState([]);
+  const [recursosInstitucionales, setRecursosInstitucionales] = useState([]);
+  const [draftsPortafolio, setDraftsPortafolio] = useState({});
+  const [savingMateriaId, setSavingMateriaId] = useState(null);
 
   const [pagoArchivo, setPagoArchivo] = useState(null);
   const [tramiteArchivo, setTramiteArchivo] = useState(null);
@@ -204,6 +224,37 @@ export default function AlumnoPage() {
     [historialTramites],
   );
 
+  const recursosOrdenados = useMemo(
+    () => [...recursosInstitucionales],
+    [recursosInstitucionales],
+  );
+
+  function handleDriveInputChange(materiaId, value) {
+    setDraftsPortafolio((prev) => ({ ...prev, [materiaId]: value }));
+  }
+
+  async function handleGuardarEnlacePortafolio(materiaId) {
+    const driveUrl = String(draftsPortafolio[materiaId] || '').trim();
+    if (!driveUrl || !esUrlValida(driveUrl)) {
+      setError('Ingresa un enlace de Drive valido antes de guardar.');
+      return;
+    }
+
+    setSavingMateriaId(materiaId);
+    setError('');
+    setMessage('');
+
+    try {
+      await api.post('/alumno/portafolio', { materia_id: materiaId, drive_url: driveUrl });
+      setMessage('Enlace de Drive guardado correctamente.');
+      await loadBase();
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo guardar el enlace de Drive.');
+    } finally {
+      setSavingMateriaId(null);
+    }
+  }
+
   async function loadBase() {
     setLoading(true);
     setError('');
@@ -242,11 +293,16 @@ export default function AlumnoPage() {
         setCalificaciones({ formativas: [], finales: [], resumen: [] });
         setAsistencia({ items: [], acumulado: [] });
         setAvisos([]);
+        setMisEvidencias([]);
+        setRecursosInstitucionales([]);
+        setDraftsPortafolio({});
         setCalificacionesBloqueadas(Boolean(estadoResp.data?.bloqueo_calificaciones));
         return;
       }
 
-      const [horarioResp, asistenciaResp, avisosResp, calificacionesResp] = await Promise.all([
+      const idAlumno = Number(estadoResp.data?.id_alumno || 0);
+
+      const [horarioResp, asistenciaResp, avisosResp, calificacionesResp, portafolioResp] = await Promise.all([
         api.get('/alumno/horario-aulas'),
         api.get('/alumno/asistencia'),
         api.get('/alumno/avisos').catch(() => ({ data: { items: [] } })),
@@ -257,12 +313,27 @@ export default function AlumnoPage() {
           }
           throw requestError;
         }),
+        idAlumno > 0
+          ? api.get(`/alumno/${idAlumno}/portafolio-recursos`).catch(() => ({ data: { misEvidencias: [], recursosInstitucionales: [] } }))
+          : Promise.resolve({ data: { misEvidencias: [], recursosInstitucionales: [] } }),
       ]);
 
       setHorario(horarioResp.data?.items || []);
       setAsistencia(asistenciaResp.data || { items: [], acumulado: [] });
       setAvisos(avisosResp.data?.items || []);
       setCalificaciones(calificacionesResp.data || { formativas: [], finales: [], resumen: [] });
+      const evidencias = portafolioResp.data?.misEvidencias || [];
+      setMisEvidencias(evidencias);
+      setRecursosInstitucionales(portafolioResp.data?.recursosInstitucionales || []);
+      setDraftsPortafolio((prev) => {
+        const next = { ...prev };
+        evidencias.forEach((item) => {
+          if (next[item.materia_id] === undefined) {
+            next[item.materia_id] = item.drive_url || '';
+          }
+        });
+        return next;
+      });
       setCalificacionesBloqueadas(false);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo cargar el panel del alumno.');
@@ -454,14 +525,98 @@ export default function AlumnoPage() {
       ) : null}
 
       {activeTab === 'portafolio' ? (
-        <div className="alumno-section-grid">
-          <article className="alumno-card full-width alumno-portafolio-tab">
+        <div className="alumno-section-grid animate-fade-in">
+          <div className="alumno-portafolio-intro full-width">
             <h3>Portafolio y Documentos</h3>
+            <p>Captura tus evidencias por materia y descarga los recursos oficiales.</p>
+          </div>
+
+          <div className="alumno-portafolio-grid full-width">
+            <article className="alumno-card alumno-portafolio-column">
+              <h4>📁 Mis Evidencias (Drive)</h4>
+              {misEvidencias.length === 0 ? (
+                <p className="alumno-empty">Aun no tienes materias con evidencias por entregar.</p>
+              ) : (
+                <div className="alumno-list">
+                  {misEvidencias.map((item) => {
+                    const badge = portafolioBadgeInfo[item.estado] || portafolioBadgeInfo.pendiente;
+                    const isSaving = savingMateriaId === item.materia_id;
+
+                    return (
+                      <article key={item.materia_id} className="alumno-list-item alumno-portafolio-item">
+                        <div className="alumno-list-head alumno-portafolio-item-head">
+                          <div>
+                            <strong>{item.materia_nombre}</strong>
+                            <small>Docente: {item.docente_nombre}</small>
+                          </div>
+                          <span className={`status-badge ${badge.className}`}>{badge.label}</span>
+                        </div>
+
+                        <label htmlFor={`drive-url-${item.materia_id}`}>Enlace de Google Drive</label>
+                        <div className="alumno-portafolio-form-row">
+                          <input
+                            id={`drive-url-${item.materia_id}`}
+                            type="url"
+                            placeholder="https://drive.google.com/..."
+                            value={draftsPortafolio[item.materia_id] ?? ''}
+                            onChange={(event) => handleDriveInputChange(item.materia_id, event.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            disabled={isSaving}
+                            onClick={() => handleGuardarEnlacePortafolio(item.materia_id)}
+                          >
+                            {isSaving ? 'Guardando...' : 'Guardar Enlace'}
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </article>
+
+            <article className="alumno-card alumno-portafolio-column">
+              <h4>📥 Recursos y Material Didactico</h4>
+              {recursosOrdenados.length === 0 ? (
+                <p className="alumno-empty">Coordinacion y Docentes aun no han compartido recursos.</p>
+              ) : (
+                <div className="alumno-list">
+                  {recursosOrdenados.map((item, index) => {
+                    const esEnlaceDrive = item.tipo_recurso === 'enlace_drive';
+                    const recursoUrl = resolveBackendFileUrl(item.url_recurso);
+                    const remitente = item.remitente_tipo === 'coordinacion' ? 'Coordinacion Academica' : 'Docente';
+
+                    return (
+                      <article key={`${item.titulo}-${index}`} className="alumno-list-item alumno-portafolio-item">
+                        <strong>{item.titulo}</strong>
+                        <small>
+                          {remitente}
+                          {item.materia_nombre ? ` · ${item.materia_nombre}` : ''}
+                        </small>
+                        {item.remitente_nombre ? <small>Publico: {item.remitente_nombre}</small> : null}
+                        {recursoUrl ? (
+                          <a href={recursoUrl} target="_blank" rel="noreferrer">
+                            {esEnlaceDrive ? 'Abrir enlace de Drive' : 'Descargar archivo'}
+                          </a>
+                        ) : (
+                          <p className="alumno-empty">Recurso sin enlace disponible.</p>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </article>
+          </div>
+
+          <article className="alumno-card full-width alumno-portafolio-tab">
             <p>
-              Ingresa para capturar evidencias por materia y descargar recursos oficiales compartidos por Coordinación y Docentes.
+              Si prefieres una vista dedicada, tambien puedes abrir el modulo completo de portafolio.
             </p>
-            <Link to="/alumno/portafolio-recursos" className="btn-primary alumno-portafolio-cta">
-              Abrir pestaña de Portafolio y Documentos
+            <Link to="/alumno/portafolio-recursos" className="btn-secondary alumno-portafolio-cta">
+              Abrir modulo completo
             </Link>
           </article>
         </div>
