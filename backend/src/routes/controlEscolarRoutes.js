@@ -16,6 +16,7 @@ router.put('/validar-comprobante/:pagoId', controlEscolarController.validarCompr
 
 router.get('/alumnos-estatus', controlEscolarController.alumnosEstatus);
 router.put('/alumnos/:alumnoId/accesos', controlEscolarController.actualizarAccesosAlumno);
+router.get('/alumnos/:alumnoId/boleta', controlEscolarController.descargarBoletaAlumno);
 
 router.get('/alumnos/:alumnoId/portafolio', controlEscolarController.portafolioAlumno);
 router.put('/alumnos/:alumnoId/drive-folder', controlEscolarController.actualizarDriveFolder);
