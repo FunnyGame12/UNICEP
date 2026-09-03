@@ -11,7 +11,11 @@ const tabs = [
   { id: 'finanzas', label: 'Finanzas y Pagos' },
   { id: 'ventanilla', label: 'Ventanilla y Trámites' },
   { id: 'portafolio', label: 'Portafolio y Documentos' },
+  { id: 'servicio_social', label: 'Servicio Social' },
 ];
+
+const BIBLIOTECA_VIRTUAL_URL = 'https://www.unicepmerida.com/biblioteca-virtual';
+const MANUAL_SERVICIO_SOCIAL_URL = '/pdf/MANUAL_SERVICIO_SOCIAL_Y_PRACTICAS.pdf';
 
 const tramiteLabels = {
   constancia: 'Constancia',
@@ -40,6 +44,17 @@ const documentoPortafolioLabels = {
   acta_nacimiento: 'Acta de nacimiento',
   certificado_bachillerato: 'Certificado de bachillerato',
   foto_oficial: 'Foto oficial',
+};
+
+const meritoTipoLabels = {
+  diploma: 'Diploma',
+  constancia: 'Constancia',
+  reconocimiento: 'Reconocimiento',
+  curso_adicional: 'Curso adicional',
+  taller: 'Taller',
+  mencion_honorifica: 'Mención honorífica',
+  insignia: 'Insignia académica',
+  cuadro_honor: 'Cuadro de honor',
 };
 
 const pagoSchema = z.object({
@@ -496,6 +511,49 @@ export default function AlumnoPage() {
               </div>
             )}
           </article>
+
+          <article className="alumno-card alumno-institucional-card">
+            <h3>Accesos Institucionales</h3>
+            <a
+              className="btn-highlight"
+              href={BIBLIOTECA_VIRTUAL_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              📚 Biblioteca Virtual
+            </a>
+          </article>
+
+          <article className="alumno-card full-width">
+            <h3>Méritos Académicos</h3>
+            {meritos.length === 0 ? (
+              <p className="alumno-empty">Aún no cuentas con méritos registrados.</p>
+            ) : (
+              <div className="alumno-list compact">
+                {meritos.map((item) => (
+                  <article key={item.id_merito} className="alumno-list-item">
+                    <div className="alumno-list-head">
+                      <strong>{item.nombre}</strong>
+                      <span className="merito-chip">{meritoTipoLabels[item.tipo_merito] || item.tipo_merito}</span>
+                    </div>
+                    <small>{formatDate(item.fecha)}</small>
+                    {item.archivo_url ? (
+                      <a
+                        className="btn-secondary merito-download"
+                        href={resolveBackendFileUrl(item.archivo_url)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        🏅 Descargar Diploma/Certificado
+                      </a>
+                    ) : (
+                      <p className="alumno-empty">Sin archivo adjunto.</p>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+          </article>
         </div>
       ) : null}
 
@@ -690,6 +748,21 @@ export default function AlumnoPage() {
           <article className="alumno-card">
             <h3>Mi Expediente</h3>
             <p>Consulta y carga tus documentos oficiales en la pestaña Portafolio y Documentos.</p>
+            {acceso?.perfil?.drive_folder_url ? (
+              <>
+                <a
+                  className="btn-primary"
+                  href={acceso.perfil.drive_folder_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  📁 Mi Expediente (Google Drive)
+                </a>
+                <small className="alumno-overlay-note">Acceso de solo lectura configurado por Control Escolar.</small>
+              </>
+            ) : (
+              <p className="alumno-empty">Control Escolar aún no configura tu carpeta de expediente digital.</p>
+            )}
           </article>
 
           <article className="alumno-card full-width">
@@ -795,6 +868,27 @@ export default function AlumnoPage() {
                 ))}
               </div>
             )}
+          </article>
+        </div>
+      ) : null}
+
+      {activeTab === 'servicio_social' ? (
+        <div className="alumno-section-grid">
+          <article className="alumno-card full-width">
+            <h3>Servicio Social y Prácticas Profesionales</h3>
+            <p>
+              Consulta los lineamientos institucionales antes de iniciar tu Servicio Social o tus Prácticas
+              Profesionales. Descarga el manual oficial para conocer requisitos, horas mínimas y proceso de liberación.
+            </p>
+            <a
+              className="btn-primary"
+              href={MANUAL_SERVICIO_SOCIAL_URL}
+              target="_blank"
+              rel="noreferrer"
+              download
+            >
+              📘 Descargar Manual de Servicio Social y Prácticas
+            </a>
           </article>
         </div>
       ) : null}

@@ -38,7 +38,7 @@
 }
 
 .alumno-tabs {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .alumno-tabs button,
@@ -235,6 +235,33 @@
   gap: 0.22rem;
 }
 
+.merito-download {
+  display: inline-block;
+  margin-top: 0.5rem;
+}
+
+.alumno-institucional-card {
+  display: grid;
+  gap: 0.6rem;
+  align-content: start;
+}
+
+.btn-highlight {
+  display: inline-block;
+  text-align: center;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.btn-highlight:hover {
+  filter: brightness(1.08);
+}
+
 .chips-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -380,7 +407,7 @@
   z-index: 40;
   background: rgba(9, 13, 22, 0.98);
   border-top: 1px solid #1f2937;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   padding: 0.45rem 0.55rem;
 }
 

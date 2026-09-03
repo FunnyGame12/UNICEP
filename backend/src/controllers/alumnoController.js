@@ -62,7 +62,7 @@ async function obtenerEstadoAlumno(idAlumno) {
       attributes: ['id_usuario', 'nombre_completo', 'correo', 'folio_matricula', 'cuenta_activada', 'cuenta_bloqueada'],
     }),
     AlumnoPerfil.findByPk(idAlumno, {
-      attributes: ['id_alumno', 'carrera', 'bimestre_actual', 'estado_academico', 'bloqueo_plataforma', 'bloqueo_calificaciones', 'estatus_financiero'],
+      attributes: ['id_alumno', 'carrera', 'bimestre_actual', 'estado_academico', 'bloqueo_plataforma', 'bloqueo_calificaciones', 'estatus_financiero', 'drive_folder_url'],
     }),
   ]);
 
@@ -191,6 +191,7 @@ async function estadoAcceso(req, res) {
       folio_matricula: estado.usuario.folio_matricula,
       carrera: estado.perfil.carrera,
       bimestre_actual: estado.perfil.bimestre_actual,
+      drive_folder_url: estado.perfil.drive_folder_url || null,
     },
   });
 }
