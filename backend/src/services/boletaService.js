@@ -256,6 +256,7 @@ async function generarWorkbookBoleta(idAlumno) {
   worksheet.getCell('M7').value = modalidadBoleta;
   worksheet.getCell('O7').value = grupoAlumno;
   worksheet.getCell('E21').value = formatearFechaExpedicion(new Date());
+  worksheet.getCell('C24').value = alumno.usuario?.correo || '-';
 
   materiasParaBoleta.forEach((materia, index) => {
     if (index >= COLUMNAS_MATERIAS.length) return;
