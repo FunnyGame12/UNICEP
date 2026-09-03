@@ -6,6 +6,7 @@ const tabs = [
   { id: 'asistencia', label: 'Control de Asistencia' },
   { id: 'calificaciones', label: 'Calificaciones y Cierre de Actas' },
   { id: 'avisos', label: 'Avisos y Justificantes' },
+  { id: 'recursos_maestro', label: 'Recursos Maestro' },
   { id: 'material', label: 'Material Didáctico' },
 ];
 
@@ -465,45 +466,6 @@ export default function DocentePage() {
         </select>
       </article>
 
-      {selectedAsignacion ? (
-        <div className="mb-6 bg-gray-900 border border-gray-700 rounded-lg p-5">
-          <h3 className="text-lg font-semibold text-white mb-4">Recursos del Maestro</h3>
-
-          {(!recursosCoordinacion || recursosCoordinacion.length === 0) ? (
-            <div className="border-2 border-dashed border-gray-700 rounded-lg p-8 flex items-center justify-center">
-              <p className="text-gray-500 text-sm">Sin recursos SEP/temario configurados para esta materia.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {recursosCoordinacion.map((recurso) => (
-                <div
-                  key={recurso.id}
-                  className="flex items-center justify-between bg-gray-800 border border-gray-700 p-3 rounded-md"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">📄</span>
-                    <div>
-                      <p className="text-sm font-medium text-gray-200">{recurso.titulo}</p>
-                      <p className="text-xs text-gray-500">Proporcionado por: Coordinación</p>
-                    </div>
-                  </div>
-
-                  <a
-                    href={resolveBackendFileUrl(recurso.url_archivo)}
-                    download
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors"
-                  >
-                    Descargar 📥
-                  </a>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : null}
-
       <div className="docente-tabs" role="tablist" aria-label="Secciones operativas">
         {tabs.map((tab) => (
           <button
@@ -773,6 +735,47 @@ export default function DocentePage() {
             )}
           </article>
         </div>
+      ) : null}
+
+      {activeTab === 'recursos_maestro' ? (
+        <article className="docente-card">
+          <div className="mb-6 bg-gray-900 border border-gray-700 rounded-lg p-5">
+            <h3 className="text-lg font-semibold text-white mb-4">Recursos del Maestro</h3>
+
+            {(!recursosCoordinacion || recursosCoordinacion.length === 0) ? (
+              <div className="border-2 border-dashed border-gray-700 rounded-lg p-8 flex items-center justify-center">
+                <p className="text-gray-500 text-sm">Sin recursos SEP/temario configurados para esta materia.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {recursosCoordinacion.map((recurso) => (
+                  <div
+                    key={recurso.id}
+                    className="flex items-center justify-between bg-gray-800 border border-gray-700 p-3 rounded-md"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">📄</span>
+                      <div>
+                        <p className="text-sm font-medium text-gray-200">{recurso.titulo}</p>
+                        <p className="text-xs text-gray-500">Proporcionado por: Coordinación</p>
+                      </div>
+                    </div>
+
+                    <a
+                      href={resolveBackendFileUrl(recurso.url_archivo)}
+                      download
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors"
+                    >
+                      Descargar 📥
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </article>
       ) : null}
 
       {activeTab === 'material' ? (
