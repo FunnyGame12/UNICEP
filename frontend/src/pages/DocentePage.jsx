@@ -51,6 +51,7 @@ export default function DocentePage() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [asistenciaPorAlumno, setAsistenciaPorAlumno] = useState({});
   const [calificacionesPorAlumno, setCalificacionesPorAlumno] = useState({});
+  const [portafolioValidadoPorAlumno, setPortafolioValidadoPorAlumno] = useState({});
 
   const selectedMateria = useMemo(
     () => (selectedAsignacion ? Number(selectedAsignacion.materia_id) : null),
@@ -102,6 +103,7 @@ export default function DocentePage() {
           setAvisos([]);
           setAsistenciaPorAlumno({});
           setCalificacionesPorAlumno({});
+          setPortafolioValidadoPorAlumno({});
           return;
         }
 
@@ -141,6 +143,15 @@ export default function DocentePage() {
                 definitiva: '',
               };
             }
+          });
+          return next;
+        });
+
+        setPortafolioValidadoPorAlumno((prev) => {
+          const next = { ...prev };
+          alumnosItems.forEach((row) => {
+            if (next[row.id_alumno] !== undefined) return;
+            next[row.id_alumno] = row?.portafolio_evidencia?.estado === 'validado';
           });
           return next;
         });
@@ -257,6 +268,7 @@ export default function DocentePage() {
         formativa_numero: formativaMap[field],
         alumno_id: Number(alumnoId),
         calificacion: value,
+        entrego_portafolio: Boolean(portafolioValidadoPorAlumno[alumnoId]),
         retroalimentacion: '',
       });
       setMessage('Calificación guardada correctamente.');
@@ -283,6 +295,10 @@ export default function DocentePage() {
       await api.post('/docente/actas/enviar-a-coordinacion', {
         materia_id: Number(selectedAsignacion.materia_id),
         grupo_id: selectedAsignacion.grupo_id,
+        portafolio_validaciones: alumnos.map((row) => ({
+          alumno_id: Number(row.id_alumno),
+          entrego_portafolio: Boolean(portafolioValidadoPorAlumno[row.id_alumno]),
+        })),
       });
       setActaCerrada(true);
       setMessage('Acta enviada a Coordinación Académica.');
@@ -473,6 +489,7 @@ export default function DocentePage() {
                     <th>Formativa 2</th>
                     <th>Proyecto Final</th>
                     <th>Calificación Final</th>
+                    <th>Portafolio (Drive)</th>
                     <th>Acción</th>
                   </tr>
                 </thead>
@@ -485,6 +502,9 @@ export default function DocentePage() {
                       proyecto_final: '',
                       definitiva: '',
                     };
+                    const driveUrl = String(row?.portafolio_evidencia?.drive_url || '').trim();
+                    const sinEntrega = !driveUrl;
+                    const validado = Boolean(portafolioValidadoPorAlumno[row.id_alumno]);
 
                     return (
                       <tr key={row.id_alumno_grupo}>
@@ -515,6 +535,27 @@ export default function DocentePage() {
                             />
                           </td>
                         ))}
+                        <td>
+                          {sinEntrega ? (
+                            <span className="docente-muted">No entregado</span>
+                          ) : (
+                            <div className="portafolio-drive-cell">
+                              <a href={driveUrl} target="_blank" rel="noreferrer">Ver Carpeta 🔗</a>
+                              <label className="portafolio-validate-toggle">
+                                <input
+                                  type="checkbox"
+                                  checked={validado}
+                                  disabled={actaCerrada}
+                                  onChange={(event) => setPortafolioValidadoPorAlumno((prev) => ({
+                                    ...prev,
+                                    [row.id_alumno]: event.target.checked,
+                                  }))}
+                                />
+                                <span>Validar</span>
+                              </label>
+                            </div>
+                          )}
+                        </td>
                         <td>
                           <button
                             type="button"

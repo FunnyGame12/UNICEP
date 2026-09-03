@@ -13,6 +13,7 @@ const {
   Usuario,
   TramiteSolicitud,
   CalificacionFormativaDocente,
+  PortafolioMateriaEvidencia,
   ActaCalificacion,
   PeriodoAcademico,
   RecursoAcademico,
@@ -1027,7 +1028,39 @@ async function alumnosPorGrupoMateria(req, res) {
     order: [['id_alumno_grupo', 'DESC']],
   });
 
-  return res.json({ items });
+  const alumnosIds = items.map((item) => Number(item.id_alumno)).filter(Number.isInteger);
+  const evidencias = alumnosIds.length > 0
+    ? await PortafolioMateriaEvidencia.findAll({
+      where: {
+        materia_id: materiaId,
+        alumno_id: { [Op.in]: alumnosIds },
+      },
+      order: [['created_at', 'DESC'], ['id_evidencia_materia', 'DESC']],
+    })
+    : [];
+
+  const evidenciaPorAlumno = new Map();
+  evidencias.forEach((item) => {
+    const alumnoId = Number(item.alumno_id);
+    if (!Number.isInteger(alumnoId) || evidenciaPorAlumno.has(alumnoId)) return;
+    evidenciaPorAlumno.set(alumnoId, item);
+  });
+
+  const responseItems = items.map((row) => {
+    const evidencia = evidenciaPorAlumno.get(Number(row.id_alumno)) || null;
+    return {
+      ...row.toJSON(),
+      portafolio_evidencia: evidencia
+        ? {
+          drive_url: evidencia.drive_url,
+          estado: evidencia.estado,
+          fecha_actualizacion: evidencia.fecha_actualizacion,
+        }
+        : null,
+    };
+  });
+
+  return res.json({ items: responseItems });
 }
 
 async function listarAsistenciaGrupoFecha(req, res) {
@@ -1176,6 +1209,7 @@ async function capturarCalificacionesFormativa(req, res) {
   for (const row of calificaciones) {
     const alumnoId = Number(row?.alumno_id);
     const calificacion = Number(row?.calificacion);
+    const entregoPortafolio = Boolean(row?.entrego_portafolio ?? req.body.entrego_portafolio);
     if (!Number.isInteger(alumnoId) || Number.isNaN(calificacion) || calificacion < 0 || calificacion > 10) {
       return res.status(400).json({ message: 'Cada calificacion debe incluir alumno_id y calificacion en rango 0..10.' });
     }
@@ -1211,6 +1245,25 @@ async function capturarCalificacionesFormativa(req, res) {
     }
 
     upserts.push(item);
+
+    if (entregoPortafolio) {
+      // Marcar evidencia como validada para la materia cuando el docente confirma el portafolio.
+      // eslint-disable-next-line no-await-in-loop
+      const evidencia = await PortafolioMateriaEvidencia.findOne({
+        where: {
+          alumno_id: alumnoId,
+          materia_id: materiaId,
+        },
+        order: [['created_at', 'DESC'], ['id_evidencia_materia', 'DESC']],
+      });
+
+      if (evidencia && evidencia.estado !== 'validado') {
+        evidencia.estado = 'validado';
+        evidencia.fecha_actualizacion = new Date();
+        // eslint-disable-next-line no-await-in-loop
+        await evidencia.save();
+      }
+    }
   }
 
   return res.json({
@@ -1267,12 +1320,22 @@ async function enviarActaCoordinacion(req, res) {
     return promedio < 6 ? acc + 1 : acc;
   }, 0);
 
+  const portafolioValidaciones = Array.isArray(req.body.portafolio_validaciones)
+    ? req.body.portafolio_validaciones
+      .map((item) => ({
+        alumno_id: Number(item?.alumno_id),
+        entrego_portafolio: Boolean(item?.entrego_portafolio),
+      }))
+      .filter((item) => Number.isInteger(item.alumno_id))
+    : [];
+
   const observaciones = {
     origen: 'docente',
     materia_id: materiaId,
     materia: materia.nombre_materia,
     grupo_id: grupoId,
     formativa_numero: Number(req.body.formativa_numero || 1),
+    portafolio_validaciones: portafolioValidaciones,
     enviado_por_docente: req.user.id_usuario,
     fecha_envio: new Date().toISOString(),
   };

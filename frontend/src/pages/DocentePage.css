@@ -298,6 +298,37 @@
   color: #9ca3af;
 }
 
+.docente-muted {
+  color: #9ca3af;
+}
+
+.portafolio-drive-cell {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.portafolio-drive-cell a {
+  color: #93c5fd;
+  text-decoration: none;
+}
+
+.portafolio-drive-cell a:hover {
+  text-decoration: underline;
+}
+
+.portafolio-validate-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #d1d5db;
+  font-size: 0.82rem;
+}
+
+.portafolio-validate-toggle input {
+  width: 14px;
+  height: 14px;
+}
+
 .dark-table table {
   width: 100%;
   border-collapse: collapse;
