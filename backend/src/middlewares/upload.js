@@ -105,10 +105,27 @@ function handleManualServicioSocialUpload(req, res, next) {
   });
 }
 
+function handleTramiteRespuestaUpload(req, res, next) {
+  uploadPortafolio.single('documento_respuesta')(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({ message: 'El archivo excede el tamano maximo permitido (10MB).' });
+      return;
+    }
+
+    res.status(400).json({ message: error.message || 'No se pudo procesar el archivo.' });
+  });
+}
+
 module.exports = {
   uploadPortafolio,
   handlePortafolioUpload,
   handleManualServicioSocialUpload,
+  handleTramiteRespuestaUpload,
   PORTAFOLIO_DIR,
   INSTITUCIONAL_DIR,
 };

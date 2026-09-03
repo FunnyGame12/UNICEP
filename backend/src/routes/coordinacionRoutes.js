@@ -2,6 +2,8 @@ const express = require('express');
 const auth = require('../middlewares/auth');
 const { authorizeRoles } = require('../middlewares/auth');
 const coordinacionController = require('../controllers/coordinacionController');
+const controlEscolarController = require('../controllers/controlEscolarController');
+const { handleTramiteRespuestaUpload } = require('../middlewares/upload');
 
 const router = express.Router();
 
@@ -17,6 +19,9 @@ router.post('/programar-horario-grupo', coordinacionController.programarHorarioG
 router.get('/actas-pendientes', coordinacionController.actasPendientes);
 router.put('/actas/:actaId/validar', coordinacionController.validarActa);
 router.post('/programar-extraordinario', coordinacionController.programarExtraordinario);
+
+router.get('/tramites', controlEscolarController.listarTramites);
+router.put('/tramites/:tramiteId/estatus', handleTramiteRespuestaUpload, controlEscolarController.actualizarEstatusTramite);
 
 router.get('/programas-externos', coordinacionController.programasExternos);
 router.put('/programas-externos/:expedienteId/estatus', coordinacionController.actualizarEstatusProgramaExterno);

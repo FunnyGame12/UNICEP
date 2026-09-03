@@ -111,6 +111,33 @@
   align-items: center;
 }
 
+.dismiss-btn {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  color: #9ca3af;
+  border-radius: 999px;
+  width: 1.6rem;
+  height: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.dismiss-btn:hover {
+  color: #f9fafb;
+  border-color: rgba(248, 113, 113, 0.55);
+}
+
+.alumno-warning-banner {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  font-weight: 600;
+}
+
 .section-head {
   display: flex;
   align-items: center;

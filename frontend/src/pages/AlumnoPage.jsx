@@ -7,51 +7,35 @@ import './AlumnoPage.css';
 
 const tabs = [
   { id: 'resumen', label: 'Mi Resumen' },
-  { id: 'calificaciones', label: 'Calificaciones y Kardex' },
-  { id: 'finanzas', label: 'Finanzas y Pagos' },
+  { id: 'calificaciones', label: 'Calificaciones y Asistencias' },
+  { id: 'finanzas', label: 'Constancias de Pagos' },
   { id: 'ventanilla', label: 'Ventanilla y Trámites' },
-  { id: 'portafolio', label: 'Portafolio y Documentos' },
-  { id: 'servicio_social', label: 'Servicio Social' },
 ];
 
 const tramiteLabels = {
   constancia: 'Constancia',
+  credencial: 'Credencial',
   uniforme: 'Uniforme',
+  papeleria_oficial: 'Papelería oficial',
   comprobante_pago: 'Comprobante de pago',
 };
 
-const estatusTramiteLabels = {
-  recibido: 'Recibido',
-  en_revision: 'En revision',
-  en_proceso: 'En proceso',
-  resuelto: 'Listo para entrega',
-  rechazado: 'Rechazado',
-  cancelado: 'Cancelado',
+const rolLabels = {
+  control_escolar: 'Control Escolar',
+  coordinacion_academica: 'Coordinación Académica',
+  director: 'Dirección',
 };
 
-const documentoPortafolioOptions = [
-  { value: 'curp', label: 'CURP' },
-  { value: 'acta_nacimiento', label: 'Acta de nacimiento' },
-  { value: 'certificado_bachillerato', label: 'Certificado de bachillerato' },
-  { value: 'foto_oficial', label: 'Foto oficial' },
-];
-
-const documentoPortafolioLabels = {
-  curp: 'CURP',
-  acta_nacimiento: 'Acta de nacimiento',
-  certificado_bachillerato: 'Certificado de bachillerato',
-  foto_oficial: 'Foto oficial',
+const pagoEstatusLabels = {
+  pendiente: 'Pendiente',
+  en_revision: 'En revisión',
+  aprobado: 'Aprobado',
 };
 
-const meritoTipoLabels = {
-  diploma: 'Diploma',
-  constancia: 'Constancia',
-  reconocimiento: 'Reconocimiento',
-  curso_adicional: 'Curso adicional',
-  taller: 'Taller',
-  mencion_honorifica: 'Mención honorífica',
-  insignia: 'Insignia académica',
-  cuadro_honor: 'Cuadro de honor',
+const pagoEstatusBadgeClass = {
+  pendiente: 'badge-neutral',
+  en_revision: 'badge-warn',
+  aprobado: 'badge-success',
 };
 
 const pagoSchema = z.object({
@@ -63,7 +47,7 @@ const pagoSchema = z.object({
 });
 
 const tramiteSchema = z.object({
-  tipo: z.enum(['constancia', 'uniforme']),
+  tipo: z.string().min(1, 'Selecciona un tipo de tramite.'),
   descripcion: z.string().trim().optional(),
 });
 
@@ -75,17 +59,17 @@ function formatDate(value, withTime = false) {
   }).format(new Date(value));
 }
 
-function getStatusBadgeClass(estatus) {
-  if (estatus === 'resuelto') return 'badge-success';
-  if (estatus === 'en_proceso' || estatus === 'en_revision') return 'badge-warn';
-  if (estatus === 'rechazado' || estatus === 'cancelado') return 'badge-danger';
-  return 'badge-neutral';
-}
-
-function getDocumentStatusClass(estatus) {
-  if (estatus === 'entregado') return 'doc-status success';
-  if (estatus === 'pendiente') return 'doc-status warn';
-  return 'doc-status danger';
+function getTramiteEstatusInfo(estatus) {
+  if (['entregado', 'resuelto'].includes(estatus)) {
+    return { label: 'Finalizado', badgeClass: 'badge-success', finalizado: true };
+  }
+  if (['en_proceso', 'listo_para_entrega'].includes(estatus)) {
+    return { label: 'En proceso (Coordinación)', badgeClass: 'badge-warn', finalizado: false };
+  }
+  if (['rechazado', 'cancelado'].includes(estatus)) {
+    return { label: 'Rechazado', badgeClass: 'badge-danger', finalizado: false };
+  }
+  return { label: 'En revisión (Control Escolar)', badgeClass: 'badge-neutral', finalizado: false };
 }
 
 function resolveBackendFileUrl(filePath) {
@@ -118,22 +102,14 @@ export default function AlumnoPage() {
   const [calificacionesBloqueadas, setCalificacionesBloqueadas] = useState(false);
   const [asistencia, setAsistencia] = useState({ items: [], acumulado: [] });
   const [historialTramites, setHistorialTramites] = useState([]);
+  const [tiposTramiteCatalogo, setTiposTramiteCatalogo] = useState([]);
   const [notificaciones, setNotificaciones] = useState([]);
-  const [meritos, setMeritos] = useState([]);
+  const [avisosDescartados, setAvisosDescartados] = useState(new Set());
   const [pagos, setPagos] = useState({ items: [], resumen: null });
   const [conceptosPago, setConceptosPago] = useState([]);
-  const [portafolio, setPortafolio] = useState({ documentos: [], items: [] });
-  const [recursosInstitucionales, setRecursosInstitucionales] = useState({
-    biblioteca_virtual_url: null,
-    manual_servicio_social_url: null,
-  });
-
-  const [openPagoAccordion, setOpenPagoAccordion] = useState(true);
-  const [openTramiteAccordion, setOpenTramiteAccordion] = useState(true);
 
   const [pagoArchivo, setPagoArchivo] = useState(null);
   const [tramiteArchivo, setTramiteArchivo] = useState(null);
-  const [portafolioArchivo, setPortafolioArchivo] = useState(null);
   const [descargandoBoleta, setDescargandoBoleta] = useState(false);
 
   const pagoForm = useForm({
@@ -147,14 +123,8 @@ export default function AlumnoPage() {
   const tramiteForm = useForm({
     resolver: zodResolver(tramiteSchema),
     defaultValues: {
-      tipo: 'constancia',
+      tipo: '',
       descripcion: '',
-    },
-  });
-
-  const portafolioForm = useForm({
-    defaultValues: {
-      tipo_documento: 'curp',
     },
   });
 
@@ -166,21 +136,16 @@ export default function AlumnoPage() {
     setTramiteArchivo(event.target.files?.[0] || null);
   }
 
-  function handlePortafolioFileChange(event) {
-    setPortafolioArchivo(event.target.files?.[0] || null);
+  function handleDescartarAviso(key) {
+    setAvisosDescartados((prev) => new Set(prev).add(key));
   }
 
-  const primeraClase = useMemo(() => {
-    if (horario.length === 0) return null;
-
-    return [...horario]
-      .sort((a, b) => {
-        const aDate = a.sala_virtual?.fecha_programada ? new Date(a.sala_virtual.fecha_programada).getTime() : Number.MAX_SAFE_INTEGER;
-        const bDate = b.sala_virtual?.fecha_programada ? new Date(b.sala_virtual.fecha_programada).getTime() : Number.MAX_SAFE_INTEGER;
-        return aDate - bDate;
-      })
-      .find((item) => item.sala_virtual?.fecha_programada) || horario[0];
-  }, [horario]);
+  const avisosVisibles = useMemo(
+    () => notificaciones
+      .map((item, index) => ({ ...item, _key: `${item.tipo}-${index}` }))
+      .filter((item) => !avisosDescartados.has(item._key)),
+    [notificaciones, avisosDescartados],
+  );
 
   const kardexRows = useMemo(() => {
     const partialMap = new Map();
@@ -259,27 +224,13 @@ export default function AlumnoPage() {
       });
       setConceptosPago(conceptosUnicos);
 
-      const [tramitesResp, meritosResp, portafolioResp] = await Promise.all([
+      const [tramitesResp, tiposTramiteResp] = await Promise.all([
         api.get('/alumno/historial-tramites'),
-        api.get('/alumno/meritos').catch(() => ({ data: { items: [] } })),
-        api.get('/alumno/portafolio').catch(() => ({ data: { documentos: [], items: [] } })),
+        api.get('/alumno/tramites/tipos').catch(() => ({ data: { items: [] } })),
       ]);
 
       setHistorialTramites(tramitesResp.data?.items || []);
-      setMeritos(meritosResp.data?.items || []);
-      setPortafolio({
-        documentos: portafolioResp.data?.documentos || [],
-        items: portafolioResp.data?.items || [],
-      });
-
-      api.get('/alumno/recursos-institucionales')
-        .then((response) => {
-          setRecursosInstitucionales({
-            biblioteca_virtual_url: response.data?.biblioteca_virtual_url || null,
-            manual_servicio_social_url: response.data?.manual_servicio_social_url || null,
-          });
-        })
-        .catch(() => setRecursosInstitucionales({ biblioteca_virtual_url: null, manual_servicio_social_url: null }));
+      setTiposTramiteCatalogo(tiposTramiteResp.data?.items || []);
 
       if (estadoResp.data?.bloqueo_plataforma) {
         setHorario([]);
@@ -369,40 +320,12 @@ export default function AlumnoPage() {
 
       await api.post('/alumno/tramites/solicitar', formData);
 
-      tramiteForm.reset({ tipo: 'constancia', descripcion: '' });
+      tramiteForm.reset({ tipo: '', descripcion: '' });
       setTramiteArchivo(null);
       setMessage('Solicitud enviada a ventanilla.');
       await loadBase();
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo registrar el tramite.');
-    } finally {
-      setSending(false);
-    }
-  }
-
-  async function submitDocumentoPortafolio(values) {
-    if (!portafolioArchivo) {
-      setError('Debes seleccionar un archivo para tu expediente.');
-      return;
-    }
-
-    setSending(true);
-    setError('');
-    setMessage('');
-
-    try {
-      const formData = new FormData();
-      formData.append('archivo', portafolioArchivo);
-      formData.append('tipo_documento', values.tipo_documento);
-
-      await api.post('/alumno/portafolio', formData);
-
-      setPortafolioArchivo(null);
-      portafolioForm.reset({ tipo_documento: values.tipo_documento });
-      setMessage('Documento cargado al portafolio correctamente.');
-      await loadBase();
-    } catch (requestError) {
-      setError(requestError?.response?.data?.message || 'No se pudo cargar el documento al portafolio.');
     } finally {
       setSending(false);
     }
@@ -456,7 +379,7 @@ export default function AlumnoPage() {
               className="btn-primary"
               onClick={() => setActiveTab('finanzas')}
             >
-              Ir a Finanzas
+              Ir a Constancias de Pagos
             </button>
           </div>
         </div>
@@ -488,85 +411,28 @@ export default function AlumnoPage() {
 
       {activeTab === 'resumen' ? (
         <div className="alumno-section-grid">
-          <article className="alumno-card next-class-card">
-            <h3>Próxima clase</h3>
-            {primeraClase ? (
-              <>
-                <strong>{primeraClase.materia}</strong>
-                <p>Grupo {primeraClase.grupo}</p>
-                <p>Docente: {primeraClase.docente || 'Por asignar'}</p>
-                <p>Aula: {primeraClase.aula_fisica || 'Por confirmar'}</p>
-                {primeraClase.sala_virtual?.enlace ? (
-                  <a className="btn-primary" href={primeraClase.sala_virtual.enlace} target="_blank" rel="noreferrer">
-                    Unirme a videollamada
-                  </a>
-                ) : (
-                  <button type="button" className="btn-secondary" disabled>Sin sala virtual</button>
-                )}
-              </>
-            ) : (
-              <p className="alumno-empty">Sin clases programadas.</p>
-            )}
-          </article>
-
-          <article className="alumno-card">
+          <article className="alumno-card full-width">
             <h3>Alertas y avisos</h3>
-            {notificaciones.length === 0 ? (
+            {avisosVisibles.length === 0 ? (
               <p className="alumno-empty">No hay alertas por mostrar.</p>
             ) : (
               <div className="alumno-list scroll-area">
-                {notificaciones.map((item, index) => (
-                  <article key={`${item.tipo}-${index}`} className="alumno-list-item">
-                    <strong>{item.titulo}</strong>
+                {avisosVisibles.map((item) => (
+                  <article key={item._key} className="alumno-list-item">
+                    <div className="alumno-list-head">
+                      <strong>{item.titulo}</strong>
+                      <button
+                        type="button"
+                        className="dismiss-btn"
+                        aria-label="Descartar aviso"
+                        title="Descartar aviso"
+                        onClick={() => handleDescartarAviso(item._key)}
+                      >
+                        ✕
+                      </button>
+                    </div>
                     <p>{item.detalle}</p>
                     <small>{formatDate(item.fecha, true)}</small>
-                  </article>
-                ))}
-              </div>
-            )}
-          </article>
-
-          <article className="alumno-card alumno-institucional-card">
-            <h3>Accesos Institucionales</h3>
-            {recursosInstitucionales.biblioteca_virtual_url ? (
-              <a
-                className="btn-highlight"
-                href={recursosInstitucionales.biblioteca_virtual_url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                📚 Biblioteca Virtual
-              </a>
-            ) : (
-              <p className="alumno-empty">Control Escolar aún no configura el enlace de la Biblioteca Virtual.</p>
-            )}
-          </article>
-
-          <article className="alumno-card full-width">
-            <h3>Méritos Académicos</h3>
-            {meritos.length === 0 ? (
-              <p className="alumno-empty">Aún no cuentas con méritos registrados.</p>
-            ) : (
-              <div className="alumno-list compact">
-                {meritos.map((item) => (
-                  <article key={item.id_merito} className="alumno-list-item">
-                    <div className="alumno-list-head">
-                      <strong>{item.nombre}</strong>
-                      <span className="merito-chip">{meritoTipoLabels[item.tipo_merito] || item.tipo_merito}</span>
-                    </div>
-                    <small>{formatDate(item.fecha)}</small>
-                    {item.archivo_url ? (
-                      <a
-                        className="btn-secondary merito-download"
-                        href={resolveBackendFileUrl(item.archivo_url)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        🏅 Descargar Diploma/Certificado
-                      </a>
-                    ) : (
-                      <p className="alumno-empty">Sin archivo adjunto.</p>
-                    )}
                   </article>
                 ))}
               </div>
@@ -624,14 +490,31 @@ export default function AlumnoPage() {
               {asistencia.acumulado.length === 0 ? (
                 <p className="alumno-empty">Sin registros de asistencia.</p>
               ) : (
-                <div className="alumno-list compact">
-                  {asistencia.acumulado.map((item) => (
-                    <article key={item.id_materia} className="alumno-list-item">
-                      <strong>{item.materia}</strong>
-                      <p>{item.porcentaje_asistencia}% asistencia</p>
-                      <p>{item.presentes} presentes · {item.faltas} faltas · {item.retardos} retardos</p>
-                    </article>
-                  ))}
+                <div className="table-wrap dark-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Materia</th>
+                        <th>Docente</th>
+                        <th>Total Clases</th>
+                        <th>Asistencias</th>
+                        <th>Faltas</th>
+                        <th>% Asistencia</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {asistencia.acumulado.map((item) => (
+                        <tr key={item.id_materia}>
+                          <td>{item.materia}</td>
+                          <td>{item.docente}</td>
+                          <td>{item.total}</td>
+                          <td>{item.presentes}</td>
+                          <td>{item.faltas}</td>
+                          <td>{item.porcentaje_asistencia}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </>
@@ -642,21 +525,9 @@ export default function AlumnoPage() {
       {activeTab === 'finanzas' ? (
         <div className="alumno-section-grid">
           <article className="alumno-card full-width">
-            <h3>Resumen financiero</h3>
-            <div className="payment-cards">
-              <div>
-                <span>Estado</span>
-                <strong>{pagos.resumen?.estado_general || 'N/D'}</strong>
-              </div>
-              <div>
-                <span>Total pagado</span>
-                <strong>{Number(pagos.resumen?.total_pagado || 0).toFixed(2)} MXN</strong>
-              </div>
-              <div>
-                <span>Adeudo pendiente</span>
-                <strong>{Number(pagos.resumen?.adeudo_pendiente || 0).toFixed(2)} MXN</strong>
-              </div>
-            </div>
+            <p className="alumno-warning-banner">
+              ⚠️ Es obligatorio adjuntar el comprobante de pago legible para la validación de cada concepto.
+            </p>
           </article>
 
           <article className="alumno-card">
@@ -675,7 +546,7 @@ export default function AlumnoPage() {
               <label htmlFor="pago-monto">Monto pagado</label>
               <input id="pago-monto" type="number" min="0" step="0.01" {...pagoForm.register('monto_pagado')} />
 
-              <label htmlFor="pago-adjunto">Comprobante (PDF o imagen)</label>
+              <label htmlFor="pago-adjunto">Comprobante (Obligatorio)</label>
               <div className="file-upload-wrapper">
                 <label className="btn-file-custom" htmlFor="pago-adjunto">
                   <input
@@ -696,24 +567,36 @@ export default function AlumnoPage() {
             </form>
           </article>
 
-          <article className="alumno-card">
-            <h3>Estado de pagos</h3>
+          <article className="alumno-card full-width">
+            <h3>Estado de Pagos del Cuatrimestre</h3>
             {pagos.items.length === 0 ? (
               <p className="alumno-empty">No hay pagos registrados.</p>
             ) : (
-              <div className="alumno-list compact">
-                {pagos.items.map((item) => (
-                  <article key={item.id_pago || `${item.concepto}-${item.fecha_limite}`} className="alumno-list-item">
-                    <div className="alumno-list-head">
-                      <strong>{item.concepto || 'Pago'}</strong>
-                      <span className={`status-badge ${getStatusBadgeClass(item.estatus === 'pagado' ? 'resuelto' : item.estatus === 'pendiente' ? 'badge-neutral' : item.estatus)}`}>
-                        {item.estatus || 'N/D'}
-                      </span>
-                    </div>
-                    <p>{Number(item.monto || 0).toFixed(2)} MXN</p>
-                    <small>{formatDate(item.fecha_limite || item.fecha_pago, true)}</small>
-                  </article>
-                ))}
+              <div className="table-wrap dark-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Concepto</th>
+                      <th>Monto</th>
+                      <th>Fecha límite</th>
+                      <th>Estatus</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagos.items.map((item) => (
+                      <tr key={item.id_pago || `${item.concepto}-${item.fecha_limite}`}>
+                        <td>{item.concepto || 'Pago'}</td>
+                        <td>{Number(item.monto || 0).toFixed(2)} MXN</td>
+                        <td>{formatDate(item.fecha_limite, false)}</td>
+                        <td>
+                          <span className={`status-badge ${pagoEstatusBadgeClass[item.estatus_visible] || 'badge-neutral'}`}>
+                            {pagoEstatusLabels[item.estatus_visible] || item.estatus_visible}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </article>
@@ -723,64 +606,39 @@ export default function AlumnoPage() {
       {activeTab === 'ventanilla' ? (
         <div className="alumno-section-grid">
           <article className="alumno-card">
-            <button
-              type="button"
-              className="accordion-toggle"
-              onClick={() => setOpenTramiteAccordion((prev) => !prev)}
-            >
-              Solicitar Documento
-            </button>
-            {openTramiteAccordion ? (
-              <form className="alumno-form" onSubmit={tramiteForm.handleSubmit(submitTramite)}>
-                <label htmlFor="tramite-tipo">Tipo de tramite</label>
-                <select id="tramite-tipo" {...tramiteForm.register('tipo')}>
-                  <option value="constancia">Constancia</option>
-                  <option value="uniforme">Uniforme</option>
-                </select>
+            <h3>Solicitar Documento</h3>
+            <form className="alumno-form" onSubmit={tramiteForm.handleSubmit(submitTramite)}>
+              <label htmlFor="tramite-tipo">Tipo de tramite</label>
+              <select id="tramite-tipo" {...tramiteForm.register('tipo')}>
+                <option value="">Selecciona un tipo</option>
+                {tiposTramiteCatalogo.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+              {tramiteForm.formState.errors.tipo ? <small>{tramiteForm.formState.errors.tipo.message}</small> : null}
 
-                <label htmlFor="tramite-descripcion">Descripcion (opcional)</label>
-                <textarea id="tramite-descripcion" rows="3" {...tramiteForm.register('descripcion')} />
+              <label htmlFor="tramite-descripcion">Descripcion (opcional)</label>
+              <textarea id="tramite-descripcion" rows="3" {...tramiteForm.register('descripcion')} />
 
-                <label htmlFor="tramite-adjunto">Adjunto (PDF o imagen)</label>
-                <div className="file-upload-wrapper">
-                  <label className="btn-file-custom" htmlFor="tramite-adjunto">
-                    <input
-                      id="tramite-adjunto"
-                      type="file"
-                      accept=".pdf, .jpg, .jpeg, .png"
-                      onChange={handleTramiteFileChange}
-                      style={{ display: 'none' }}
-                    />
-                    📎 {tramiteArchivo ? 'Cambiar archivo' : 'Seleccionar archivo'}
-                  </label>
-                  <span className="file-name-display">
-                    {tramiteArchivo?.name || 'Ningun archivo seleccionado'}
-                  </span>
-                </div>
+              <label htmlFor="tramite-adjunto">Adjunto (Obligatorio)</label>
+              <div className="file-upload-wrapper">
+                <label className="btn-file-custom" htmlFor="tramite-adjunto">
+                  <input
+                    id="tramite-adjunto"
+                    type="file"
+                    accept=".pdf, .jpg, .jpeg, .png"
+                    onChange={handleTramiteFileChange}
+                    style={{ display: 'none' }}
+                  />
+                  📎 {tramiteArchivo ? 'Cambiar archivo' : 'Seleccionar archivo'}
+                </label>
+                <span className="file-name-display">
+                  {tramiteArchivo?.name || 'Ningun archivo seleccionado'}
+                </span>
+              </div>
 
-                <button type="submit" className="btn-secondary" disabled={sending}>Enviar solicitud</button>
-              </form>
-            ) : null}
-          </article>
-
-          <article className="alumno-card">
-            <h3>Mi Expediente</h3>
-            <p>Consulta y carga tus documentos oficiales en la pestaña Portafolio y Documentos.</p>
-            {acceso?.perfil?.drive_folder_url ? (
-              <>
-                <a
-                  className="btn-primary"
-                  href={acceso.perfil.drive_folder_url}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  📁 Mi Expediente (Google Drive)
-                </a>
-                <small className="alumno-overlay-note">Acceso de solo lectura configurado por Control Escolar.</small>
-              </>
-            ) : (
-              <p className="alumno-empty">Control Escolar aún no configura tu carpeta de expediente digital.</p>
-            )}
+              <button type="submit" className="btn-secondary" disabled={sending}>Enviar solicitud</button>
+            </form>
           </article>
 
           <article className="alumno-card full-width">
@@ -789,127 +647,45 @@ export default function AlumnoPage() {
               <p className="alumno-empty">Sin tramites registrados.</p>
             ) : (
               <div className="alumno-list compact">
-                {historialTramitesFiltrados.map((item) => (
-                  <article key={item.id_tramite} className="alumno-list-item">
-                    <div className="alumno-list-head">
-                      <strong>{tramiteLabels[item.tipo] || item.tipo}</strong>
-                      <span className={`status-badge ${getStatusBadgeClass(item.estatus)}`}>
-                        {estatusTramiteLabels[item.estatus] || item.estatus}
-                      </span>
-                    </div>
-                    <p>{item.descripcion}</p>
-                    {item.adjunto_url ? (
-                      <a href={resolveBackendFileUrl(item.adjunto_url)} target="_blank" rel="noreferrer">Ver adjunto</a>
-                    ) : null}
-                    <small>{formatDate(item.fecha_resolucion || item.fecha_solicitud, true)}</small>
-                  </article>
-                ))}
+                {historialTramitesFiltrados.map((item) => {
+                  const estatusInfo = getTramiteEstatusInfo(item.estatus);
+                  return (
+                    <article key={item.id_tramite} className="alumno-list-item">
+                      <div className="alumno-list-head">
+                        <strong>{tramiteLabels[item.tipo] || item.tipo}</strong>
+                        <span className={`status-badge ${estatusInfo.badgeClass}`}>
+                          {estatusInfo.label}
+                        </span>
+                      </div>
+                      <p>{item.descripcion}</p>
+                      {item.resolutor ? (
+                        <small>
+                          Atendido por: {item.resolutor.nombre_completo} · {rolLabels[item.resolutor.rol] || item.resolutor.rol}
+                        </small>
+                      ) : null}
+                      {item.adjunto_url ? (
+                        <a href={resolveBackendFileUrl(item.adjunto_url)} target="_blank" rel="noreferrer">Ver adjunto enviado</a>
+                      ) : null}
+                      {estatusInfo.finalizado ? (
+                        item.documento_respuesta_url ? (
+                          <a
+                            className="btn-primary"
+                            href={resolveBackendFileUrl(item.documento_respuesta_url)}
+                            target="_blank"
+                            rel="noreferrer"
+                            download
+                          >
+                            📥 Descargar Documento
+                          </a>
+                        ) : (
+                          <p className="alumno-empty">Documento pendiente de carga.</p>
+                        )
+                      ) : null}
+                      <small>{formatDate(item.fecha_resolucion || item.fecha_solicitud, true)}</small>
+                    </article>
+                  );
+                })}
               </div>
-            )}
-          </article>
-        </div>
-      ) : null}
-
-      {activeTab === 'portafolio' ? (
-        <div className="alumno-section-grid">
-          <article className="alumno-card">
-            <h3>Subir documento oficial</h3>
-            <form className="alumno-form" onSubmit={portafolioForm.handleSubmit(submitDocumentoPortafolio)}>
-              <label htmlFor="portafolio-tipo">Documento</label>
-              <select id="portafolio-tipo" {...portafolioForm.register('tipo_documento')}>
-                {documentoPortafolioOptions.map((item) => (
-                  <option key={item.value} value={item.value}>{item.label}</option>
-                ))}
-              </select>
-
-              <label htmlFor="portafolio-adjunto">Archivo (PDF, imagen o Word)</label>
-              <div className="file-upload-wrapper">
-                <label className="btn-file-custom" htmlFor="portafolio-adjunto">
-                  <input
-                    id="portafolio-adjunto"
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
-                    onChange={handlePortafolioFileChange}
-                    style={{ display: 'none' }}
-                  />
-                  📎 {portafolioArchivo ? 'Cambiar archivo' : 'Seleccionar archivo'}
-                </label>
-                <span className="file-name-display">
-                  {portafolioArchivo?.name || 'Ningun archivo seleccionado'}
-                </span>
-              </div>
-
-              <button type="submit" className="btn-primary" disabled={sending}>Subir documento</button>
-            </form>
-          </article>
-
-          <article className="alumno-card">
-            <h3>Estado de documentos</h3>
-            <div className="document-list">
-              {(portafolio.documentos || []).map((item) => (
-                <div key={item.key} className="doc-card">
-                  <div className="doc-meta">
-                    <strong>{item.label}</strong>
-                    <span>{item.detalle}</span>
-                    {item.archivo_url ? (
-                      <a href={resolveBackendFileUrl(item.archivo_url)} target="_blank" rel="noreferrer">
-                        Descargar ultimo archivo
-                      </a>
-                    ) : null}
-                  </div>
-                  <span className={getDocumentStatusClass(item.estatus)}>
-                    {item.estatus === 'entregado' ? 'Entregado' : 'Falta'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article className="alumno-card full-width">
-            <h3>Archivos en mi portafolio</h3>
-            {(portafolio.items || []).length === 0 ? (
-              <p className="alumno-empty">Sin archivos en el portafolio.</p>
-            ) : (
-              <div className="alumno-list compact">
-                {(portafolio.items || []).map((item) => (
-                  <article key={item.id_evidencia} className="alumno-list-item">
-                    <div className="alumno-list-head">
-                      <strong>{item.nombre_archivo || 'Archivo sin nombre'}</strong>
-                      <span className={`status-badge ${getStatusBadgeClass('en_proceso')}`}>
-                        {item.origen === 'alumno' ? 'Subido por mi' : item.origen === 'control_escolar' ? 'Control Escolar' : 'Docente'}
-                      </span>
-                    </div>
-                    <p>{documentoPortafolioLabels[item.tipo_documento] || item.materia || 'Documento general'}</p>
-                    <a href={resolveBackendFileUrl(item.archivo_url)} target="_blank" rel="noreferrer">Descargar archivo</a>
-                    <small>{formatDate(item.fecha_creacion, true)}</small>
-                  </article>
-                ))}
-              </div>
-            )}
-          </article>
-        </div>
-      ) : null}
-
-      {activeTab === 'servicio_social' ? (
-        <div className="alumno-section-grid">
-          <article className="alumno-card full-width">
-            <h3>Servicio Social y Prácticas Profesionales</h3>
-            <p>
-              Consulta los lineamientos institucionales antes de iniciar tu Servicio Social o tus Prácticas
-              Profesionales. Descarga el manual oficial para conocer requisitos, horas mínimas y proceso de liberación.
-            </p>
-            {recursosInstitucionales.manual_servicio_social_url ? (
-              <a
-                className="btn-primary"
-                href={recursosInstitucionales.manual_servicio_social_url}
-                target="_blank"
-                rel="noreferrer"
-                download
-              >
-                📘 Descargar Manual de Servicio Social y Prácticas
-              </a>
-            ) : (
-              <p className="alumno-empty">Control Escolar aún no carga el manual de Servicio Social.</p>
             )}
           </article>
         </div>

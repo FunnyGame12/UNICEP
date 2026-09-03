@@ -46,7 +46,7 @@ const rechazoComprobanteSchema = z.object({
 });
 
 const actualizarTramiteSchema = z.object({
-  estatus: z.enum(['en_proceso', 'listo_para_entrega', 'entregado', 'cancelado']),
+  estatus: z.enum(['en_proceso', 'listo_para_entrega', 'entregado', 'rechazado', 'cancelado']),
   notas_entrega: z.string().optional(),
 });
 
@@ -125,6 +125,7 @@ export default function ControlEscolarPage() {
   const [portafolioData, setPortafolioData] = useState(null);
   const [portafolioLoading, setPortafolioLoading] = useState(false);
   const [portafolioArchivo, setPortafolioArchivo] = useState(null);
+  const [documentoRespuestaTramite, setDocumentoRespuestaTramite] = useState(null);
 
   const [recursosInstitucionales, setRecursosInstitucionales] = useState({
     biblioteca_virtual_url: null,
@@ -560,10 +561,19 @@ export default function ControlEscolarPage() {
     setMessage('');
 
     try {
-      await api.put(`/control-escolar/tramites/${selectedTramite.id_tramite}/estatus`, {
-        estatus: values.estatus,
-        notas_entrega: values.notas_entrega?.trim() || undefined,
-      });
+      if (documentoRespuestaTramite) {
+        const formData = new FormData();
+        formData.append('estatus', values.estatus);
+        if (values.notas_entrega?.trim()) formData.append('notas_entrega', values.notas_entrega.trim());
+        formData.append('documento_respuesta', documentoRespuestaTramite);
+        await api.put(`/control-escolar/tramites/${selectedTramite.id_tramite}/estatus`, formData);
+      } else {
+        await api.put(`/control-escolar/tramites/${selectedTramite.id_tramite}/estatus`, {
+          estatus: values.estatus,
+          notas_entrega: values.notas_entrega?.trim() || undefined,
+        });
+      }
+      setDocumentoRespuestaTramite(null);
       setMessage('Estatus del trámite actualizado correctamente.');
       await loadAll();
     } catch (requestError) {
@@ -927,12 +937,21 @@ export default function ControlEscolarPage() {
                     <option value="en_proceso">En proceso</option>
                     <option value="listo_para_entrega">Listo para entrega</option>
                     <option value="entregado">Entregado</option>
+                    <option value="rechazado">Rechazado</option>
                     <option value="cancelado">Cancelado</option>
                   </select>
                   {tramiteForm.formState.errors.estatus ? <small>{tramiteForm.formState.errors.estatus.message}</small> : null}
 
                   <label htmlFor="ce-tramite-notas">Notas de entrega (opcional)</label>
                   <textarea className="ce-textarea" id="ce-tramite-notas" rows="4" placeholder="Observaciones de ventanilla o entrega física." {...tramiteForm.register('notas_entrega')} />
+
+                  <label htmlFor="ce-tramite-documento">Documento de respuesta (opcional, PDF)</label>
+                  <input
+                    id="ce-tramite-documento"
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={(event) => setDocumentoRespuestaTramite(event.target.files?.[0] || null)}
+                  />
 
                   <button type="submit" className="btn-primary" disabled={sending}>Actualizar trámite</button>
                 </form>

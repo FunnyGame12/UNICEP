@@ -24,6 +24,7 @@ const {
 } = require('../../models');
 const { generarWorkbookBoleta } = require('../services/boletaService');
 const { registrarEventoAuditoria } = require('../services/auditService');
+const { TRAMITES_ESCOLARES, TRAMITES_ESCOLARES_LABELS } = require('../constants/tramites');
 
 const DOCUMENTOS_REQUERIDOS = [
   { clave: 'curp', nombre: 'CURP', detalle: 'Identificacion oficial' },
@@ -483,7 +484,7 @@ async function asistencia(req, res) {
     return res.status(validacion.status).json(validacion.payload);
   }
 
-  const { materiasIds } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+  const { materiasIds, asignaciones } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
   if (materiasIds.length === 0) {
     return res.json({ items: [], acumulado: [] });
   }
@@ -497,12 +498,21 @@ async function asistencia(req, res) {
     order: [['fecha_clase', 'DESC']],
   });
 
+  const docentePorMateria = new Map();
+  asignaciones.forEach((item) => {
+    const idMateria = Number(item.id_materia);
+    if (!docentePorMateria.has(idMateria)) {
+      docentePorMateria.set(idMateria, item.docente?.usuario?.nombre_completo || 'Por asignar');
+    }
+  });
+
   const acumuladoMap = new Map();
   items.forEach((item) => {
     const idMateria = Number(item.id_materia);
     const base = acumuladoMap.get(idMateria) || {
       id_materia: idMateria,
       materia: item.materia?.nombre_materia || `Materia ${idMateria}`,
+      docente: docentePorMateria.get(idMateria) || 'Por asignar',
       total: 0,
       presentes: 0,
       faltas: 0,
@@ -535,7 +545,9 @@ async function subirComprobantePago(req, res) {
 
   const idConceptoPago = toNumber(req.body.id_concepto_pago);
   const montoPagado = toNumber(req.body.monto_pagado);
-  const adjuntoUrl = normalizeText(req.body.adjunto_url || req.body.archivo_url || req.body.comprobante_url);
+  const adjuntoUrl = req.file
+    ? `/uploads/portafolio/${req.file.filename}`
+    : normalizeText(req.body.adjunto_url || req.body.archivo_url || req.body.comprobante_url);
 
   if (!Number.isInteger(idConceptoPago)) {
     return res.status(400).json({ message: 'id_concepto_pago es obligatorio.' });
@@ -546,7 +558,7 @@ async function subirComprobantePago(req, res) {
   }
 
   if (!adjuntoUrl) {
-    return res.status(400).json({ message: 'adjunto_url es obligatorio.' });
+    return res.status(400).json({ message: 'Debes adjuntar el comprobante de pago.' });
   }
 
   const concepto = await ConceptoPago.findOne({
@@ -597,9 +609,14 @@ async function solicitarTramite(req, res) {
   }
 
   const tipo = normalizeText(req.body.tipo).toLowerCase();
-  const tiposPermitidos = new Set(['constancia', 'credencial', 'uniforme']);
+  const tiposPermitidos = new Set(TRAMITES_ESCOLARES);
   if (!tiposPermitidos.has(tipo)) {
-    return res.status(400).json({ message: 'tipo invalido. Usa constancia, credencial o uniforme.' });
+    return res.status(400).json({ message: `tipo invalido. Usa: ${TRAMITES_ESCOLARES.join(', ')}.` });
+  }
+
+  const adjuntoUrl = req.file ? `/uploads/portafolio/${req.file.filename}` : null;
+  if (!adjuntoUrl) {
+    return res.status(400).json({ message: 'Debes adjuntar el comprobante requerido para el tramite.' });
   }
 
   const descripcion = normalizeText(req.body.descripcion) || `Solicitud de ${tipo}.`;
@@ -608,7 +625,7 @@ async function solicitarTramite(req, res) {
     id_alumno: validacion.idAlumno,
     tipo,
     descripcion,
-    adjunto_url: normalizeText(req.body.adjunto_url) || null,
+    adjunto_url: adjuntoUrl,
     estatus: 'recibido',
     fecha_solicitud: new Date(),
   });
@@ -871,9 +888,39 @@ async function pagos(req, res) {
     return res.status(validacion.status).json(validacion.payload);
   }
 
-  const items = await PagoEstatus.findAll({
-    where: { id_alumno: validacion.idAlumno },
-    order: [['fecha_limite', 'ASC']],
+  const [items, comprobantesEnRevision] = await Promise.all([
+    PagoEstatus.findAll({
+      where: { id_alumno: validacion.idAlumno },
+      order: [['fecha_limite', 'ASC']],
+    }),
+    TramiteSolicitud.findAll({
+      where: {
+        id_alumno: validacion.idAlumno,
+        tipo: 'comprobante_pago',
+        estatus: { [Op.in]: ['recibido', 'en_revision'] },
+      },
+      attributes: ['descripcion'],
+    }),
+  ]);
+
+  const descripcionesEnRevision = comprobantesEnRevision.map((item) => String(item.descripcion || '').toLowerCase());
+  const tieneComprobantePendiente = (concepto) => {
+    const nombre = String(concepto || '').toLowerCase();
+    return nombre && descripcionesEnRevision.some((descripcion) => descripcion.includes(nombre));
+  };
+
+  const itemsConEstatusVisible = items.map((item) => {
+    let estatusVisible = 'pendiente';
+    if (['pagado', 'condonado'].includes(item.estatus)) {
+      estatusVisible = 'aprobado';
+    } else if (tieneComprobantePendiente(item.concepto)) {
+      estatusVisible = 'en_revision';
+    }
+
+    return {
+      ...item.toJSON(),
+      estatus_visible: estatusVisible,
+    };
   });
 
   const totalPagado = items
@@ -885,7 +932,7 @@ async function pagos(req, res) {
     .reduce((acc, item) => acc + Number(item.monto || 0), 0);
 
   return res.json({
-    items,
+    items: itemsConEstatusVisible,
     resumen: {
       estado_general: adeudoPendiente > 0 ? 'adeudo' : 'al_corriente',
       total_pagado: totalPagado,
@@ -1090,6 +1137,15 @@ async function recursosInstitucionales(_req, res) {
   });
 }
 
+async function tiposTramite(_req, res) {
+  return res.json({
+    items: TRAMITES_ESCOLARES.map((tipo) => ({
+      value: tipo,
+      label: TRAMITES_ESCOLARES_LABELS[tipo] || tipo,
+    })),
+  });
+}
+
 async function descargarBoleta(req, res) {
   const validacion = await validarAccesoAlumno(req, { requiereCalificaciones: true });
   if (!validacion.ok) {
@@ -1138,4 +1194,5 @@ module.exports = {
   listarTramites,
   crearTramite,
   recursosInstitucionales,
+  tiposTramite,
 };

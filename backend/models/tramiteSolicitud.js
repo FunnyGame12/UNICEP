@@ -36,6 +36,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      documento_respuesta_url: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
       resuelto_por: {
         type: DataTypes.INTEGER,
         allowNull: true,

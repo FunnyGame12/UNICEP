@@ -12,9 +12,9 @@ const {
   ConfiguracionInstitucional,
 } = require('../../models');
 const { generarWorkbookBoleta } = require('../services/boletaService');
+const { TRAMITES_ESCOLARES } = require('../constants/tramites');
 
-const TRAMITES_ESCOLARES = ['constancia', 'credencial', 'uniforme', 'papeleria_oficial'];
-const TRAMITE_STATUS_PERMITIDOS = new Set(['en_proceso', 'listo_para_entrega', 'entregado', 'cancelado']);
+const TRAMITE_STATUS_PERMITIDOS = new Set(['en_proceso', 'listo_para_entrega', 'entregado', 'rechazado', 'cancelado']);
 const ESTATUS_FINANCIERO_PERMITIDO = new Set(['al_dia', 'deudor', 'suspendido']);
 const CONCEPTO_EXTRAORDINARIO_MATCH = /extraordinario/i;
 const CLAVE_BIBLIOTECA_VIRTUAL = 'biblioteca_virtual_url';
@@ -661,7 +661,7 @@ async function actualizarEstatusTramite(req, res) {
     return res.status(400).json({ message: 'tramiteId invalido.' });
   }
   if (!TRAMITE_STATUS_PERMITIDOS.has(estatus)) {
-    return res.status(400).json({ message: 'Estatus invalido. Usa: en_proceso, listo_para_entrega, entregado, cancelado.' });
+    return res.status(400).json({ message: 'Estatus invalido. Usa: en_proceso, listo_para_entrega, entregado, rechazado, cancelado.' });
   }
 
   const tramite = await TramiteSolicitud.findByPk(idTramite);
@@ -677,6 +677,9 @@ async function actualizarEstatusTramite(req, res) {
   tramite.respuesta = notasEntrega;
   tramite.fecha_resolucion = new Date();
   tramite.resuelto_por = req.user.id_usuario;
+  if (req.file) {
+    tramite.documento_respuesta_url = `/uploads/portafolio/${req.file.filename}`;
+  }
   await tramite.save();
 
   return res.json({
@@ -684,6 +687,7 @@ async function actualizarEstatusTramite(req, res) {
     estatus: tramite.estatus,
     notas_entrega: tramite.respuesta,
     fecha_resolucion: tramite.fecha_resolucion,
+    documento_respuesta_url: tramite.documento_respuesta_url,
   });
 }
 
