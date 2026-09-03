@@ -20,11 +20,19 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.ENUM(...TRAMITE_TIPOS),
         allowNull: false,
       },
+      tipo_tramite_id: {
+        type: DataTypes.STRING(80),
+        allowNull: true,
+      },
       descripcion: {
         type: DataTypes.TEXT,
         allowNull: false,
       },
       adjunto_url: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      comprobante_pago_url: {
         type: DataTypes.STRING(255),
         allowNull: true,
       },
@@ -38,6 +46,14 @@ module.exports = (sequelize, DataTypes) => {
       },
       documento_respuesta_url: {
         type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      documento_resultado_url: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      motivo_rechazo: {
+        type: DataTypes.TEXT,
         allowNull: true,
       },
       resuelto_por: {

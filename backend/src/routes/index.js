@@ -8,6 +8,8 @@ const coordinacionRoutes = require('./coordinacionRoutes');
 const auth = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/permissions');
 const docenteController = require('../controllers/docenteController');
+const alumnoController = require('../controllers/alumnoController');
+const { handlePortafolioUpload } = require('../middlewares/upload');
 const { PERMISSIONS } = require('../constants/rbac');
 
 const router = express.Router();
@@ -18,6 +20,7 @@ router.get('/health', (_req, res) => {
 });
 
 router.use('/auth', authRoutes);
+router.post('/tramites', auth(['alumno']), requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), handlePortafolioUpload, alumnoController.solicitarTramite);
 router.use('/alumnos', alumnoRoutes);
 router.use('/alumno', alumnoRoutes);
 router.use('/estudiante', alumnoRoutes);

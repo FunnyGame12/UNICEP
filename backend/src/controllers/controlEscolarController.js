@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const {
+  sequelize,
   AlumnoPerfil,
   Usuario,
   PagoEstatus,
@@ -14,12 +15,22 @@ const {
 const { generarWorkbookBoleta } = require('../services/boletaService');
 const { TRAMITES_ESCOLARES } = require('../constants/tramites');
 
-const TRAMITE_STATUS_PERMITIDOS = new Set(['en_proceso', 'listo_para_entrega', 'entregado', 'rechazado', 'cancelado']);
+const TRAMITE_STATUS_PERMITIDOS = new Set([
+  'en_revision',
+  'en_proceso',
+  'rechazado',
+  'finalizado',
+  'cancelado',
+  'listo_para_entrega',
+  'entregado',
+  'resuelto',
+]);
 const ESTATUS_FINANCIERO_PERMITIDO = new Set(['al_dia', 'deudor', 'suspendido']);
 const CONCEPTO_EXTRAORDINARIO_MATCH = /extraordinario/i;
 const CLAVE_BIBLIOTECA_VIRTUAL = 'biblioteca_virtual_url';
 const CLAVE_MANUAL_SERVICIO_SOCIAL = 'manual_servicio_social_url';
 const MODALIDADES_BOLETA_PERMITIDAS = new Set(['ONLINE', 'PRESENCIAL', 'MIXTA']);
+const TRAMITE_DECISION_PERMITIDA = new Set(['aprobar', 'rechazar']);
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -43,6 +54,32 @@ function esUrlValida(value) {
   } catch (_error) {
     return false;
   }
+}
+
+function sumDays(baseDate, daysToAdd) {
+  const next = new Date(baseDate);
+  next.setDate(next.getDate() + daysToAdd);
+  return next;
+}
+
+function toDateOnly(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function resolveMontoConcepto(concepto, montoOverride) {
+  if (Number.isFinite(montoOverride) && montoOverride > 0) {
+    return Number(montoOverride.toFixed(2));
+  }
+
+  const base = Number(concepto?.precio_base_inicial);
+  if (Number.isFinite(base) && base > 0) {
+    return Number(base.toFixed(2));
+  }
+
+  return NaN;
 }
 
 
@@ -155,6 +192,199 @@ async function catalogosExtraordinario(_req, res) {
       id_docente: item.id_docente,
       nombre_completo: item.usuario?.nombre_completo || `Docente ${item.id_docente}`,
     })),
+  });
+}
+
+async function generarPagosCuatrimestrales(req, res) {
+  const cuatrimestre = toNumber(req.body.cuatrimestre || req.body.bimestre_actual);
+  const idConceptoInscripcion = toNumber(req.body.id_concepto_inscripcion);
+  const idConceptoColegiatura = toNumber(req.body.id_concepto_colegiatura);
+  const montoInscripcion = toNumber(req.body.monto_inscripcion);
+  const montoColegiatura = toNumber(req.body.monto_colegiatura);
+  const fechaBase = toDateOnly(req.body.fecha_base) || new Date().toISOString().slice(0, 10);
+
+  if (!Number.isInteger(cuatrimestre) || cuatrimestre < 1) {
+    return res.status(400).json({ message: 'cuatrimestre invalido.' });
+  }
+
+  const alumnos = await AlumnoPerfil.findAll({
+    where: {
+      bimestre_actual: cuatrimestre,
+      estado_academico: 'activo',
+    },
+    attributes: ['id_alumno'],
+    limit: 5000,
+  });
+
+  if (alumnos.length === 0) {
+    return res.status(404).json({ message: 'No hay alumnos activos para ese cuatrimestre.' });
+  }
+
+  const [conceptoInscripcion, conceptoColegiatura] = await Promise.all([
+    Number.isInteger(idConceptoInscripcion)
+      ? ConceptoPago.findOne({ where: { id_concepto_pago: idConceptoInscripcion, activo: true } })
+      : ConceptoPago.findOne({
+        where: {
+          activo: true,
+          categoria: 'inscripcion',
+        },
+        order: [['id_concepto_pago', 'ASC']],
+      }),
+    Number.isInteger(idConceptoColegiatura)
+      ? ConceptoPago.findOne({ where: { id_concepto_pago: idConceptoColegiatura, activo: true } })
+      : ConceptoPago.findOne({
+        where: {
+          activo: true,
+          [Op.or]: [
+            { categoria: 'mensualidad' },
+            { nombre: { [Op.like]: '%colegiatura%' } },
+          ],
+        },
+        order: [['id_concepto_pago', 'ASC']],
+      }),
+  ]);
+
+  if (!conceptoInscripcion) {
+    return res.status(404).json({ message: 'No se encontro concepto activo de inscripcion.' });
+  }
+  if (!conceptoColegiatura) {
+    return res.status(404).json({ message: 'No se encontro concepto activo de colegiatura.' });
+  }
+
+  const montoResolvedInscripcion = resolveMontoConcepto(conceptoInscripcion, montoInscripcion);
+  const montoResolvedColegiatura = resolveMontoConcepto(conceptoColegiatura, montoColegiatura);
+
+  if (!Number.isFinite(montoResolvedInscripcion) || !Number.isFinite(montoResolvedColegiatura)) {
+    return res.status(400).json({
+      message: 'No fue posible resolver montos. Define monto_inscripcion/monto_colegiatura o precio_base_inicial en conceptos.',
+    });
+  }
+
+  const alumnoIds = alumnos.map((item) => item.id_alumno);
+  const base = new Date(`${fechaBase}T00:00:00.000Z`);
+  if (Number.isNaN(base.getTime())) {
+    return res.status(400).json({ message: 'fecha_base invalida. Usa YYYY-MM-DD.' });
+  }
+
+  const calendario = [
+    {
+      id_concepto_pago: conceptoInscripcion.id_concepto_pago,
+      concepto: conceptoInscripcion.nombre || 'Inscripcion',
+      monto: montoResolvedInscripcion,
+      fecha_limite: toDateOnly(base),
+    },
+    ...[1, 2, 3, 4].map((numero) => ({
+      id_concepto_pago: conceptoColegiatura.id_concepto_pago,
+      concepto: `${conceptoColegiatura.nombre || 'Colegiatura'} ${numero}`,
+      monto: montoResolvedColegiatura,
+      fecha_limite: toDateOnly(sumDays(base, 30 * numero)),
+    })),
+  ];
+
+  const existentes = await PagoEstatus.findAll({
+    where: {
+      id_alumno: { [Op.in]: alumnoIds },
+      estatus: { [Op.ne]: 'cancelado' },
+      id_concepto_pago: { [Op.in]: [conceptoInscripcion.id_concepto_pago, conceptoColegiatura.id_concepto_pago] },
+      fecha_limite: { [Op.in]: calendario.map((item) => item.fecha_limite) },
+    },
+    attributes: ['id_alumno', 'id_concepto_pago', 'fecha_limite'],
+  });
+
+  const existentKeys = new Set(
+    existentes.map((item) => `${item.id_alumno}:${item.id_concepto_pago}:${item.fecha_limite}`),
+  );
+
+  const now = new Date();
+  const payload = [];
+  alumnoIds.forEach((idAlumno) => {
+    calendario.forEach((entrada) => {
+      const key = `${idAlumno}:${entrada.id_concepto_pago}:${entrada.fecha_limite}`;
+      if (existentKeys.has(key)) return;
+
+      payload.push({
+        id_alumno: idAlumno,
+        id_concepto_pago: entrada.id_concepto_pago,
+        concepto: entrada.concepto,
+        monto: entrada.monto,
+        fecha_limite: entrada.fecha_limite,
+        estatus: 'pendiente',
+        fecha_pago: null,
+        folio_interno: null,
+        observaciones: `Generado en lote para cuatrimestre ${cuatrimestre}.`,
+        comprobante_url: null,
+      });
+    });
+  });
+
+  if (payload.length > 0) {
+    await sequelize.transaction(async (transaction) => {
+      await PagoEstatus.bulkCreate(payload, { transaction });
+    });
+  }
+
+  return res.status(201).json({
+    cuatrimestre,
+    total_alumnos: alumnoIds.length,
+    pagos_programados_por_alumno: calendario.length,
+    pagos_creados: payload.length,
+    pagos_omitidos: (alumnoIds.length * calendario.length) - payload.length,
+    fecha_generacion: now,
+  });
+}
+
+async function crearPagoAdicional(req, res) {
+  const idAlumno = toNumber(req.body.alumno_id);
+  const idConceptoPago = toNumber(req.body.id_concepto_pago);
+  const monto = toNumber(req.body.monto);
+  const fechaLimite = toDateOnly(req.body.fecha_limite);
+  const observaciones = normalizeText(req.body.observaciones);
+
+  if (!Number.isInteger(idAlumno)) {
+    return res.status(400).json({ message: 'alumno_id invalido.' });
+  }
+  if (!Number.isInteger(idConceptoPago)) {
+    return res.status(400).json({ message: 'id_concepto_pago invalido.' });
+  }
+  if (!Number.isFinite(monto) || monto <= 0) {
+    return res.status(400).json({ message: 'monto invalido.' });
+  }
+  if (!fechaLimite) {
+    return res.status(400).json({ message: 'fecha_limite invalida. Usa YYYY-MM-DD.' });
+  }
+
+  const [alumno, concepto] = await Promise.all([
+    AlumnoPerfil.findByPk(idAlumno),
+    ConceptoPago.findOne({ where: { id_concepto_pago: idConceptoPago, activo: true } }),
+  ]);
+
+  if (!alumno) {
+    return res.status(404).json({ message: 'Alumno no encontrado.' });
+  }
+  if (!concepto) {
+    return res.status(404).json({ message: 'Concepto de pago activo no encontrado.' });
+  }
+
+  const pago = await PagoEstatus.create({
+    id_alumno: idAlumno,
+    id_concepto_pago: idConceptoPago,
+    concepto: concepto.nombre,
+    monto,
+    fecha_limite: fechaLimite,
+    estatus: 'pendiente',
+    fecha_pago: null,
+    folio_interno: null,
+    observaciones: observaciones || 'Pago adicional individual.',
+    comprobante_url: null,
+  });
+
+  return res.status(201).json({
+    id_pago: pago.id_pago,
+    id_alumno: pago.id_alumno,
+    concepto: pago.concepto,
+    monto: Number(pago.monto),
+    fecha_limite: pago.fecha_limite,
+    estatus: pago.estatus,
   });
 }
 
@@ -328,9 +558,10 @@ async function validarComprobante(req, res) {
     await pago.save();
 
     if (tramite) {
-      tramite.estatus = 'resuelto';
-      tramite.respuesta = 'Comprobante aprobado. Pago aplicado correctamente.';
-      tramite.fecha_resolucion = new Date();
+      tramite.estatus = 'en_proceso';
+      tramite.respuesta = 'Pago validado por Control Escolar. Enviado a Coordinacion Academica.';
+      tramite.motivo_rechazo = null;
+      tramite.fecha_resolucion = null;
       tramite.resuelto_por = req.user.id_usuario;
       await tramite.save();
     }
@@ -351,6 +582,7 @@ async function validarComprobante(req, res) {
   if (tramite) {
     tramite.estatus = 'rechazado';
     tramite.respuesta = motivo;
+    tramite.motivo_rechazo = motivo;
     tramite.fecha_resolucion = new Date();
     tramite.resuelto_por = req.user.id_usuario;
     await tramite.save();
@@ -363,6 +595,72 @@ async function validarComprobante(req, res) {
     estatus_pago: pago.estatus,
     tramite_actualizado: tramite ? tramite.id_tramite : null,
     notificacion_alumno: motivo,
+  });
+}
+
+async function validarPagoTramite(req, res) {
+  const idTramite = toNumber(req.params.tramiteId);
+  const decision = normalizeText(req.body.decision)?.toLowerCase();
+  const motivo = normalizeText(req.body.motivo);
+
+  if (!Number.isInteger(idTramite)) {
+    return res.status(400).json({ message: 'tramiteId invalido.' });
+  }
+  if (!TRAMITE_DECISION_PERMITIDA.has(decision)) {
+    return res.status(400).json({ message: "decision invalida. Usa 'aprobar' o 'rechazar'." });
+  }
+  if (decision === 'rechazar' && (!motivo || motivo.length < 8)) {
+    return res.status(400).json({ message: 'motivo es obligatorio y debe tener al menos 8 caracteres.' });
+  }
+
+  const tramite = await TramiteSolicitud.findByPk(idTramite, {
+    include: [{
+      model: AlumnoPerfil,
+      as: 'alumno',
+      include: [{
+        model: Usuario,
+        as: 'usuario',
+        attributes: ['id_usuario', 'nombre_completo', 'folio_matricula'],
+      }],
+    }],
+  });
+
+  if (!tramite) {
+    return res.status(404).json({ message: 'Tramite no encontrado.' });
+  }
+
+  if (!TRAMITES_ESCOLARES.includes(tramite.tipo)) {
+    return res.status(400).json({ message: 'Este tipo de tramite no corresponde al pipeline escolar.' });
+  }
+
+  if (decision === 'aprobar') {
+    tramite.estatus = 'en_proceso';
+    tramite.respuesta = 'Pago validado por Control Escolar. Turnado a Coordinacion Academica.';
+    tramite.motivo_rechazo = null;
+    tramite.resuelto_por = req.user.id_usuario;
+    tramite.fecha_resolucion = null;
+    await tramite.save();
+
+    return res.json({
+      id_tramite: tramite.id_tramite,
+      estado: tramite.estatus,
+      alumno_id: tramite.id_alumno,
+      alumno: tramite.alumno?.usuario?.nombre_completo || null,
+    });
+  }
+
+  tramite.estatus = 'rechazado';
+  tramite.respuesta = motivo;
+  tramite.motivo_rechazo = motivo;
+  tramite.resuelto_por = req.user.id_usuario;
+  tramite.fecha_resolucion = new Date();
+  await tramite.save();
+
+  return res.json({
+    id_tramite: tramite.id_tramite,
+    estado: tramite.estatus,
+    motivo_rechazo: tramite.motivo_rechazo,
+    alumno_id: tramite.id_alumno,
   });
 }
 
@@ -656,12 +954,13 @@ async function actualizarEstatusTramite(req, res) {
   const idTramite = toNumber(req.params.tramiteId);
   const estatus = String(req.body.estatus || '').trim().toLowerCase();
   const notasEntrega = normalizeText(req.body.notas_entrega);
+  const motivoRechazo = normalizeText(req.body.motivo_rechazo || req.body.motivo);
 
   if (!Number.isInteger(idTramite)) {
     return res.status(400).json({ message: 'tramiteId invalido.' });
   }
   if (!TRAMITE_STATUS_PERMITIDOS.has(estatus)) {
-    return res.status(400).json({ message: 'Estatus invalido. Usa: en_proceso, listo_para_entrega, entregado, rechazado, cancelado.' });
+    return res.status(400).json({ message: 'Estatus invalido. Usa: en_revision, en_proceso, rechazado, finalizado, cancelado.' });
   }
 
   const tramite = await TramiteSolicitud.findByPk(idTramite);
@@ -675,19 +974,42 @@ async function actualizarEstatusTramite(req, res) {
 
   tramite.estatus = estatus;
   tramite.respuesta = notasEntrega;
-  tramite.fecha_resolucion = new Date();
   tramite.resuelto_por = req.user.id_usuario;
+
+  if (estatus === 'rechazado') {
+    if (!motivoRechazo || motivoRechazo.length < 8) {
+      return res.status(400).json({ message: 'motivo_rechazo es obligatorio para estatus rechazado.' });
+    }
+    tramite.motivo_rechazo = motivoRechazo;
+    tramite.respuesta = motivoRechazo;
+    tramite.fecha_resolucion = new Date();
+  } else if (estatus === 'finalizado') {
+    tramite.motivo_rechazo = null;
+    tramite.fecha_resolucion = new Date();
+  } else {
+    tramite.motivo_rechazo = null;
+    tramite.fecha_resolucion = null;
+  }
+
   if (req.file) {
     tramite.documento_respuesta_url = `/uploads/portafolio/${req.file.filename}`;
+    tramite.documento_resultado_url = tramite.documento_respuesta_url;
   }
+
+  if (estatus === 'finalizado' && !tramite.documento_resultado_url && !tramite.documento_respuesta_url) {
+    return res.status(400).json({ message: 'Debes adjuntar el documento oficial para finalizar el tramite.' });
+  }
+
   await tramite.save();
 
   return res.json({
     id_tramite: tramite.id_tramite,
+    estado: tramite.estatus,
     estatus: tramite.estatus,
     notas_entrega: tramite.respuesta,
+    motivo_rechazo: tramite.motivo_rechazo,
     fecha_resolucion: tramite.fecha_resolucion,
-    documento_respuesta_url: tramite.documento_respuesta_url,
+    documento_resultado_url: tramite.documento_resultado_url || tramite.documento_respuesta_url,
   });
 }
 
@@ -747,8 +1069,11 @@ module.exports = {
   conceptosActivos,
   catalogosExtraordinario,
   comprobantesPendientes,
+  generarPagosCuatrimestrales,
+  crearPagoAdicional,
   registrarCobroCaja,
   validarComprobante,
+  validarPagoTramite,
   alumnosEstatus,
   actualizarAccesosAlumno,
   actualizarConfiguracionBoletaAlumno,

@@ -20,6 +20,8 @@ router.post('/pagos/comprobantes', requirePermission(PERMISSIONS.ALUMNO_TRAMITES
 router.post('/tramites/solicitar', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), handlePortafolioUpload, alumnoController.solicitarTramite);
 router.get('/tramites/tipos', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_READ), alumnoController.tiposTramite);
 router.get('/historial-tramites', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_READ), alumnoController.historialTramites);
+router.get('/avisos', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ), alumnoController.listarAvisos);
+router.post('/avisos/:id/descartar', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ), alumnoController.descartarAviso);
 router.get('/notificaciones', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ), alumnoController.notificaciones);
 
 // Rutas legacy para compatibilidad con clientes antiguos.
@@ -34,7 +36,7 @@ router.get('/alertas', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ), alu
 router.get('/plan-estudio', requirePermission(PERMISSIONS.ALUMNO_PLAN_ESTUDIO_READ), alumnoController.planEstudio);
 router.get('/pagos', requirePermission(PERMISSIONS.ALUMNO_PAGOS_READ), alumnoController.pagos);
 router.get('/tramites', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_READ), alumnoController.listarTramites);
-router.post('/tramites', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), alumnoController.crearTramite);
+router.post('/tramites', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), handlePortafolioUpload, alumnoController.crearTramite);
 router.get('/recursos-institucionales', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ), alumnoController.recursosInstitucionales);
 
 module.exports = router;

@@ -16,6 +16,7 @@ const {
   EntregaTarea,
   PortafolioEvidencia,
   CalificacionFormativaDocente,
+  TramiteSolicitud,
 } = require('../../models');
 const { registrarEventoAuditoria } = require('../services/auditService');
 
@@ -1423,6 +1424,46 @@ async function eliminarMateriaPrograma(req, res) {
   }
 }
 
+async function finalizarTramite(req, res) {
+  const idTramite = toInt(req.params.tramiteId);
+  if (!Number.isInteger(idTramite)) {
+    return res.status(400).json({ message: 'tramiteId invalido.' });
+  }
+
+  const tramite = await TramiteSolicitud.findByPk(idTramite);
+  if (!tramite) {
+    return res.status(404).json({ message: 'Tramite no encontrado.' });
+  }
+
+  if (tramite.estatus !== 'en_proceso') {
+    return res.status(409).json({ message: 'Solo se pueden finalizar tramites en estatus en_proceso.' });
+  }
+
+  const documentoUrl = req.file
+    ? `/uploads/portafolio/${req.file.filename}`
+    : normalizeText(req.body.documento_resultado_url || req.body.documento_respuesta_url || req.body.archivo_url);
+
+  if (!documentoUrl) {
+    return res.status(400).json({ message: 'Debes adjuntar el documento oficial del tramite.' });
+  }
+
+  tramite.estatus = 'finalizado';
+  tramite.documento_resultado_url = documentoUrl;
+  tramite.documento_respuesta_url = documentoUrl;
+  tramite.fecha_resolucion = new Date();
+  tramite.resuelto_por = req.user.id_usuario;
+  tramite.motivo_rechazo = null;
+  tramite.respuesta = normalizeText(req.body.notas) || 'Tramite finalizado por Coordinacion Academica.';
+  await tramite.save();
+
+  return res.json({
+    id_tramite: tramite.id_tramite,
+    estado: tramite.estatus,
+    documento_resultado_url: tramite.documento_resultado_url,
+    fecha_resolucion: tramite.fecha_resolucion,
+  });
+}
+
 module.exports = {
   docentesAsignaciones,
   asignarMateriaDocente,
@@ -1441,6 +1482,7 @@ module.exports = {
   crearMateriaPrograma,
   actualizarMateriaPrograma,
   eliminarMateriaPrograma,
+  finalizarTramite,
   alumnosProgreso,
   portafolioAlumno,
   actualizarEstadoAcademicoAlumno,

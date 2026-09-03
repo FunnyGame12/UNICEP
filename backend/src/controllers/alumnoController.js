@@ -21,6 +21,8 @@ const {
   NotificacionAlumno,
   PortafolioEvidencia,
   ConfiguracionInstitucional,
+  Aviso,
+  AlumnoAvisoOculto,
 } = require('../../models');
 const { generarWorkbookBoleta } = require('../services/boletaService');
 const { registrarEventoAuditoria } = require('../services/auditService');
@@ -572,12 +574,31 @@ async function subirComprobantePago(req, res) {
     return res.status(404).json({ message: 'Concepto de pago no encontrado o inactivo.' });
   }
 
+  const pago = await PagoEstatus.findOne({
+    where: {
+      id_alumno: validacion.idAlumno,
+      id_concepto_pago: idConceptoPago,
+      estatus: { [Op.in]: ['pendiente', 'vencido', 'en_revision'] },
+    },
+    order: [['fecha_limite', 'ASC'], ['id_pago', 'ASC']],
+  });
+
+  if (!pago) {
+    return res.status(404).json({ message: 'No existe un pago pendiente para ese concepto.' });
+  }
+
+  pago.comprobante_url = adjuntoUrl;
+  pago.estatus = 'en_revision';
+  await pago.save();
+
   const tramite = await TramiteSolicitud.create({
     id_alumno: validacion.idAlumno,
     tipo: 'comprobante_pago',
+    tipo_tramite_id: 'comprobante_pago',
     descripcion: `Comprobante ${concepto.nombre} por ${montoPagado.toFixed(2)} MXN`,
     adjunto_url: adjuntoUrl,
-    estatus: 'recibido',
+    comprobante_pago_url: adjuntoUrl,
+    estatus: 'en_revision',
     fecha_solicitud: new Date(),
   });
 
@@ -596,6 +617,7 @@ async function subirComprobantePago(req, res) {
   });
 
   return res.status(201).json({
+    id_pago: pago.id_pago,
     id_tramite: tramite.id_tramite,
     estatus: tramite.estatus,
     fecha_solicitud: tramite.fecha_solicitud,
@@ -614,19 +636,24 @@ async function solicitarTramite(req, res) {
     return res.status(400).json({ message: `tipo invalido. Usa: ${TRAMITES_ESCOLARES.join(', ')}.` });
   }
 
-  const adjuntoUrl = req.file ? `/uploads/portafolio/${req.file.filename}` : null;
+  const adjuntoUrl = req.file
+    ? `/uploads/portafolio/${req.file.filename}`
+    : normalizeText(req.body.comprobante_pago_url || req.body.adjunto_url || req.body.archivo_url);
   if (!adjuntoUrl) {
     return res.status(400).json({ message: 'Debes adjuntar el comprobante requerido para el tramite.' });
   }
 
   const descripcion = normalizeText(req.body.descripcion) || `Solicitud de ${tipo}.`;
+  const tipoTramiteId = normalizeText(req.body.tipo_tramite_id) || tipo;
 
   const tramite = await TramiteSolicitud.create({
     id_alumno: validacion.idAlumno,
     tipo,
+    tipo_tramite_id: tipoTramiteId,
     descripcion,
     adjunto_url: adjuntoUrl,
-    estatus: 'recibido',
+    comprobante_pago_url: adjuntoUrl,
+    estatus: 'en_revision',
     fecha_solicitud: new Date(),
   });
 
@@ -641,6 +668,89 @@ async function solicitarTramite(req, res) {
   });
 
   return res.status(201).json(tramite);
+}
+
+async function listarAvisos(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const { grupos, asignaciones } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+  const gruposAlumno = [...new Set(grupos.map((item) => String(item.grupo || '').trim()).filter(Boolean))];
+  const docentesAlumno = [...new Set(asignaciones.map((item) => Number(item.id_docente)).filter(Number.isInteger))];
+  const carreraAlumno = normalizeText(validacion.estado.perfil.carrera);
+
+  const ocultos = await AlumnoAvisoOculto.findAll({
+    where: { alumno_id: validacion.idAlumno },
+    attributes: ['aviso_id'],
+  });
+  const avisosOcultos = ocultos.map((item) => Number(item.aviso_id)).filter(Number.isInteger);
+
+  const limite = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000));
+
+  const items = await Aviso.findAll({
+    where: {
+      created_at: { [Op.gte]: limite },
+      ...(avisosOcultos.length > 0 ? { id_aviso: { [Op.notIn]: avisosOcultos } } : {}),
+      [Op.and]: [
+        {
+          [Op.or]: [
+            { carrera_id: null },
+            ...(carreraAlumno ? [{ carrera_id: carreraAlumno }] : []),
+          ],
+        },
+        {
+          [Op.or]: [
+            { grupo_id: null },
+            ...(gruposAlumno.length > 0 ? [{ grupo_id: { [Op.in]: gruposAlumno } }] : []),
+          ],
+        },
+        {
+          [Op.or]: [
+            { remitente_tipo: 'coordinacion' },
+            { docente_id: null },
+            ...(docentesAlumno.length > 0 ? [{ docente_id: { [Op.in]: docentesAlumno } }] : []),
+          ],
+        },
+      ],
+    },
+    order: [['created_at', 'DESC'], ['id_aviso', 'DESC']],
+    limit: 100,
+  });
+
+  return res.json({ items });
+}
+
+async function descartarAviso(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const idAviso = toNumber(req.params.id);
+  if (!Number.isInteger(idAviso)) {
+    return res.status(400).json({ message: 'id de aviso invalido.' });
+  }
+
+  const aviso = await Aviso.findByPk(idAviso);
+  if (!aviso) {
+    return res.status(404).json({ message: 'Aviso no encontrado.' });
+  }
+
+  await AlumnoAvisoOculto.findOrCreate({
+    where: {
+      alumno_id: validacion.idAlumno,
+      aviso_id: idAviso,
+    },
+    defaults: {
+      alumno_id: validacion.idAlumno,
+      aviso_id: idAviso,
+      created_at: new Date(),
+    },
+  });
+
+  return res.json({ id_aviso: idAviso, oculto: true });
 }
 
 async function historialTramites(req, res) {
@@ -913,6 +1023,8 @@ async function pagos(req, res) {
     let estatusVisible = 'pendiente';
     if (['pagado', 'condonado'].includes(item.estatus)) {
       estatusVisible = 'aprobado';
+    } else if (item.estatus === 'en_revision') {
+      estatusVisible = 'en_revision';
     } else if (tieneComprobantePendiente(item.concepto)) {
       estatusVisible = 'en_revision';
     }
@@ -1193,6 +1305,8 @@ module.exports = {
   planEstudio,
   listarTramites,
   crearTramite,
+  listarAvisos,
+  descartarAviso,
   recursosInstitucionales,
   tiposTramite,
 };

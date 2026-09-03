@@ -106,8 +106,21 @@ function handleManualServicioSocialUpload(req, res, next) {
 }
 
 function handleTramiteRespuestaUpload(req, res, next) {
-  uploadPortafolio.single('documento_respuesta')(req, res, (error) => {
+  uploadPortafolio.fields([
+    { name: 'documento_respuesta', maxCount: 1 },
+    { name: 'documento_resultado', maxCount: 1 },
+    { name: 'archivo', maxCount: 1 },
+  ])(req, res, (error) => {
     if (!error) {
+      const candidate = (req.files?.documento_respuesta && req.files.documento_respuesta[0])
+        || (req.files?.documento_resultado && req.files.documento_resultado[0])
+        || (req.files?.archivo && req.files.archivo[0])
+        || null;
+
+      if (candidate) {
+        req.file = candidate;
+      }
+
       next();
       return;
     }

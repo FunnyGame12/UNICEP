@@ -11,6 +11,7 @@ const TRAMITE_ESTATUS = [
   'recibido',
   'en_revision',
   'en_proceso',
+  'finalizado',
   'listo_para_entrega',
   'entregado',
   'resuelto',

@@ -22,6 +22,7 @@ router.post('/programar-extraordinario', coordinacionController.programarExtraor
 
 router.get('/tramites', controlEscolarController.listarTramites);
 router.put('/tramites/:tramiteId/estatus', handleTramiteRespuestaUpload, controlEscolarController.actualizarEstatusTramite);
+router.put('/tramites/:tramiteId/finalizar', handleTramiteRespuestaUpload, coordinacionController.finalizarTramite);
 
 router.get('/programas-externos', coordinacionController.programasExternos);
 router.put('/programas-externos/:expedienteId/estatus', coordinacionController.actualizarEstatusProgramaExterno);
