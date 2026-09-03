@@ -24,6 +24,10 @@ function sanitizeFilenamePart(value) {
     .replace(/^_+|_+$/g, '');
 }
 
+function formatearFechaExpedicion(fecha) {
+  return new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: 'long', year: 'numeric' }).format(fecha);
+}
+
 async function obtenerAlumnoConContexto(idAlumno) {
   return AlumnoPerfil.findByPk(idAlumno, {
     include: [
@@ -251,6 +255,7 @@ async function generarWorkbookBoleta(idAlumno) {
   worksheet.getCell('E7').value = campusBoleta;
   worksheet.getCell('M7').value = modalidadBoleta;
   worksheet.getCell('O7').value = grupoAlumno;
+  worksheet.getCell('E21').value = formatearFechaExpedicion(new Date());
 
   materiasParaBoleta.forEach((materia, index) => {
     if (index >= COLUMNAS_MATERIAS.length) return;
