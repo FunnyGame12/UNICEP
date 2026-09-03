@@ -18,6 +18,7 @@ const {
   ConceptoPago,
   AnuncioDocente,
   CalificacionFormativaDocente,
+  NotificacionAlumno,
 } = require('../../models');
 const { registrarEventoAuditoria } = require('../services/auditService');
 
@@ -635,7 +636,7 @@ async function notificaciones(req, res) {
 
   const { materiasIds } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
 
-  const [meritos, pagosAprobados, tramites, anuncios, tareas] = await Promise.all([
+  const [meritos, pagosAprobados, tramites, anuncios, tareas, notificacionesInternas] = await Promise.all([
     MeritoAcademico.findAll({
       where: { id_alumno: validacion.idAlumno },
       order: [['fecha', 'DESC']],
@@ -678,6 +679,11 @@ async function notificaciones(req, res) {
         limit: 10,
       })
       : [],
+    NotificacionAlumno.findAll({
+      where: { id_alumno: validacion.idAlumno },
+      order: [['fecha', 'DESC']],
+      limit: 10,
+    }),
   ]);
 
   const notifs = [];
@@ -729,6 +735,16 @@ async function notificaciones(req, res) {
       detalle: `Estatus: ${item.estatus}`,
       fecha: item.fecha_resolucion || item.fecha_solicitud,
       prioridad: 'baja',
+    });
+  });
+
+  notificacionesInternas.forEach((item) => {
+    notifs.push({
+      tipo: item.tipo,
+      titulo: item.titulo,
+      detalle: item.detalle,
+      fecha: item.fecha,
+      prioridad: 'alta',
     });
   });
 

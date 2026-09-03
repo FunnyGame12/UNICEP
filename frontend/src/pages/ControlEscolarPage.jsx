@@ -14,6 +14,25 @@ const cobroCajaSchema = z.object({
     z.number().positive('El monto debe ser mayor a $0.'),
   ),
   metodo_pago: z.enum(['efectivo', 'transferencia', 'tarjeta']),
+  comentarios: z.string().optional(),
+  enlace_classroom: z.string().optional(),
+}).superRefine((data, ctx) => {
+  const enlace = data.enlace_classroom?.trim();
+  if (!enlace) return;
+  try {
+    // eslint-disable-next-line no-new
+    new URL(enlace);
+  } catch (_error) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['enlace_classroom'],
+      message: 'Ingresa una URL valida.',
+    });
+  }
+});
+
+const driveFolderSchema = z.object({
+  drive_folder_url: z.string().trim().url('Ingresa una URL valida.').or(z.literal('')),
 });
 
 const rechazoComprobanteSchema = z.object({
@@ -29,6 +48,7 @@ const tabs = [
   { id: 'tesoreria', label: 'Tesorería y Comprobantes' },
   { id: 'accesos', label: 'Control de Accesos Financieros' },
   { id: 'tramites', label: 'Trámites Institucionales' },
+  { id: 'portafolio', label: 'Portafolio de Alumnos' },
 ];
 
 function buildCajaReference() {
@@ -90,6 +110,12 @@ export default function ControlEscolarPage() {
   const [filterEstatus, setFilterEstatus] = useState('');
   const [draftAccesos, setDraftAccesos] = useState({});
 
+  const [portafolioSearch, setPortafolioSearch] = useState('');
+  const [selectedPortafolioAlumnoId, setSelectedPortafolioAlumnoId] = useState(null);
+  const [portafolioData, setPortafolioData] = useState(null);
+  const [portafolioLoading, setPortafolioLoading] = useState(false);
+  const [portafolioArchivo, setPortafolioArchivo] = useState(null);
+
   const cobroForm = useForm({
     resolver: zodResolver(cobroCajaSchema),
     defaultValues: {
@@ -98,11 +124,32 @@ export default function ControlEscolarPage() {
       referencia_caja: buildCajaReference(),
       monto_recibido: '',
       metodo_pago: 'efectivo',
+      comentarios: '',
+      enlace_classroom: '',
     },
+  });
+
+  const driveFolderForm = useForm({
+    resolver: zodResolver(driveFolderSchema),
+    defaultValues: { drive_folder_url: '' },
   });
 
   const alumnoActualWatch = cobroForm.watch('alumno_id');
   const conceptoActualWatch = cobroForm.watch('concepto_folio_id');
+
+  const alumnoSeleccionadoCobro = useMemo(
+    () => alumnos.find((item) => String(item.id_alumno) === String(alumnoActualWatch)) || null,
+    [alumnos, alumnoActualWatch],
+  );
+
+  const conceptoSeleccionadoCobro = useMemo(
+    () => conceptos.find((item) => String(item.id_concepto_pago) === String(conceptoActualWatch)) || null,
+    [conceptos, conceptoActualWatch],
+  );
+
+  const esExtraordinarioCobro = Boolean(
+    conceptoSeleccionadoCobro && /extraordinario/i.test(conceptoSeleccionadoCobro.nombre || ''),
+  );
 
   function regenerateCajaReference() {
     const newFolio = buildCajaReference();
@@ -192,6 +239,10 @@ export default function ControlEscolarPage() {
     });
   }, [selectedTramite, tramiteForm]);
 
+  useEffect(() => {
+    driveFolderForm.reset({ drive_folder_url: portafolioData?.alumno?.drive_folder_url || '' });
+  }, [portafolioData, driveFolderForm]);
+
   const alumnosFiltered = useMemo(() => {
     const q = searchAlumno.trim().toLowerCase();
     return alumnos.filter((item) => {
@@ -203,6 +254,14 @@ export default function ControlEscolarPage() {
       return matchesQ && matchesStatus;
     });
   }, [alumnos, searchAlumno, filterEstatus]);
+
+  const alumnosPortafolioFiltered = useMemo(() => {
+    const q = portafolioSearch.trim().toLowerCase();
+    if (!q) return alumnos;
+    return alumnos.filter((item) => String(item.nombre_completo || '').toLowerCase().includes(q)
+      || String(item.folio_matricula || '').toLowerCase().includes(q)
+      || String(item.correo || '').toLowerCase().includes(q));
+  }, [alumnos, portafolioSearch]);
 
   async function submitCobro(values) {
     setSending(true);
@@ -216,6 +275,10 @@ export default function ControlEscolarPage() {
         referencia_caja: values.referencia_caja.trim(),
         monto_recibido: Number(values.monto_recibido),
         metodo_pago: values.metodo_pago,
+        ...(esExtraordinarioCobro ? {
+          comentarios: values.comentarios?.trim() || undefined,
+          enlace_classroom: values.enlace_classroom?.trim() || undefined,
+        } : {}),
       });
 
       setMessage('Cobro de caja registrado correctamente.');
@@ -226,10 +289,72 @@ export default function ControlEscolarPage() {
         referencia_caja: siguienteFolio,
         monto_recibido: '',
         metodo_pago: 'efectivo',
+        comentarios: '',
+        enlace_classroom: '',
       });
       await loadAll();
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo registrar el cobro de caja.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function abrirPortafolioAlumno(idAlumno) {
+    setSelectedPortafolioAlumnoId(idAlumno);
+    setPortafolioLoading(true);
+    setError('');
+
+    try {
+      const response = await api.get(`/control-escolar/alumnos/${idAlumno}/portafolio`);
+      setPortafolioData(response?.data || null);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo cargar el portafolio del alumno.');
+    } finally {
+      setPortafolioLoading(false);
+    }
+  }
+
+  async function guardarDriveFolder(values) {
+    if (!selectedPortafolioAlumnoId) return;
+
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      await api.put(`/control-escolar/alumnos/${selectedPortafolioAlumnoId}/drive-folder`, {
+        drive_folder_url: values.drive_folder_url.trim(),
+      });
+      setMessage('Carpeta de Google Drive actualizada correctamente.');
+      await abrirPortafolioAlumno(selectedPortafolioAlumnoId);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo actualizar la carpeta de Drive.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function subirArchivoPortafolio() {
+    if (!selectedPortafolioAlumnoId) return;
+    if (!portafolioArchivo) {
+      setError('Selecciona un archivo para subir al portafolio.');
+      return;
+    }
+
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const formData = new FormData();
+      formData.append('archivo', portafolioArchivo);
+      await api.post(`/control-escolar/alumnos/${selectedPortafolioAlumnoId}/portafolio`, formData);
+      setMessage('Archivo agregado al portafolio del alumno.');
+      setPortafolioArchivo(null);
+      await abrirPortafolioAlumno(selectedPortafolioAlumnoId);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo subir el archivo.');
     } finally {
       setSending(false);
     }
@@ -378,6 +503,12 @@ export default function ControlEscolarPage() {
               </select>
               {cobroForm.formState.errors.alumno_id ? <small>{cobroForm.formState.errors.alumno_id.message}</small> : null}
 
+              {alumnoSeleccionadoCobro?.estatus_financiero === 'deudor' ? (
+                <p className="ce-warning-box" role="alert">
+                  ⚠️ Atención: El alumno presenta adeudos pendientes.
+                </p>
+              ) : null}
+
               <label htmlFor="ce-concepto">Concepto de pago</label>
               <select id="ce-concepto" {...cobroForm.register('concepto_folio_id')}>
                 <option value="">Selecciona un concepto</option>
@@ -418,6 +549,28 @@ export default function ControlEscolarPage() {
                 <option value="transferencia">Transferencia</option>
                 <option value="tarjeta">Tarjeta</option>
               </select>
+
+              {esExtraordinarioCobro ? (
+                <>
+                  <label htmlFor="ce-extra-comentarios">Comentarios/Observaciones</label>
+                  <textarea
+                    className="ce-textarea"
+                    id="ce-extra-comentarios"
+                    rows="3"
+                    placeholder="Detalles del examen extraordinario."
+                    {...cobroForm.register('comentarios')}
+                  />
+
+                  <label htmlFor="ce-extra-classroom">Enlace de Google Classroom</label>
+                  <input
+                    id="ce-extra-classroom"
+                    type="url"
+                    placeholder="https://classroom.google.com/..."
+                    {...cobroForm.register('enlace_classroom')}
+                  />
+                  {cobroForm.formState.errors.enlace_classroom ? <small>{cobroForm.formState.errors.enlace_classroom.message}</small> : null}
+                </>
+              ) : null}
 
               <button type="submit" className="btn-primary" disabled={sending || loading}>
                 {sending ? 'Registrando...' : 'Registrar cobro'}
@@ -632,6 +785,107 @@ export default function ControlEscolarPage() {
 
                   <button type="submit" className="btn-primary" disabled={sending}>Actualizar trámite</button>
                 </form>
+              </>
+            ) : null}
+          </article>
+        </div>
+      ) : null}
+
+      {activeTab === 'portafolio' ? (
+        <div className="ce-grid-2">
+          <article className="ce-card">
+            <h3>Alumnos</h3>
+            <div className="ce-filters">
+              <input
+                value={portafolioSearch}
+                onChange={(event) => setPortafolioSearch(event.target.value)}
+                placeholder="Buscar por folio, nombre o correo"
+              />
+            </div>
+
+            <div className="table-wrap ce-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Alumno</th>
+                    <th>Folio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan="2">Cargando alumnos...</td></tr>
+                  ) : null}
+                  {!loading && alumnosPortafolioFiltered.length === 0 ? (
+                    <tr><td colSpan="2">Sin resultados.</td></tr>
+                  ) : null}
+                  {!loading ? alumnosPortafolioFiltered.map((item) => (
+                    <tr
+                      key={item.id_alumno}
+                      className={String(selectedPortafolioAlumnoId) === String(item.id_alumno) ? 'ce-row-selected' : ''}
+                      onClick={() => abrirPortafolioAlumno(item.id_alumno)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <td><strong>{item.nombre_completo}</strong></td>
+                      <td>{item.folio_matricula || 'SIN-FOLIO'}</td>
+                    </tr>
+                  )) : null}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article className="ce-card">
+            <h3>Expediente digital</h3>
+            {!selectedPortafolioAlumnoId ? <p>Selecciona un alumno para ver su portafolio.</p> : null}
+            {portafolioLoading ? <p>Cargando portafolio...</p> : null}
+
+            {!portafolioLoading && portafolioData ? (
+              <>
+                <p><strong>Alumno:</strong> {portafolioData.alumno?.nombre_completo || 'No disponible'}</p>
+                <p><strong>Folio:</strong> {portafolioData.alumno?.folio_matricula || 'SIN-FOLIO'}</p>
+
+                <form className="form-grid" onSubmit={driveFolderForm.handleSubmit(guardarDriveFolder)}>
+                  <label htmlFor="ce-drive-folder">URL de carpeta de Google Drive</label>
+                  <input
+                    id="ce-drive-folder"
+                    type="url"
+                    placeholder="https://drive.google.com/drive/folders/..."
+                    {...driveFolderForm.register('drive_folder_url')}
+                  />
+                  {driveFolderForm.formState.errors.drive_folder_url ? <small>{driveFolderForm.formState.errors.drive_folder_url.message}</small> : null}
+                  <button type="submit" className="btn-secondary" disabled={sending}>Guardar carpeta de Drive</button>
+                </form>
+
+                <div className="ce-preview">
+                  <label htmlFor="ce-portafolio-archivo">Subir archivo al portafolio</label>
+                  <input
+                    id="ce-portafolio-archivo"
+                    type="file"
+                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
+                    onChange={(event) => setPortafolioArchivo(event.target.files?.[0] || null)}
+                  />
+                  <button type="button" className="btn-primary" disabled={sending} onClick={subirArchivoPortafolio}>
+                    Subir archivo
+                  </button>
+                </div>
+
+                <h4>Archivos del portafolio</h4>
+                {(portafolioData.items || []).length === 0 ? <p>Sin archivos registrados.</p> : null}
+                <div className="ce-list">
+                  {(portafolioData.items || []).map((item) => (
+                    <a
+                      key={item.id_evidencia}
+                      className="ce-list-item"
+                      href={item.archivo_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <strong>{item.nombre_archivo || item.archivo_url}</strong>
+                      <span>{item.materia || (item.origen === 'control_escolar' ? 'Control Escolar' : 'Docente')}</span>
+                      <span>{formatDate(item.fecha_creacion)}</span>
+                    </a>
+                  ))}
+                </div>
               </>
             ) : null}
           </article>

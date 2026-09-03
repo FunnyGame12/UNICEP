@@ -16,14 +16,31 @@ module.exports = (sequelize, DataTypes) => {
       },
       id_materia: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
       },
       periodo_bimestre: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
       },
       archivo_url: {
         type: DataTypes.STRING(255),
+        allowNull: false,
+      },
+      nombre_archivo: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      origen: {
+        type: DataTypes.ENUM('docente', 'control_escolar'),
+        allowNull: false,
+        defaultValue: 'docente',
+      },
+      id_subido_por: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      fecha_creacion: {
+        type: DataTypes.DATE,
         allowNull: false,
       },
     },
@@ -44,6 +61,12 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'id_materia',
       targetKey: 'id_materia',
       as: 'materia',
+    });
+
+    PortafolioEvidencia.belongsTo(models.Usuario, {
+      foreignKey: 'id_subido_por',
+      targetKey: 'id_usuario',
+      as: 'subido_por',
     });
   };
 

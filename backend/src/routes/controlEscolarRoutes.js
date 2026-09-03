@@ -2,6 +2,7 @@ const express = require('express');
 const auth = require('../middlewares/auth');
 const { authorizeRoles } = require('../middlewares/auth');
 const controlEscolarController = require('../controllers/controlEscolarController');
+const { handlePortafolioUpload } = require('../middlewares/upload');
 
 const router = express.Router();
 
@@ -15,6 +16,10 @@ router.put('/validar-comprobante/:pagoId', controlEscolarController.validarCompr
 
 router.get('/alumnos-estatus', controlEscolarController.alumnosEstatus);
 router.put('/alumnos/:alumnoId/accesos', controlEscolarController.actualizarAccesosAlumno);
+
+router.get('/alumnos/:alumnoId/portafolio', controlEscolarController.portafolioAlumno);
+router.put('/alumnos/:alumnoId/drive-folder', controlEscolarController.actualizarDriveFolder);
+router.post('/alumnos/:alumnoId/portafolio', handlePortafolioUpload, controlEscolarController.subirArchivoPortafolio);
 
 router.get('/tramites', controlEscolarController.listarTramites);
 router.put('/tramites/:tramiteId/estatus', controlEscolarController.actualizarEstatusTramite);

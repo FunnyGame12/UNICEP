@@ -248,6 +248,20 @@
   font-size: 0.9rem;
 }
 
+.ce-warning-box {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  background: rgba(248, 113, 113, 0.14);
+  color: #fecaca;
+  font-weight: 600;
+}
+
+.ce-row-selected {
+  background: rgba(37, 99, 235, 0.16) !important;
+}
+
 @media (max-width: 960px) {
   .ce-grid-2 {
     grid-template-columns: 1fr;

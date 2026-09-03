@@ -5,11 +5,15 @@ const {
   PagoEstatus,
   ConceptoPago,
   TramiteSolicitud,
+  PortafolioEvidencia,
+  NotificacionAlumno,
+  Materia,
 } = require('../../models');
 
 const TRAMITES_ESCOLARES = ['constancia', 'credencial', 'uniforme', 'papeleria_oficial'];
 const TRAMITE_STATUS_PERMITIDOS = new Set(['en_proceso', 'listo_para_entrega', 'entregado', 'cancelado']);
 const ESTATUS_FINANCIERO_PERMITIDO = new Set(['al_dia', 'deudor', 'suspendido']);
+const CONCEPTO_EXTRAORDINARIO_MATCH = /extraordinario/i;
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -19,6 +23,20 @@ function toNumber(value) {
 function normalizeText(value) {
   const text = String(value || '').trim();
   return text || null;
+}
+
+function esConceptoExtraordinario(concepto) {
+  return CONCEPTO_EXTRAORDINARIO_MATCH.test(String(concepto?.nombre || ''));
+}
+
+function esUrlValida(value) {
+  try {
+    // eslint-disable-next-line no-new
+    new URL(value);
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 async function comprobantesPendientes(_req, res) {
@@ -141,6 +159,18 @@ async function registrarCobroCaja(req, res) {
     return res.status(404).json({ message: 'Concepto de pago activo no encontrado.' });
   }
 
+  const esExtraordinario = esConceptoExtraordinario(concepto);
+  const comentariosExtra = esExtraordinario ? normalizeText(req.body.comentarios) : null;
+  const enlaceClassroom = esExtraordinario ? normalizeText(req.body.enlace_classroom) : null;
+
+  if (enlaceClassroom && !esUrlValida(enlaceClassroom)) {
+    return res.status(400).json({ message: 'enlace_classroom debe ser una URL valida.' });
+  }
+
+  const observacionesPartes = [metodoPago ? `Cobro en caja (${metodoPago}).` : 'Cobro en caja.'];
+  if (comentariosExtra) observacionesPartes.push(`Comentarios: ${comentariosExtra}`);
+  if (enlaceClassroom) observacionesPartes.push(`Google Classroom: ${enlaceClassroom}`);
+
   const pago = await PagoEstatus.create({
     id_alumno: idAlumno,
     id_concepto_pago: idConceptoPago,
@@ -150,8 +180,22 @@ async function registrarCobroCaja(req, res) {
     estatus: 'pagado',
     fecha_pago: new Date(),
     folio_interno: referenciaCaja,
-    observaciones: metodoPago ? `Cobro en caja (${metodoPago}).` : 'Cobro en caja.',
+    observaciones: observacionesPartes.join(' '),
   });
+
+  if (esExtraordinario) {
+    const detallePartes = [`Se registro tu pago de ${concepto.nombre}.`];
+    if (comentariosExtra) detallePartes.push(`Observaciones: ${comentariosExtra}`);
+    if (enlaceClassroom) detallePartes.push(`Enlace de Google Classroom: ${enlaceClassroom}`);
+
+    await NotificacionAlumno.create({
+      id_alumno: idAlumno,
+      tipo: 'examen_extraordinario',
+      titulo: 'Registro de Examen Extraordinario',
+      detalle: detallePartes.join(' '),
+      fecha: new Date(),
+    });
+  }
 
   return res.status(201).json({
     id_pago: pago.id_pago,
@@ -164,6 +208,8 @@ async function registrarCobroCaja(req, res) {
     referencia_caja: pago.folio_interno,
     estatus: pago.estatus,
     fecha_pago: pago.fecha_pago,
+    comentarios: comentariosExtra,
+    enlace_classroom: enlaceClassroom,
   });
 }
 
@@ -336,6 +382,102 @@ async function actualizarAccesosAlumno(req, res) {
   });
 }
 
+async function portafolioAlumno(req, res) {
+  const idAlumno = toNumber(req.params.alumnoId);
+  if (!Number.isInteger(idAlumno)) {
+    return res.status(400).json({ message: 'alumnoId invalido.' });
+  }
+
+  const alumno = await AlumnoPerfil.findByPk(idAlumno, {
+    include: [{
+      model: Usuario,
+      as: 'usuario',
+      attributes: ['id_usuario', 'folio_matricula', 'nombre_completo', 'correo'],
+    }],
+  });
+
+  if (!alumno) {
+    return res.status(404).json({ message: 'Alumno no encontrado.' });
+  }
+
+  const evidencias = await PortafolioEvidencia.findAll({
+    where: { id_alumno: idAlumno },
+    include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia'], required: false }],
+    order: [['id_evidencia', 'DESC']],
+    limit: 200,
+  });
+
+  return res.json({
+    alumno: {
+      id_alumno: alumno.id_alumno,
+      folio_matricula: alumno.usuario?.folio_matricula || null,
+      nombre_completo: alumno.usuario?.nombre_completo || null,
+      correo: alumno.usuario?.correo || null,
+      drive_folder_url: alumno.drive_folder_url || null,
+    },
+    items: evidencias.map((item) => ({
+      id_evidencia: item.id_evidencia,
+      archivo_url: item.archivo_url,
+      nombre_archivo: item.nombre_archivo,
+      origen: item.origen,
+      materia: item.materia?.nombre_materia || null,
+      fecha_creacion: item.fecha_creacion,
+    })),
+  });
+}
+
+async function actualizarDriveFolder(req, res) {
+  const idAlumno = toNumber(req.params.alumnoId);
+  if (!Number.isInteger(idAlumno)) {
+    return res.status(400).json({ message: 'alumnoId invalido.' });
+  }
+
+  const driveFolderUrl = normalizeText(req.body.drive_folder_url);
+  if (driveFolderUrl && !esUrlValida(driveFolderUrl)) {
+    return res.status(400).json({ message: 'drive_folder_url debe ser una URL valida.' });
+  }
+
+  const alumno = await AlumnoPerfil.findByPk(idAlumno);
+  if (!alumno) {
+    return res.status(404).json({ message: 'Alumno no encontrado.' });
+  }
+
+  alumno.drive_folder_url = driveFolderUrl;
+  await alumno.save();
+
+  return res.json({ id_alumno: alumno.id_alumno, drive_folder_url: alumno.drive_folder_url });
+}
+
+async function subirArchivoPortafolio(req, res) {
+  const idAlumno = toNumber(req.params.alumnoId);
+  if (!Number.isInteger(idAlumno)) {
+    return res.status(400).json({ message: 'alumnoId invalido.' });
+  }
+  if (!req.file) {
+    return res.status(400).json({ message: 'Selecciona un archivo para subir.' });
+  }
+
+  const alumno = await AlumnoPerfil.findByPk(idAlumno);
+  if (!alumno) {
+    return res.status(404).json({ message: 'Alumno no encontrado.' });
+  }
+
+  const evidencia = await PortafolioEvidencia.create({
+    id_alumno: idAlumno,
+    archivo_url: `/uploads/portafolio/${req.file.filename}`,
+    nombre_archivo: req.file.originalname,
+    origen: 'control_escolar',
+    id_subido_por: req.user.id_usuario,
+    fecha_creacion: new Date(),
+  });
+
+  return res.status(201).json({
+    id_evidencia: evidencia.id_evidencia,
+    archivo_url: evidencia.archivo_url,
+    nombre_archivo: evidencia.nombre_archivo,
+  });
+}
+
 async function listarTramites(req, res) {
   const estatus = String(req.query.estatus || '').trim().toLowerCase();
   const where = {
@@ -413,6 +555,9 @@ module.exports = {
   validarComprobante,
   alumnosEstatus,
   actualizarAccesosAlumno,
+  portafolioAlumno,
+  actualizarDriveFolder,
+  subirArchivoPortafolio,
   listarTramites,
   actualizarEstatusTramite,
 };

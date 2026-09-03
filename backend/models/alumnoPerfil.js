@@ -41,6 +41,10 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: false,
       },
+      drive_folder_url: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+      },
     },
     {
       tableName: 'alumnos_perfil',

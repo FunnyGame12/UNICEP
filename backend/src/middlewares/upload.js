@@ -1,0 +1,68 @@
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
+
+const UPLOAD_ROOT = path.join(__dirname, '../../uploads');
+const PORTAFOLIO_DIR = path.join(UPLOAD_ROOT, 'portafolio');
+
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+
+const EXTENSION_BY_MIME = {
+  'application/pdf': '.pdf',
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+  'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+};
+
+const storage = multer.diskStorage({
+  destination(_req, _file, cb) {
+    fs.mkdirSync(PORTAFOLIO_DIR, { recursive: true });
+    cb(null, PORTAFOLIO_DIR);
+  },
+  filename(_req, file, cb) {
+    const extension = EXTENSION_BY_MIME[file.mimetype] || path.extname(file.originalname).slice(0, 10);
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${extension}`;
+    cb(null, uniqueName);
+  },
+});
+
+const uploadPortafolio = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      cb(new Error('Tipo de archivo no permitido. Usa PDF, imagen o documento de Word.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+function handlePortafolioUpload(req, res, next) {
+  uploadPortafolio.single('archivo')(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({ message: 'El archivo excede el tamano maximo permitido (10MB).' });
+      return;
+    }
+
+    res.status(400).json({ message: error.message || 'No se pudo procesar el archivo.' });
+  });
+}
+
+module.exports = { uploadPortafolio, handlePortafolioUpload, PORTAFOLIO_DIR };
