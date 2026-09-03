@@ -15,6 +15,7 @@ const {
   CalificacionFormativaDocente,
   ActaCalificacion,
   PeriodoAcademico,
+  RecursoAcademico,
 } = require('../../models');
 const { Op } = require('sequelize');
 const { registrarEventoAuditoria } = require('../services/auditService');
@@ -1382,6 +1383,71 @@ async function publicarAvisoGrupal(req, res) {
   return res.status(201).json(item);
 }
 
+async function publicarRecursoAcademico(req, res) {
+  const titulo = sanitizeText(req.body.titulo);
+  const materiaId = Number(req.body.materia_id);
+  const grupoId = req.body.grupo_id ? normalizeGrupo(req.body.grupo_id) : null;
+  const tipoRecurso = sanitizeText(req.body.tipo_recurso).toLowerCase();
+  const remitenteNombre = sanitizeText(req.body.remitente_nombre) || req.user.nombre_completo;
+
+  if (!titulo || !Number.isInteger(materiaId)) {
+    return res.status(400).json({ message: 'titulo y materia_id son obligatorios.' });
+  }
+  if (!['archivo_local', 'enlace_drive'].includes(tipoRecurso)) {
+    return res.status(400).json({ message: 'tipo_recurso invalido. Usa archivo_local o enlace_drive.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  if (!contexto.materiasIds.includes(materiaId)) {
+    return res.status(403).json({ message: 'No tienes asignacion para esa materia.' });
+  }
+  if (grupoId && !docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
+    return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+  }
+
+  const urlRecurso = req.file
+    ? `/uploads/portafolio/${req.file.filename}`
+    : sanitizeText(req.body.url_recurso);
+
+  if (!urlRecurso) {
+    return res.status(400).json({ message: 'Adjunta un archivo o proporciona url_recurso.' });
+  }
+  if (tipoRecurso === 'enlace_drive') {
+    try {
+      // eslint-disable-next-line no-new
+      new URL(urlRecurso);
+    } catch (_error) {
+      return res.status(400).json({ message: 'url_recurso debe ser una URL valida.' });
+    }
+  }
+
+  const recurso = await RecursoAcademico.create({
+    titulo,
+    tipo_recurso: tipoRecurso,
+    url_recurso: urlRecurso,
+    remitente_tipo: 'docente',
+    remitente_nombre: remitenteNombre,
+    id_docente: req.user.id_usuario,
+    id_materia: materiaId,
+    grupo_id: grupoId,
+    activo: true,
+    created_at: new Date(),
+  });
+
+  return res.status(201).json(recurso);
+}
+
+async function misRecursosAcademicos(req, res) {
+  const items = await RecursoAcademico.findAll({
+    where: { id_docente: req.user.id_usuario },
+    include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia'] }],
+    order: [['created_at', 'DESC']],
+    limit: 200,
+  });
+
+  return res.json({ items });
+}
+
 module.exports = {
   misMaterias,
   alumnosPorGrupoMateria,
@@ -1392,6 +1458,8 @@ module.exports = {
   justificantesRecibidos,
   listarAvisosGrupales,
   publicarAvisoGrupal,
+  publicarRecursoAcademico,
+  misRecursosAcademicos,
   dashboard,
   grupos,
   calificacionesFinales,

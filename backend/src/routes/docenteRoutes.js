@@ -4,6 +4,7 @@ const { authorizeRoles } = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/permissions');
 const docenteController = require('../controllers/docenteController');
 const { PERMISSIONS } = require('../constants/rbac');
+const { handlePortafolioUpload } = require('../middlewares/upload');
 
 const router = express.Router();
 
@@ -19,6 +20,8 @@ router.post('/actas/enviar-a-coordinacion', docenteController.enviarActaCoordina
 router.get('/justificantes-recibidos', docenteController.justificantesRecibidos);
 router.get('/avisos-grupales', docenteController.listarAvisosGrupales);
 router.post('/avisos-grupales', docenteController.publicarAvisoGrupal);
+router.get('/recursos-academicos', docenteController.misRecursosAcademicos);
+router.post('/recursos-academicos', handlePortafolioUpload, docenteController.publicarRecursoAcademico);
 
 router.get('/dashboard', requirePermission(PERMISSIONS.MAESTRO_DASHBOARD_READ), docenteController.dashboard);
 router.get('/grupos', requirePermission(PERMISSIONS.MAESTRO_GRUPOS_READ), docenteController.grupos);

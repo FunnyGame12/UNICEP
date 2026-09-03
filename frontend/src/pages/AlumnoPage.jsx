@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Link } from 'react-router-dom';
 import api from '../services/api';
 import './AlumnoPage.css';
 
@@ -389,6 +390,9 @@ export default function AlumnoPage() {
         <p className="alumno-eyebrow">Portal Estudiantil UNICEP</p>
         <h2>Hola, {acceso?.perfil?.nombre_completo || 'Alumno'}</h2>
         <p>{acceso?.perfil?.carrera || 'Sin carrera'} · Bimestre {acceso?.perfil?.bimestre_actual || 'N/A'}</p>
+        <Link to="/alumno/portafolio-recursos" className="btn-secondary portafolio-link">
+          📁 Portafolio y Recursos
+        </Link>
       </header>
 
       <div className="alumno-tabs desktop-only" role="tablist" aria-label="Panel alumno">

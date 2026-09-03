@@ -17,6 +17,7 @@ const {
   PortafolioEvidencia,
   CalificacionFormativaDocente,
   TramiteSolicitud,
+  RecursoAcademico,
 } = require('../../models');
 const { registrarEventoAuditoria } = require('../services/auditService');
 
@@ -1464,6 +1465,75 @@ async function finalizarTramite(req, res) {
   });
 }
 
+async function publicarRecursoAcademico(req, res) {
+  const titulo = normalizeText(req.body.titulo);
+  const tipoRecurso = normalizeEnum(req.body.tipo_recurso);
+  const materiaId = req.body.materia_id == null || req.body.materia_id === '' ? null : toInt(req.body.materia_id);
+  const carreraId = normalizeText(req.body.carrera_id);
+  const grupoId = req.body.grupo_id ? normalizeGrupo(req.body.grupo_id) : null;
+  const remitenteNombre = normalizeText(req.body.remitente_nombre) || 'Coordinación Académica';
+
+  if (!titulo) {
+    return res.status(400).json({ message: 'titulo es obligatorio.' });
+  }
+  if (!['archivo_local', 'enlace_drive'].includes(tipoRecurso)) {
+    return res.status(400).json({ message: 'tipo_recurso invalido. Usa archivo_local o enlace_drive.' });
+  }
+  if (materiaId !== null && !Number.isInteger(materiaId)) {
+    return res.status(400).json({ message: 'materia_id invalido.' });
+  }
+
+  if (materiaId !== null) {
+    const materia = await Materia.findByPk(materiaId);
+    if (!materia) {
+      return res.status(404).json({ message: 'materia_id no encontrada.' });
+    }
+  }
+
+  const urlRecurso = req.file
+    ? `/uploads/portafolio/${req.file.filename}`
+    : normalizeText(req.body.url_recurso);
+
+  if (!urlRecurso) {
+    return res.status(400).json({ message: 'Adjunta un archivo o proporciona url_recurso.' });
+  }
+  if (tipoRecurso === 'enlace_drive') {
+    try {
+      // eslint-disable-next-line no-new
+      new URL(urlRecurso);
+    } catch (_error) {
+      return res.status(400).json({ message: 'url_recurso debe ser una URL valida.' });
+    }
+  }
+
+  const recurso = await RecursoAcademico.create({
+    titulo,
+    tipo_recurso: tipoRecurso,
+    url_recurso: urlRecurso,
+    remitente_tipo: 'coordinacion',
+    remitente_nombre: remitenteNombre,
+    id_docente: null,
+    id_materia: materiaId,
+    carrera_id: carreraId,
+    grupo_id: grupoId,
+    activo: true,
+    created_at: new Date(),
+  });
+
+  return res.status(201).json(recurso);
+}
+
+async function listarRecursosAcademicos(_req, res) {
+  const items = await RecursoAcademico.findAll({
+    where: { remitente_tipo: 'coordinacion' },
+    include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia'], required: false }],
+    order: [['created_at', 'DESC']],
+    limit: 200,
+  });
+
+  return res.json({ items });
+}
+
 module.exports = {
   docentesAsignaciones,
   asignarMateriaDocente,
@@ -1483,6 +1553,8 @@ module.exports = {
   actualizarMateriaPrograma,
   eliminarMateriaPrograma,
   finalizarTramite,
+  publicarRecursoAcademico,
+  listarRecursosAcademicos,
   alumnosProgreso,
   portafolioAlumno,
   actualizarEstadoAcademicoAlumno,

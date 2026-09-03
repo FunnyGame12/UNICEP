@@ -23,6 +23,8 @@ const {
   ConfiguracionInstitucional,
   Aviso,
   AlumnoAvisoOculto,
+  RecursoAcademico,
+  PortafolioMateriaEvidencia,
 } = require('../../models');
 const { generarWorkbookBoleta } = require('../services/boletaService');
 const { registrarEventoAuditoria } = require('../services/auditService');
@@ -54,6 +56,16 @@ function toDate(value) {
 function estatusAcademico(calificacion) {
   if (calificacion === null || calificacion === undefined) return 'sin_registrar';
   return Number(calificacion) >= 6 ? 'Aprobado' : 'Reprobado';
+}
+
+function esUrlValida(value) {
+  try {
+    // eslint-disable-next-line no-new
+    new URL(value);
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 function getAuthenticatedAlumnoId(req) {
@@ -1139,6 +1151,147 @@ async function subirDocumentoPortafolio(req, res) {
   });
 }
 
+async function portafolioRecursos(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const idParam = toNumber(req.params.id);
+  if (idParam !== null && idParam !== validacion.idAlumno) {
+    return res.status(403).json({ message: 'No tienes acceso al portafolio de otro alumno.' });
+  }
+
+  const { grupos, asignaciones, materiasIds } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+  const gruposAlumno = [...new Set(grupos.map((item) => String(item.grupo || '').trim()).filter(Boolean))];
+  const carreraAlumno = normalizeText(validacion.estado.perfil.carrera) || null;
+
+  const docentesPorMateriaGrupo = new Map(
+    asignaciones.map((item) => [
+      `${Number(item.id_materia)}:${String(item.grupo || '').trim()}`,
+      item.docente?.usuario?.nombre_completo || 'Por asignar',
+    ]),
+  );
+
+  const evidenciasExistentes = materiasIds.length > 0
+    ? await PortafolioMateriaEvidencia.findAll({
+      where: {
+        alumno_id: validacion.idAlumno,
+        materia_id: { [Op.in]: materiasIds },
+      },
+    })
+    : [];
+  const evidenciaPorMateria = new Map(evidenciasExistentes.map((item) => [Number(item.materia_id), item]));
+
+  const misEvidencias = grupos.map((grupo) => {
+    const materiaId = Number(grupo.id_materia);
+    const grupoId = String(grupo.grupo || '').trim();
+    const evidencia = evidenciaPorMateria.get(materiaId) || null;
+
+    return {
+      materia_id: materiaId,
+      materia_nombre: grupo.materia?.nombre_materia || `Materia ${materiaId}`,
+      docente_nombre: docentesPorMateriaGrupo.get(`${materiaId}:${grupoId}`) || 'Por asignar',
+      drive_url: evidencia ? evidencia.drive_url : null,
+      estado: evidencia ? evidencia.estado : 'pendiente',
+    };
+  });
+
+  const filtrosRecurso = {
+    activo: true,
+    [Op.and]: [
+      {
+        [Op.or]: [
+          { carrera_id: null },
+          ...(carreraAlumno ? [{ carrera_id: carreraAlumno }] : []),
+        ],
+      },
+      {
+        [Op.or]: [
+          { grupo_id: null },
+          ...(gruposAlumno.length > 0 ? [{ grupo_id: { [Op.in]: gruposAlumno } }] : []),
+        ],
+      },
+      {
+        [Op.or]: [
+          { remitente_tipo: 'coordinacion' },
+          ...(materiasIds.length > 0 ? [{ [Op.and]: [{ remitente_tipo: 'docente' }, { id_materia: { [Op.in]: materiasIds } }] }] : []),
+        ],
+      },
+    ],
+  };
+
+  const recursos = await RecursoAcademico.findAll({
+    where: filtrosRecurso,
+    include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia'], required: false }],
+    order: [['created_at', 'DESC'], ['id_recurso', 'DESC']],
+    limit: 200,
+  });
+
+  const recursosInstitucionales = recursos.map((item) => ({
+    titulo: item.titulo,
+    remitente_tipo: item.remitente_tipo,
+    remitente_nombre: item.remitente_nombre,
+    materia_nombre: item.materia?.nombre_materia || null,
+    tipo_recurso: item.tipo_recurso,
+    url_recurso: item.url_recurso,
+  }));
+
+  return res.json({ misEvidencias, recursosInstitucionales });
+}
+
+async function guardarPortafolioMateria(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const materiaId = toNumber(req.body.materia_id);
+  const driveUrl = normalizeText(req.body.drive_url);
+  const cuatrimestreId = toNumber(req.body.cuatrimestre_id);
+
+  if (!Number.isInteger(materiaId)) {
+    return res.status(400).json({ message: 'materia_id invalido.' });
+  }
+  if (!driveUrl || !esUrlValida(driveUrl)) {
+    return res.status(400).json({ message: 'drive_url debe ser una URL valida.' });
+  }
+
+  const { materiasIds } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+  if (!materiasIds.includes(materiaId)) {
+    return res.status(403).json({ message: 'No estas inscrito en esa materia.' });
+  }
+
+  const [evidencia] = await PortafolioMateriaEvidencia.findOrCreate({
+    where: { alumno_id: validacion.idAlumno, materia_id: materiaId },
+    defaults: {
+      alumno_id: validacion.idAlumno,
+      materia_id: materiaId,
+      cuatrimestre_id: Number.isInteger(cuatrimestreId) ? cuatrimestreId : (validacion.estado.perfil.bimestre_actual || null),
+      drive_url: driveUrl,
+      estado: 'entregado',
+      fecha_actualizacion: new Date(),
+      created_at: new Date(),
+    },
+  });
+
+  if (!evidencia.isNewRecord) {
+    evidencia.drive_url = driveUrl;
+    evidencia.estado = 'entregado';
+    evidencia.fecha_actualizacion = new Date();
+    if (Number.isInteger(cuatrimestreId)) {
+      evidencia.cuatrimestre_id = cuatrimestreId;
+    }
+    await evidencia.save();
+  }
+
+  return res.status(201).json({
+    materia_id: evidencia.materia_id,
+    drive_url: evidencia.drive_url,
+    estado: evidencia.estado,
+  });
+}
+
 async function meritos(req, res) {
   const validacion = await validarAccesoAlumno(req);
   if (!validacion.ok) {
@@ -1299,6 +1452,8 @@ module.exports = {
   pagos,
   portafolio,
   subirDocumentoPortafolio,
+  portafolioRecursos,
+  guardarPortafolioMateria,
   meritos,
   alertas,
   videoClases,

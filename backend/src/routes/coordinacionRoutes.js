@@ -3,7 +3,7 @@ const auth = require('../middlewares/auth');
 const { authorizeRoles } = require('../middlewares/auth');
 const coordinacionController = require('../controllers/coordinacionController');
 const controlEscolarController = require('../controllers/controlEscolarController');
-const { handleTramiteRespuestaUpload } = require('../middlewares/upload');
+const { handleTramiteRespuestaUpload, handlePortafolioUpload } = require('../middlewares/upload');
 
 const router = express.Router();
 
@@ -50,5 +50,8 @@ router.put('/calificaciones-formativas/override', coordinacionController.actuali
 
 router.get('/meritos-recientes', coordinacionController.meritosRecientes);
 router.post('/asignar-merito', coordinacionController.asignarMerito);
+
+router.get('/recursos-academicos', coordinacionController.listarRecursosAcademicos);
+router.post('/recursos-academicos', handlePortafolioUpload, coordinacionController.publicarRecursoAcademico);
 
 module.exports = router;

@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import App from './App';
 import HomePage from './pages/HomePage';
 import AlumnoPage from './pages/AlumnoPage';
+import PortafolioRecursosPage from './pages/PortafolioRecursosPage';
 import DocentePage from './pages/DocentePage';
 import DirectorPage from './pages/DirectorPage';
 import ControlEscolarPage from './pages/ControlEscolarPage';
@@ -32,6 +33,14 @@ const router = createBrowserRouter([
         element: (
           <ProtectedRoute roles={['alumno']}>
             <AlumnoPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'alumno/portafolio-recursos',
+        element: (
+          <ProtectedRoute roles={['alumno']}>
+            <PortafolioRecursosPage />
           </ProtectedRoute>
         ),
       },
