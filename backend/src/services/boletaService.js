@@ -249,7 +249,7 @@ async function generarWorkbookBoleta(idAlumno) {
   worksheet.getCell('F5').value = alumno.usuario?.nombre_completo || `Alumno ${alumno.id_alumno}`;
   worksheet.getCell('M5').value = alumno.usuario?.curp || '-';
   worksheet.getCell('E7').value = campusBoleta;
-  worksheet.getCell('K7').value = modalidadBoleta;
+  worksheet.getCell('M7').value = modalidadBoleta;
   worksheet.getCell('O7').value = grupoAlumno;
 
   materiasParaBoleta.forEach((materia, index) => {
