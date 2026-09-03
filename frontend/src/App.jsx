@@ -78,13 +78,32 @@ function App() {
                 ['Servicios', '/#servicios'],
                 ['Planteles', '/#planteles'],
                 ['Contacto', '/#contacto'],
-              ]).map(([label, href]) => (
-                href.startsWith('#') ? (
-                  <a key={label} href={href} className="nav-section-link">{label}</a>
-                ) : (
-                  <Link key={label} to={href} className="nav-section-link">{label}</Link>
-                )
-              ))}
+              ]).map(([label, href]) => {
+                const isAnchorLink = String(href).includes('#');
+                if (isAnchorLink) {
+                  return (
+                    <a
+                      key={label}
+                      href={href}
+                      className="nav-section-link"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      {label}
+                    </a>
+                  );
+                }
+
+                return (
+                  <Link
+                    key={label}
+                    to={href}
+                    className="nav-section-link"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
               {!isAuthenticated ? <Link to="/registro-folio">Registro</Link> : null}
               {!isAuthenticated ? (
                 <Link to="/login" className="btn-navbar menu-login-link">
