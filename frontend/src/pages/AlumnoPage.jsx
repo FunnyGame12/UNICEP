@@ -134,6 +134,7 @@ export default function AlumnoPage() {
   const [pagoArchivo, setPagoArchivo] = useState(null);
   const [tramiteArchivo, setTramiteArchivo] = useState(null);
   const [portafolioArchivo, setPortafolioArchivo] = useState(null);
+  const [descargandoBoleta, setDescargandoBoleta] = useState(false);
 
   const pagoForm = useForm({
     resolver: zodResolver(pagoSchema),
@@ -407,30 +408,33 @@ export default function AlumnoPage() {
     }
   }
 
-  function handleDownloadKardex() {
-    if (!kardexRows.length) {
-      setMessage('Todavía no hay materias registradas en tu kardex.');
-      return;
+  const handleDescargarBoletaExcel = async () => {
+    setError('');
+    setMessage('');
+    setDescargandoBoleta(true);
+
+    try {
+      const response = await api.get('/alumno/boleta', {
+        responseType: 'blob',
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'Boleta_Oficial_UNICEP.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      setMessage('Boleta descargada correctamente.');
+    } catch (requestError) {
+      console.error('Error al descargar la boleta de Excel:', requestError);
+      setError(requestError?.response?.data?.message || 'No se pudo generar la boleta.');
+    } finally {
+      setDescargandoBoleta(false);
     }
-
-    const payload = [
-      'UNICEP - Kardex Digital',
-      `Alumno: ${acceso?.perfil?.nombre_completo || 'Estudiante'}`,
-      `Carrera: ${acceso?.perfil?.carrera || 'N/D'}`,
-      '',
-      'Materia;Docente;Formativa 1;Formativa 2;Calificación Final',
-      ...kardexRows.map((item) => `${item.materia};${item.docente};${item.formativa_1 ?? 'N/D'};${item.formativa_2 ?? 'N/D'};${item.final ?? 'N/D'}`),
-    ].join('\n');
-
-    const blob = new Blob([payload], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = 'kardex-digital-unicep.txt';
-    anchor.click();
-    URL.revokeObjectURL(url);
-    setMessage('Kardex digital descargado correctamente.');
-  }
+  };
 
   const bloqueadoTotal = Boolean(acceso?.bloqueo_plataforma);
 
@@ -575,8 +579,8 @@ export default function AlumnoPage() {
         <article className="alumno-card">
           <div className="section-head">
             <h3>Materias en Curso</h3>
-            <button type="button" className="btn-primary kardex-download" onClick={handleDownloadKardex}>
-              📄 Descargar Kardex Digital
+            <button type="button" className="btn-primary kardex-download" onClick={handleDescargarBoletaExcel} disabled={descargandoBoleta}>
+              {descargandoBoleta ? 'Generando...' : '📄 Descargar Boleta'}
             </button>
           </div>
 

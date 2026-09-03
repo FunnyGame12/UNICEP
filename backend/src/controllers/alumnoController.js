@@ -22,6 +22,7 @@ const {
   PortafolioEvidencia,
   ConfiguracionInstitucional,
 } = require('../../models');
+const { generarWorkbookBoleta } = require('../services/boletaService');
 const { registrarEventoAuditoria } = require('../services/auditService');
 
 const DOCUMENTOS_REQUERIDOS = [
@@ -1089,6 +1090,27 @@ async function recursosInstitucionales(_req, res) {
   });
 }
 
+async function descargarBoleta(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereCalificaciones: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const resultado = await generarWorkbookBoleta(validacion.idAlumno);
+  if (resultado.notFound) {
+    return res.status(404).json({ message: 'Perfil de alumno no encontrado.' });
+  }
+  if (resultado.worksheetMissing) {
+    return res.status(500).json({ message: "No existe la hoja 'BOLETA' en la plantilla." });
+  }
+
+  const { workbook, filename } = resultado;
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  await workbook.xlsx.write(res);
+  return res.end();
+}
+
 module.exports = {
   estadoAcceso,
   horarioAulas,
@@ -1100,6 +1122,7 @@ module.exports = {
   solicitarTramite,
   historialTramites,
   notificaciones,
+  descargarBoleta,
 
   dashboard,
   horarios,

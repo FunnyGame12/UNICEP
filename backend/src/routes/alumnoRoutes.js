@@ -14,6 +14,7 @@ router.get('/estado-acceso', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ
 router.get('/horario-aulas', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ), alumnoController.horarioAulas);
 router.get('/calificaciones', requirePermission(PERMISSIONS.ALUMNO_CALIFICACIONES_READ), alumnoController.calificaciones);
 router.get('/asistencia', requirePermission(PERMISSIONS.ALUMNO_CALIFICACIONES_READ), alumnoController.asistencia);
+router.get('/boleta', requirePermission(PERMISSIONS.ALUMNO_CALIFICACIONES_READ), alumnoController.descargarBoleta);
 
 router.post('/pagos/comprobantes', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), alumnoController.subirComprobantePago);
 router.post('/tramites/solicitar', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), alumnoController.solicitarTramite);
