@@ -20,8 +20,10 @@ router.post('/actas/enviar-a-coordinacion', docenteController.enviarActaCoordina
 router.get('/justificantes-recibidos', docenteController.justificantesRecibidos);
 router.get('/avisos-grupales', docenteController.listarAvisosGrupales);
 router.post('/avisos-grupales', docenteController.publicarAvisoGrupal);
+router.get('/recursos-coordinacion', docenteController.recursosCoordinacion);
 router.get('/recursos-academicos', docenteController.misRecursosAcademicos);
 router.post('/recursos-academicos', handlePortafolioUpload, docenteController.publicarRecursoAcademico);
+router.delete('/recursos-academicos/:recursoId', docenteController.eliminarRecursoAcademico);
 
 router.get('/dashboard', requirePermission(PERMISSIONS.MAESTRO_DASHBOARD_READ), docenteController.dashboard);
 router.get('/grupos', requirePermission(PERMISSIONS.MAESTRO_GRUPOS_READ), docenteController.grupos);

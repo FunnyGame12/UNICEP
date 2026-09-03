@@ -6,6 +6,7 @@ const tabs = [
   { id: 'asistencia', label: 'Control de Asistencia' },
   { id: 'calificaciones', label: 'Calificaciones y Cierre de Actas' },
   { id: 'avisos', label: 'Avisos y Justificantes' },
+  { id: 'material', label: 'Material Didáctico' },
 ];
 
 const statusOptions = [
@@ -32,6 +33,27 @@ function formatDate(value, withTime = false) {
   }).format(new Date(value));
 }
 
+function normalizeGrupo(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function resolveBackendFileUrl(filePath) {
+  const raw = String(filePath || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+
+  const baseUrl = String(api.defaults.baseURL || '').trim();
+  const absoluteBase = /^https?:\/\//i.test(baseUrl)
+    ? baseUrl
+    : `${window.location.origin}${baseUrl.startsWith('/') ? baseUrl : `/${baseUrl}`}`;
+
+  try {
+    return new URL(raw, absoluteBase).toString();
+  } catch (_error) {
+    return raw;
+  }
+}
+
 export default function DocentePage() {
   const [activeTab, setActiveTab] = useState('asistencia');
   const [loading, setLoading] = useState(true);
@@ -52,6 +74,10 @@ export default function DocentePage() {
   const [asistenciaPorAlumno, setAsistenciaPorAlumno] = useState({});
   const [calificacionesPorAlumno, setCalificacionesPorAlumno] = useState({});
   const [portafolioValidadoPorAlumno, setPortafolioValidadoPorAlumno] = useState({});
+  const [recursosCoordinacion, setRecursosCoordinacion] = useState([]);
+  const [materialesPublicados, setMaterialesPublicados] = useState([]);
+  const [materialForm, setMaterialForm] = useState({ titulo: '', tipo: 'enlace_drive', url: '', archivo: null });
+  const [deletingRecursoId, setDeletingRecursoId] = useState(null);
 
   const selectedMateria = useMemo(
     () => (selectedAsignacion ? Number(selectedAsignacion.materia_id) : null),
@@ -104,6 +130,8 @@ export default function DocentePage() {
           setAsistenciaPorAlumno({});
           setCalificacionesPorAlumno({});
           setPortafolioValidadoPorAlumno({});
+          setRecursosCoordinacion([]);
+          setMaterialesPublicados([]);
           return;
         }
 
@@ -155,6 +183,8 @@ export default function DocentePage() {
           });
           return next;
         });
+
+        await loadMaterialesParaAsignacion(nextSelection);
       } catch (requestError) {
         if (isMounted) {
           setError(requestError?.response?.data?.message || 'No se pudo cargar el panel docente.');
@@ -189,6 +219,108 @@ export default function DocentePage() {
       setAsistenciaPorAlumno(nextMap);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo cargar la asistencia seleccionada.');
+    }
+  }
+
+  async function loadMaterialesParaAsignacion(asignacion) {
+    if (!asignacion) {
+      setRecursosCoordinacion([]);
+      setMaterialesPublicados([]);
+      return;
+    }
+
+    const materiaId = Number(asignacion.materia_id);
+    const grupoId = String(asignacion.grupo_id || '').trim();
+
+    const [coordResp, docenteResp] = await Promise.all([
+      api.get('/docente/recursos-coordinacion', { params: { materia_id: materiaId, grupo_id: grupoId } }),
+      api.get('/docente/recursos-academicos'),
+    ]);
+
+    const propios = (docenteResp?.data?.items || []).filter((item) => {
+      const materiaOk = Number(item.id_materia) === materiaId;
+      const grupoItem = normalizeGrupo(item.grupo_id || '');
+      const grupoActual = normalizeGrupo(grupoId);
+      return materiaOk && (!grupoItem || grupoItem === grupoActual);
+    });
+
+    setRecursosCoordinacion(coordResp?.data?.items || []);
+    setMaterialesPublicados(propios);
+  }
+
+  function handleMaterialInputChange(field, value) {
+    setMaterialForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function handleCompartirMaterial(event) {
+    event.preventDefault();
+    if (!selectedAsignacion) return;
+
+    const titulo = String(materialForm.titulo || '').trim();
+    const tipo = String(materialForm.tipo || '').trim();
+    const url = String(materialForm.url || '').trim();
+    const archivo = materialForm.archivo;
+
+    if (!titulo) {
+      setError('Ingresa el titulo del material.');
+      return;
+    }
+    if (tipo === 'enlace_drive' && !url) {
+      setError('Ingresa la URL del material.');
+      return;
+    }
+    if (tipo === 'archivo_local' && !archivo) {
+      setError('Adjunta un archivo local para compartir.');
+      return;
+    }
+
+    try {
+      setSending(true);
+      setError('');
+      setMessage('');
+
+      const materiaId = Number(selectedAsignacion.materia_id);
+      const grupoId = String(selectedAsignacion.grupo_id || '').trim();
+
+      if (tipo === 'archivo_local') {
+        const formData = new FormData();
+        formData.append('archivo', archivo);
+        formData.append('titulo', titulo);
+        formData.append('tipo_recurso', 'archivo_local');
+        formData.append('materia_id', String(materiaId));
+        formData.append('grupo_id', grupoId);
+        await api.post('/docente/recursos-academicos', formData);
+      } else {
+        await api.post('/docente/recursos-academicos', {
+          titulo,
+          tipo_recurso: 'enlace_drive',
+          url_recurso: url,
+          materia_id: materiaId,
+          grupo_id: grupoId,
+        });
+      }
+
+      setMaterialForm({ titulo: '', tipo: 'enlace_drive', url: '', archivo: null });
+      setMessage('Material compartido correctamente con el grupo.');
+      await loadMaterialesParaAsignacion(selectedAsignacion);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo compartir el material.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function handleEliminarMaterial(idRecurso) {
+    try {
+      setDeletingRecursoId(idRecurso);
+      setError('');
+      await api.delete(`/docente/recursos-academicos/${idRecurso}`);
+      setMessage('Material eliminado correctamente.');
+      await loadMaterialesParaAsignacion(selectedAsignacion);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo eliminar el material.');
+    } finally {
+      setDeletingRecursoId(null);
     }
   }
 
@@ -334,21 +466,42 @@ export default function DocentePage() {
       </article>
 
       {selectedAsignacion ? (
-        <article className="docente-card docente-recursos-card">
-          <h3>Recursos del Maestro</h3>
-          {selectedAsignacion.materia?.imagen_portada_url ? (
-            <img
-              className="docente-materia-portada"
-              src={selectedAsignacion.materia.imagen_portada_url}
-              alt={`Portada de ${selectedAsignacion.materia?.nombre_materia || 'la materia'}`}
-            />
-          ) : null}
-          {selectedAsignacion.materia?.recursos_sep ? (
-            <p className="docente-recursos-sep">{selectedAsignacion.materia.recursos_sep}</p>
+        <div className="mb-6 bg-gray-900 border border-gray-700 rounded-lg p-5">
+          <h3 className="text-lg font-semibold text-white mb-4">Recursos del Maestro</h3>
+
+          {(!recursosCoordinacion || recursosCoordinacion.length === 0) ? (
+            <div className="border-2 border-dashed border-gray-700 rounded-lg p-8 flex items-center justify-center">
+              <p className="text-gray-500 text-sm">Sin recursos SEP/temario configurados para esta materia.</p>
+            </div>
           ) : (
-            <p className="docente-empty">Sin recursos SEP/temario configurados para esta materia.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {recursosCoordinacion.map((recurso) => (
+                <div
+                  key={recurso.id}
+                  className="flex items-center justify-between bg-gray-800 border border-gray-700 p-3 rounded-md"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">📄</span>
+                    <div>
+                      <p className="text-sm font-medium text-gray-200">{recurso.titulo}</p>
+                      <p className="text-xs text-gray-500">Proporcionado por: Coordinación</p>
+                    </div>
+                  </div>
+
+                  <a
+                    href={resolveBackendFileUrl(recurso.url_archivo)}
+                    download
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors"
+                  >
+                    Descargar 📥
+                  </a>
+                </div>
+              ))}
+            </div>
           )}
-        </article>
+        </div>
       ) : null}
 
       <div className="docente-tabs" role="tablist" aria-label="Secciones operativas">
@@ -616,6 +769,92 @@ export default function DocentePage() {
                     <small>{formatDate(item.fecha_resolucion || item.fecha_solicitud, true)}</small>
                   </article>
                 ))}
+              </div>
+            )}
+          </article>
+        </div>
+      ) : null}
+
+      {activeTab === 'material' ? (
+        <div className="docente-grid-2 docente-material-grid">
+          <article className="docente-card">
+            <h3>Compartir Material Didáctico</h3>
+            <form className="docente-form" onSubmit={handleCompartirMaterial}>
+              <label htmlFor="material-titulo">Título del material</label>
+              <input
+                id="material-titulo"
+                type="text"
+                value={materialForm.titulo}
+                onChange={(event) => handleMaterialInputChange('titulo', event.target.value)}
+                placeholder="Ej. Guia de estudio - Unidad 3"
+              />
+
+              <label htmlFor="material-tipo">Tipo</label>
+              <select
+                id="material-tipo"
+                value={materialForm.tipo}
+                onChange={(event) => handleMaterialInputChange('tipo', event.target.value)}
+              >
+                <option value="enlace_drive">Enlace de Google Drive</option>
+                <option value="archivo_local">Archivo Local</option>
+              </select>
+
+              {materialForm.tipo === 'enlace_drive' ? (
+                <>
+                  <label htmlFor="material-url">URL</label>
+                  <input
+                    id="material-url"
+                    type="url"
+                    value={materialForm.url}
+                    onChange={(event) => handleMaterialInputChange('url', event.target.value)}
+                    placeholder="https://drive.google.com/..."
+                  />
+                </>
+              ) : (
+                <>
+                  <label htmlFor="material-archivo">Adjunto</label>
+                  <input
+                    id="material-archivo"
+                    type="file"
+                    accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.zip"
+                    onChange={(event) => handleMaterialInputChange('archivo', event.target.files?.[0] || null)}
+                  />
+                </>
+              )}
+
+              <button type="submit" className="btn-primary" disabled={sending || !selectedAsignacion}>
+                {sending ? 'Compartiendo...' : 'Compartir con el grupo'}
+              </button>
+            </form>
+          </article>
+
+          <article className="docente-card">
+            <h3>Historial de Material Compartido</h3>
+            {materialesPublicados.length === 0 ? (
+              <p className="docente-empty">Aún no has compartido material para este grupo.</p>
+            ) : (
+              <div className="docente-list">
+                {materialesPublicados.map((item) => {
+                  const esEnlace = item.tipo_recurso === 'enlace_drive';
+                  const recursoUrl = resolveBackendFileUrl(item.url_recurso);
+                  return (
+                    <article key={item.id_recurso} className="docente-list-item docente-material-item">
+                      <strong>{item.titulo}</strong>
+                      <span>{esEnlace ? 'Enlace de Google Drive' : 'Archivo Local'} · {formatDate(item.created_at, true)}</span>
+                      {recursoUrl ? (
+                        <a href={recursoUrl} target="_blank" rel="noreferrer">Abrir recurso</a>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="btn-danger-sm"
+                        onClick={() => handleEliminarMaterial(item.id_recurso)}
+                        disabled={deletingRecursoId === item.id_recurso}
+                      >
+                        {deletingRecursoId === item.id_recurso ? 'Eliminando...' : '🗑️ Eliminar'}
+                      </button>
+                    </article>
+                  );
+                })}
               </div>
             )}
           </article>

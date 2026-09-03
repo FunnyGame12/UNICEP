@@ -1517,15 +1517,95 @@ async function publicarRecursoAcademico(req, res) {
   return res.status(201).json(recurso);
 }
 
+async function eliminarRecursoAcademico(req, res) {
+  const recursoId = Number(req.params.recursoId);
+  if (!Number.isInteger(recursoId)) {
+    return res.status(400).json({ message: 'recursoId invalido.' });
+  }
+
+  const recurso = await RecursoAcademico.findByPk(recursoId);
+  if (!recurso) {
+    return res.status(404).json({ message: 'Recurso no encontrado.' });
+  }
+  if (recurso.remitente_tipo !== 'docente' || Number(recurso.id_docente) !== Number(req.user.id_usuario)) {
+    return res.status(403).json({ message: 'No puedes eliminar este recurso.' });
+  }
+
+  recurso.activo = false;
+  await recurso.save();
+
+  return res.json({ id_recurso: recurso.id_recurso, activo: recurso.activo });
+}
+
 async function misRecursosAcademicos(req, res) {
   const items = await RecursoAcademico.findAll({
-    where: { id_docente: req.user.id_usuario },
+    where: { id_docente: req.user.id_usuario, activo: true },
     include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia'] }],
     order: [['created_at', 'DESC']],
     limit: 200,
   });
 
   return res.json({ items });
+}
+
+async function recursosCoordinacion(req, res) {
+  const materiaId = Number(req.query.materia_id);
+  const grupoId = normalizeGrupo(req.query.grupo_id);
+
+  if (!Number.isInteger(materiaId) || !grupoId) {
+    return res.status(400).json({ message: 'materia_id y grupo_id son obligatorios.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
+    return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+  }
+
+  const materia = await Materia.findByPk(materiaId, { attributes: ['id_materia', 'carrera'] });
+  const carreraId = materia?.carrera || null;
+
+  const where = {
+    activo: true,
+    remitente_tipo: 'coordinacion',
+    [Op.and]: [
+      {
+        [Op.or]: [
+          { id_materia: null },
+          { id_materia: materiaId },
+        ],
+      },
+      {
+        [Op.or]: [
+          { grupo_id: null },
+          { grupo_id: grupoId },
+        ],
+      },
+      {
+        [Op.or]: [
+          { carrera_id: null },
+          ...(carreraId ? [{ carrera_id: carreraId }] : []),
+        ],
+      },
+    ],
+  };
+
+  const items = await RecursoAcademico.findAll({
+    where,
+    include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia'], required: false }],
+    order: [['created_at', 'DESC'], ['id_recurso', 'DESC']],
+    limit: 200,
+  });
+
+  return res.json({
+    items: items.map((item) => ({
+      id: item.id_recurso,
+      titulo: item.titulo,
+      url_archivo: item.url_recurso,
+      tipo_recurso: item.tipo_recurso,
+      materia_nombre: item.materia?.nombre_materia || null,
+      created_at: item.created_at,
+    })),
+  });
 }
 
 module.exports = {
@@ -1539,7 +1619,9 @@ module.exports = {
   listarAvisosGrupales,
   publicarAvisoGrupal,
   publicarRecursoAcademico,
+  eliminarRecursoAcademico,
   misRecursosAcademicos,
+  recursosCoordinacion,
   dashboard,
   grupos,
   calificacionesFinales,
