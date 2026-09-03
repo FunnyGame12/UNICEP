@@ -707,7 +707,10 @@ async function justificantesPreaprobados(req, res) {
 }
 
 async function misMaterias(req, res) {
-  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  const [contexto, periodoActivo] = await Promise.all([
+    obtenerContextoDocente(req.user.id_usuario),
+    PeriodoAcademico.findOne({ where: { estatus: 'activo' }, order: [['fecha_inicio', 'DESC']] }),
+  ]);
 
   const items = contexto.asignaciones.map((item) => ({
     id_asignacion: item.id_asignacion,
@@ -722,10 +725,21 @@ async function misMaterias(req, res) {
       programa_academico_id: item.materia?.programa_academico_id || null,
       periodo_numero: item.materia?.periodo_numero || item.materia?.bimestre_pertenece || null,
       carrera: item.materia?.carrera || null,
+      imagen_portada_url: item.materia?.imagen_portada_url || null,
+      recursos_sep: item.materia?.recursos_sep || null,
     },
   }));
 
-  return res.json({ items });
+  return res.json({
+    items,
+    periodo_activo: periodoActivo
+      ? {
+        id_periodo: periodoActivo.id_periodo,
+        nombre: periodoActivo.nombre,
+        fecha_limite_calificaciones: periodoActivo.fecha_limite_calificaciones,
+      }
+      : null,
+  });
 }
 
 async function materiasTareas(req, res) {
@@ -1284,6 +1298,22 @@ async function enviarActaCoordinacion(req, res) {
     acta.observaciones = JSON.stringify(observaciones);
     await acta.save();
   }
+
+  await registrarEventoAuditoria({
+    idUsuario: req.user.id_usuario,
+    rolActor: req.user.rol,
+    accion: 'docente_completo_carga_calificaciones',
+    modulo: 'docentes',
+    entidad: 'actas_calificaciones',
+    idEntidad: acta.id_acta,
+    detalle: {
+      materia_id: materiaId,
+      materia: materia.nombre_materia,
+      grupo_id: grupoId,
+      total_alumnos: totalAlumnos,
+      total_reprobados: totalReprobados,
+    },
+  });
 
   return res.status(201).json({
     id_acta: acta.id_acta,

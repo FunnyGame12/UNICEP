@@ -65,6 +65,25 @@
   font: inherit;
 }
 
+.docente-recursos-card {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.docente-materia-portada {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid #374151;
+}
+
+.docente-recursos-sep {
+  white-space: pre-line;
+  color: #d1d5db;
+  margin: 0;
+}
+
 .sticky-toast {
   position: sticky;
   top: 1rem;

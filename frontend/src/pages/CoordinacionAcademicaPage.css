@@ -378,6 +378,48 @@
   background: rgba(239, 68, 68, 0.3);
 }
 
+.btn-secondary-sm {
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f9fafb;
+  border-radius: 10px;
+  padding: 0.38rem 0.64rem;
+  cursor: pointer;
+}
+
+.btn-secondary-sm:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.coord-actions-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.coord-estado-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.coord-estado-badge.is-activo {
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+}
+
+.coord-estado-badge.is-suspendido {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fecaca;
+}
+
+.coord-empty-inline {
+  color: rgba(249, 250, 251, 0.55);
+  font-size: 0.85rem;
+}
+
 @media (max-width: 1080px) {
   .coord-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));

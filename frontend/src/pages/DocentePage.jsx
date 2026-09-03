@@ -43,6 +43,7 @@ export default function DocentePage() {
   const [misMaterias, setMisMaterias] = useState([]);
   const [selectedAsignacionId, setSelectedAsignacionId] = useState('');
   const [selectedAsignacion, setSelectedAsignacion] = useState(null);
+  const [periodoActivo, setPeriodoActivo] = useState(null);
 
   const [alumnos, setAlumnos] = useState([]);
   const [justificantes, setJustificantes] = useState([]);
@@ -55,6 +56,11 @@ export default function DocentePage() {
     () => (selectedAsignacion ? Number(selectedAsignacion.materia_id) : null),
     [selectedAsignacion],
   );
+
+  const calificacionesBloqueadas = useMemo(() => {
+    if (!periodoActivo?.fecha_limite_calificaciones) return false;
+    return Date.now() > new Date(periodoActivo.fecha_limite_calificaciones).getTime();
+  }, [periodoActivo]);
 
   useEffect(() => {
     if (!message && !error) return undefined;
@@ -85,6 +91,7 @@ export default function DocentePage() {
         if (!isMounted) return;
 
         setMisMaterias(items);
+        setPeriodoActivo(response?.data?.periodo_activo || null);
         const nextSelection = items.find((item) => String(item.id_asignacion) === String(selectedAsignacionId)) || items[0] || null;
         setSelectedAsignacion(nextSelection);
         setSelectedAsignacionId(nextSelection ? String(nextSelection.id_asignacion) : '');
@@ -310,6 +317,24 @@ export default function DocentePage() {
         </select>
       </article>
 
+      {selectedAsignacion ? (
+        <article className="docente-card docente-recursos-card">
+          <h3>Recursos del Maestro</h3>
+          {selectedAsignacion.materia?.imagen_portada_url ? (
+            <img
+              className="docente-materia-portada"
+              src={selectedAsignacion.materia.imagen_portada_url}
+              alt={`Portada de ${selectedAsignacion.materia?.nombre_materia || 'la materia'}`}
+            />
+          ) : null}
+          {selectedAsignacion.materia?.recursos_sep ? (
+            <p className="docente-recursos-sep">{selectedAsignacion.materia.recursos_sep}</p>
+          ) : (
+            <p className="docente-empty">Sin recursos SEP/temario configurados para esta materia.</p>
+          )}
+        </article>
+      ) : null}
+
       <div className="docente-tabs" role="tablist" aria-label="Secciones operativas">
         {tabs.map((tab) => (
           <button
@@ -430,6 +455,12 @@ export default function DocentePage() {
             </button>
           </div>
 
+          {calificacionesBloqueadas ? (
+            <p className="error-box">
+              La fecha límite para capturar calificaciones formativas venció. Solicita a Coordinación Académica un ajuste.
+            </p>
+          ) : null}
+
           {alumnos.length === 0 ? (
             <p className="docente-empty">Sin alumnos asignados a este grupo. Contacte a Coordinación Académica.</p>
           ) : (
@@ -469,7 +500,7 @@ export default function DocentePage() {
                               max="10"
                               step="0.1"
                               value={field === 'definitiva' ? (draft.definitiva || '') : (draft[field] ?? '')}
-                              disabled={actaCerrada || field === 'definitiva'}
+                              disabled={actaCerrada || field === 'definitiva' || (calificacionesBloqueadas && field !== 'definitiva')}
                               onChange={(event) => handleGradeChange(row.id_alumno, field, event.target.value)}
                               onBlur={() => handleGradeBlur(row.id_alumno, field)}
                               onKeyDown={(event) => {
@@ -496,7 +527,7 @@ export default function DocentePage() {
                                 }
                               });
                             }}
-                            disabled={sending || actaCerrada}
+                            disabled={sending || actaCerrada || calificacionesBloqueadas}
                           >
                             💾 Guardar
                           </button>

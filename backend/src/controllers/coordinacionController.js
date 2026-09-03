@@ -15,7 +15,11 @@ const {
   PeriodoAcademico,
   EntregaTarea,
   PortafolioEvidencia,
+  CalificacionFormativaDocente,
 } = require('../../models');
+const { registrarEventoAuditoria } = require('../services/auditService');
+
+const ESTADOS_ACADEMICOS_VALIDOS = new Set(['activo', 'suspendido']);
 
 const DOCUMENTOS_REQUERIDOS = [
   { clave: 'curp', nombre: 'CURP', detalle: 'Identificacion oficial' },
@@ -717,6 +721,197 @@ async function portafolioAlumno(req, res) {
   });
 }
 
+async function actualizarEstadoAcademicoAlumno(req, res) {
+  const alumnoId = toInt(req.params.alumnoId);
+  const estadoAcademico = normalizeText(req.body.estado_academico)?.toLowerCase() || null;
+
+  if (!Number.isInteger(alumnoId)) {
+    return res.status(400).json({ message: 'alumnoId invalido.' });
+  }
+  if (!estadoAcademico || !ESTADOS_ACADEMICOS_VALIDOS.has(estadoAcademico)) {
+    return res.status(400).json({ message: 'estado_academico invalido. Usa activo o suspendido.' });
+  }
+
+  const alumno = await AlumnoPerfil.findByPk(alumnoId);
+  if (!alumno) {
+    return res.status(404).json({ message: 'Alumno no encontrado.' });
+  }
+
+  const estadoAnterior = alumno.estado_academico;
+  alumno.estado_academico = estadoAcademico;
+  await alumno.save();
+
+  await registrarEventoAuditoria({
+    idUsuario: req.user.id_usuario,
+    rolActor: req.user.rol,
+    accion: 'actualizar_estado_academico_alumno',
+    modulo: 'coordinacion_academica',
+    entidad: 'alumnos_perfil',
+    idEntidad: alumnoId,
+    detalle: { estado_anterior: estadoAnterior, estado_nuevo: estadoAcademico },
+  });
+
+  return res.json({ id_alumno: alumno.id_alumno, estado_academico: alumno.estado_academico });
+}
+
+async function obtenerPeriodoActivo(_req, res) {
+  const periodo = await PeriodoAcademico.findOne({
+    where: { estatus: 'activo' },
+    order: [['fecha_inicio', 'DESC']],
+  });
+
+  if (!periodo) {
+    return res.json({ periodo: null });
+  }
+
+  return res.json({
+    periodo: {
+      id_periodo: periodo.id_periodo,
+      nombre: periodo.nombre,
+      ciclo: periodo.ciclo,
+      bimestre: periodo.bimestre,
+      fecha_limite_calificaciones: periodo.fecha_limite_calificaciones,
+    },
+  });
+}
+
+async function actualizarFechaLimiteCalificaciones(req, res) {
+  const fechaLimiteRaw = req.body.fecha_limite_calificaciones;
+
+  const periodo = await PeriodoAcademico.findOne({
+    where: { estatus: 'activo' },
+    order: [['fecha_inicio', 'DESC']],
+  });
+  if (!periodo) {
+    return res.status(404).json({ message: 'No hay periodo academico activo.' });
+  }
+
+  let fechaLimite = null;
+  if (fechaLimiteRaw) {
+    fechaLimite = new Date(fechaLimiteRaw);
+    if (Number.isNaN(fechaLimite.getTime())) {
+      return res.status(400).json({ message: 'fecha_limite_calificaciones invalida.' });
+    }
+  }
+
+  periodo.fecha_limite_calificaciones = fechaLimite;
+  await periodo.save();
+
+  await registrarEventoAuditoria({
+    idUsuario: req.user.id_usuario,
+    rolActor: req.user.rol,
+    accion: 'actualizar_fecha_limite_calificaciones',
+    modulo: 'coordinacion_academica',
+    entidad: 'periodos_academicos',
+    idEntidad: periodo.id_periodo,
+    detalle: { fecha_limite_calificaciones: fechaLimite },
+  });
+
+  return res.json({ id_periodo: periodo.id_periodo, fecha_limite_calificaciones: periodo.fecha_limite_calificaciones });
+}
+
+async function listarCalificacionesFormativasOverride(req, res) {
+  const materiaId = toInt(req.query.materia_id);
+  const grupoId = normalizeText(req.query.grupo_id);
+
+  if (!Number.isInteger(materiaId) || !grupoId) {
+    return res.status(400).json({ message: 'materia_id y grupo_id son obligatorios.' });
+  }
+
+  const alumnosGrupo = await AlumnoGrupo.findAll({
+    where: { id_materia: materiaId, grupo: grupoId },
+    include: [{
+      model: AlumnoPerfil,
+      as: 'alumno',
+      include: [{ model: Usuario, as: 'usuario', attributes: ['id_usuario', 'folio_matricula', 'nombre_completo'] }],
+    }],
+    order: [['id_alumno_grupo', 'ASC']],
+  });
+
+  const alumnosIds = alumnosGrupo.map((item) => Number(item.id_alumno));
+  const calificaciones = alumnosIds.length > 0
+    ? await CalificacionFormativaDocente.findAll({
+      where: { id_materia: materiaId, grupo_id: grupoId, id_alumno: { [Op.in]: alumnosIds } },
+    })
+    : [];
+
+  const calificacionesPorAlumno = new Map();
+  calificaciones.forEach((item) => {
+    const key = Number(item.id_alumno);
+    if (!calificacionesPorAlumno.has(key)) calificacionesPorAlumno.set(key, {});
+    calificacionesPorAlumno.get(key)[`formativa_${item.formativa_numero}`] = {
+      id_calificacion: item.id_calificacion,
+      calificacion: Number(item.calificacion),
+    };
+  });
+
+  const items = alumnosGrupo.map((item) => {
+    const registros = calificacionesPorAlumno.get(Number(item.id_alumno)) || {};
+    return {
+      id_alumno: item.id_alumno,
+      nombre_completo: item.alumno?.usuario?.nombre_completo || `Alumno ${item.id_alumno}`,
+      folio_matricula: item.alumno?.usuario?.folio_matricula || null,
+      formativa_1: registros.formativa_1 || null,
+      formativa_2: registros.formativa_2 || null,
+    };
+  });
+
+  return res.json({ items });
+}
+
+async function actualizarCalificacionFormativaOverride(req, res) {
+  const alumnoId = toInt(req.body.alumno_id);
+  const materiaId = toInt(req.body.materia_id);
+  const grupoId = normalizeText(req.body.grupo_id);
+  const formativaNumero = toInt(req.body.formativa_numero);
+  const calificacion = Number(req.body.calificacion);
+  const motivo = normalizeText(req.body.motivo);
+
+  if (!Number.isInteger(alumnoId) || !Number.isInteger(materiaId) || !grupoId
+    || ![1, 2].includes(formativaNumero) || !Number.isFinite(calificacion) || calificacion < 0 || calificacion > 10) {
+    return res.status(400).json({ message: 'alumno_id, materia_id, grupo_id, formativa_numero (1 o 2) y calificacion (0..10) son obligatorios.' });
+  }
+
+  const inscripcion = await AlumnoGrupo.findOne({ where: { id_alumno: alumnoId, id_materia: materiaId, grupo: grupoId } });
+  if (!inscripcion) {
+    return res.status(400).json({ message: 'El alumno no pertenece a ese grupo/materia.' });
+  }
+
+  const [item] = await CalificacionFormativaDocente.findOrCreate({
+    where: { id_alumno: alumnoId, id_materia: materiaId, grupo_id: grupoId, formativa_numero: formativaNumero },
+    defaults: {
+      id_docente: req.user.id_usuario,
+      calificacion,
+      retroalimentacion: motivo,
+      fecha_captura: new Date(),
+    },
+  });
+
+  if (!item.isNewRecord) {
+    item.calificacion = calificacion;
+    item.retroalimentacion = motivo || item.retroalimentacion;
+    item.fecha_captura = new Date();
+    await item.save();
+  }
+
+  await registrarEventoAuditoria({
+    idUsuario: req.user.id_usuario,
+    rolActor: req.user.rol,
+    accion: 'override_calificacion_formativa_coordinacion',
+    modulo: 'coordinacion_academica',
+    entidad: 'calificaciones_formativas_docente',
+    idEntidad: item.id_calificacion,
+    detalle: { alumno_id: alumnoId, materia_id: materiaId, grupo_id: grupoId, formativa_numero: formativaNumero, calificacion, motivo },
+  });
+
+  return res.json({
+    id_calificacion: item.id_calificacion,
+    alumno_id: alumnoId,
+    formativa_numero: formativaNumero,
+    calificacion: item.calificacion,
+  });
+}
+
 async function meritosRecientes(_req, res) {
   const rows = await MeritoAcademico.findAll({
     include: [{
@@ -1178,6 +1373,11 @@ module.exports = {
   eliminarMateriaPrograma,
   alumnosProgreso,
   portafolioAlumno,
+  actualizarEstadoAcademicoAlumno,
+  obtenerPeriodoActivo,
+  actualizarFechaLimiteCalificaciones,
+  listarCalificacionesFormativasOverride,
+  actualizarCalificacionFormativaOverride,
   meritosRecientes,
   asignarMerito,
 };

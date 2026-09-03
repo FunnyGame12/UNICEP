@@ -199,6 +199,17 @@ export default function CoordinacionAcademicaPage() {
   const [portafolioAlumnoData, setPortafolioAlumnoData] = useState(null);
   const [portafolioAlumnoLoading, setPortafolioAlumnoLoading] = useState(false);
 
+  const [periodoActivoCoord, setPeriodoActivoCoord] = useState(null);
+  const [fechaLimiteSending, setFechaLimiteSending] = useState(false);
+
+  const [overrideMateriaId, setOverrideMateriaId] = useState('');
+  const [overrideGrupoId, setOverrideGrupoId] = useState('');
+  const [overrideAlumnos, setOverrideAlumnos] = useState([]);
+  const [overrideDrafts, setOverrideDrafts] = useState({});
+  const [overrideLoading, setOverrideLoading] = useState(false);
+  const [overrideSending, setOverrideSending] = useState(false);
+  const [overrideMotivo, setOverrideMotivo] = useState('');
+
   const [alumnoGrupoItems, setAlumnoGrupoItems] = useState([]);
   const [alumnoGrupoSearch, setAlumnoGrupoSearch] = useState('');
   const [alumnoGrupoTableLoading, setAlumnoGrupoTableLoading] = useState(false);
@@ -309,6 +320,12 @@ export default function CoordinacionAcademicaPage() {
     },
   });
 
+  const fechaLimiteCalifForm = useForm({
+    defaultValues: {
+      fecha_limite_calificaciones: '',
+    },
+  });
+
   const alumnos = useMemo(() => alumnosProgreso.map((item) => ({
     id_alumno: item.id_alumno,
     nombre_completo: item.nombre_completo,
@@ -322,6 +339,11 @@ export default function CoordinacionAcademicaPage() {
     }
     return alumnoGrupoGrupos;
   }, [alumnoGrupoSelectedMateria, alumnoGrupoGruposPorMateria, alumnoGrupoGrupos]);
+
+  const overrideGruposDisponibles = useMemo(
+    () => grupos.filter((grupo) => String(grupo.materia_id) === String(overrideMateriaId)),
+    [grupos, overrideMateriaId],
+  );
 
   async function loadData() {
     setLoading(true);
@@ -399,6 +421,46 @@ export default function CoordinacionAcademicaPage() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    cargarPeriodoActivoCoord();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    async function cargarOverrideCalificaciones() {
+      if (!overrideMateriaId || !overrideGrupoId) {
+        setOverrideAlumnos([]);
+        setOverrideDrafts({});
+        return;
+      }
+
+      setOverrideLoading(true);
+      try {
+        const response = await api.get('/coordinacion/calificaciones-formativas', {
+          params: { materia_id: Number(overrideMateriaId), grupo_id: overrideGrupoId },
+        });
+        const items = response?.data?.items || [];
+        setOverrideAlumnos(items);
+        setOverrideDrafts(
+          items.reduce((acc, item) => {
+            acc[item.id_alumno] = {
+              formativa_1: item.formativa_1?.calificacion ?? '',
+              formativa_2: item.formativa_2?.calificacion ?? '',
+            };
+            return acc;
+          }, {}),
+        );
+      } catch {
+        setOverrideAlumnos([]);
+        setOverrideDrafts({});
+      } finally {
+        setOverrideLoading(false);
+      }
+    }
+
+    cargarOverrideCalificaciones();
+  }, [overrideMateriaId, overrideGrupoId]);
 
   useEffect(() => {
     if (!alumnos.length) {
@@ -563,6 +625,109 @@ export default function CoordinacionAcademicaPage() {
       setAlumnoGrupoItems(response?.data?.items || []);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo eliminar la asignacion alumno-grupo.');
+    }
+  }
+
+  async function alternarEstadoAcademico(idAlumno, estadoActual) {
+    const nuevoEstado = estadoActual === 'suspendido' ? 'activo' : 'suspendido';
+    setError('');
+    setMessage('');
+
+    try {
+      await api.put(`/coordinacion/alumnos/${idAlumno}/estado-academico`, { estado_academico: nuevoEstado });
+      setMessage(`Estado academico actualizado a ${nuevoEstado}.`);
+      setAlumnoGrupoItems((prev) => prev.map((item) => (
+        Number(item.id_alumno) === Number(idAlumno)
+          ? { ...item, alumno: { ...item.alumno, estado_academico: nuevoEstado } }
+          : item
+      )));
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo actualizar el estado academico del alumno.');
+    }
+  }
+
+  async function cargarPeriodoActivoCoord() {
+    try {
+      const response = await api.get('/coordinacion/periodo-activo');
+      const periodo = response?.data?.periodo || null;
+      setPeriodoActivoCoord(periodo);
+      fechaLimiteCalifForm.reset({
+        fecha_limite_calificaciones: periodo?.fecha_limite_calificaciones
+          ? new Date(periodo.fecha_limite_calificaciones).toISOString().slice(0, 16)
+          : '',
+      });
+    } catch {
+      setPeriodoActivoCoord(null);
+    }
+  }
+
+  async function submitFechaLimiteCalif(values) {
+    setFechaLimiteSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      await api.put('/coordinacion/periodo-activo/fecha-limite-calificaciones', {
+        fecha_limite_calificaciones: values.fecha_limite_calificaciones || null,
+      });
+      setMessage('Fecha limite de calificaciones actualizada correctamente.');
+      await cargarPeriodoActivoCoord();
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo actualizar la fecha limite de calificaciones.');
+    } finally {
+      setFechaLimiteSending(false);
+    }
+  }
+
+  async function guardarOverrideCalificaciones(idAlumno) {
+    const draft = overrideDrafts[idAlumno];
+    if (!draft) return;
+
+    setOverrideSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const solicitudes = [];
+      [1, 2].forEach((numero) => {
+        const valor = draft[`formativa_${numero}`];
+        if (valor === '' || valor === null || valor === undefined) return;
+        solicitudes.push(api.put('/coordinacion/calificaciones-formativas/override', {
+          alumno_id: idAlumno,
+          materia_id: Number(overrideMateriaId),
+          grupo_id: overrideGrupoId,
+          formativa_numero: numero,
+          calificacion: Number(valor),
+          motivo: overrideMotivo.trim() || undefined,
+        }));
+      });
+
+      if (solicitudes.length === 0) {
+        setError('Captura al menos una calificacion formativa para guardar.');
+        return;
+      }
+
+      await Promise.all(solicitudes);
+      setMessage(`Calificaciones actualizadas para el alumno #${idAlumno}.`);
+
+      const response = await api.get('/coordinacion/calificaciones-formativas', {
+        params: { materia_id: Number(overrideMateriaId), grupo_id: overrideGrupoId },
+      });
+      const items = response?.data?.items || [];
+      setOverrideAlumnos(items);
+      setOverrideDrafts(
+        items.reduce((acc, item) => {
+          acc[item.id_alumno] = {
+            formativa_1: item.formativa_1?.calificacion ?? '',
+            formativa_2: item.formativa_2?.calificacion ?? '',
+          };
+          return acc;
+        }, {}),
+      );
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo actualizar la calificacion del alumno.');
+    } finally {
+      setOverrideSending(false);
     }
   }
 
@@ -1103,34 +1268,61 @@ export default function CoordinacionAcademicaPage() {
                     <th>Asignatura</th>
                     <th>Grupo</th>
                     <th>Fecha alta</th>
+                    <th>Estado del alumno</th>
+                    <th>Portafolio (Drive)</th>
                     <th>Accion</th>
                   </tr>
                 </thead>
                 <tbody>
                   {alumnoGrupoTableLoading ? (
                     <tr>
-                      <td colSpan="6">Cargando asignaciones...</td>
+                      <td colSpan="8">Cargando asignaciones...</td>
                     </tr>
                   ) : null}
                   {!alumnoGrupoTableLoading && alumnoGrupoItems.length === 0 ? (
                     <tr>
-                      <td colSpan="6">Sin resultados.</td>
+                      <td colSpan="8">Sin resultados.</td>
                     </tr>
                   ) : null}
-                  {!alumnoGrupoTableLoading ? alumnoGrupoItems.map((item) => (
-                    <tr key={`ag-${item.id_alumno_grupo}`}>
-                      <td>{item.id_alumno_grupo}</td>
-                      <td>{item.alumno?.usuario ? `${item.alumno.usuario.folio_matricula || 'SIN-FOLIO'} · ${item.alumno.usuario.nombre_completo}` : item.id_alumno}</td>
-                      <td>{item.materia ? `${item.materia.nombre_materia} (${item.materia.codigo_materia || 'SIN-CODIGO'})` : item.id_materia}</td>
-                      <td>{item.grupo}</td>
-                      <td>{new Date(item.fecha_alta).toLocaleString()}</td>
-                      <td>
-                        <button type="button" className="btn-danger-sm" onClick={() => eliminarAlumnoGrupo(item.id_alumno, item.id_materia)}>
-                          Eliminar
-                        </button>
-                      </td>
-                    </tr>
-                  )) : null}
+                  {!alumnoGrupoTableLoading ? alumnoGrupoItems.map((item) => {
+                    const estadoAcademico = item.alumno?.estado_academico || 'activo';
+                    const driveFolderUrl = item.alumno?.drive_folder_url;
+                    return (
+                      <tr key={`ag-${item.id_alumno_grupo}`}>
+                        <td>{item.id_alumno_grupo}</td>
+                        <td>{item.alumno?.usuario ? `${item.alumno.usuario.folio_matricula || 'SIN-FOLIO'} · ${item.alumno.usuario.nombre_completo}` : item.id_alumno}</td>
+                        <td>{item.materia ? `${item.materia.nombre_materia} (${item.materia.codigo_materia || 'SIN-CODIGO'})` : item.id_materia}</td>
+                        <td>{item.grupo}</td>
+                        <td>{new Date(item.fecha_alta).toLocaleString()}</td>
+                        <td>
+                          <span className={`coord-estado-badge ${estadoAcademico === 'suspendido' ? 'is-suspendido' : 'is-activo'}`}>
+                            {estadoAcademico === 'suspendido' ? 'Suspendido' : 'Activo'}
+                          </span>
+                        </td>
+                        <td>
+                          {driveFolderUrl ? (
+                            <a href={driveFolderUrl} target="_blank" rel="noreferrer">Ver portafolio</a>
+                          ) : (
+                            <span className="coord-empty-inline">Sin carpeta</span>
+                          )}
+                        </td>
+                        <td>
+                          <div className="coord-actions-stack">
+                            <button type="button" className="btn-danger-sm" onClick={() => eliminarAlumnoGrupo(item.id_alumno, item.id_materia)}>
+                              Eliminar
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-secondary-sm"
+                              onClick={() => alternarEstadoAcademico(item.id_alumno, estadoAcademico)}
+                            >
+                              {estadoAcademico === 'suspendido' ? 'Reactivar' : 'Suspender'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }) : null}
                 </tbody>
               </table>
             </div>
@@ -1302,6 +1494,27 @@ export default function CoordinacionAcademicaPage() {
       {activeTab === 'calificaciones' ? (
         <div className="coord-grid-2">
           <article className="coord-card coord-span-2">
+            <h3>Fecha límite de calificaciones formativas</h3>
+            <p>
+              {periodoActivoCoord
+                ? `Periodo activo: ${periodoActivoCoord.nombre} (${periodoActivoCoord.ciclo})`
+                : 'Sin periodo academico activo configurado.'}
+            </p>
+            <form className="form-grid" onSubmit={fechaLimiteCalifForm.handleSubmit(submitFechaLimiteCalif)}>
+              <label htmlFor="coord-fecha-limite-calif">Fecha y hora limite</label>
+              <input
+                id="coord-fecha-limite-calif"
+                type="datetime-local"
+                {...fechaLimiteCalifForm.register('fecha_limite_calificaciones')}
+                disabled={!periodoActivoCoord}
+              />
+              <button type="submit" className="btn-primary" disabled={fechaLimiteSending || !periodoActivoCoord}>
+                {fechaLimiteSending ? 'Guardando...' : 'Actualizar fecha limite'}
+              </button>
+            </form>
+          </article>
+
+          <article className="coord-card coord-span-2">
             <h3>Filtro curricular para calificaciones</h3>
             <div className="coord-curricular-grid">
               <div className="coord-form-group">
@@ -1427,6 +1640,136 @@ export default function CoordinacionAcademicaPage() {
                 {sending ? 'Agendando...' : 'Agendar extraordinario'}
               </button>
             </form>
+          </article>
+
+          <article className="coord-card coord-span-2">
+            <h3>Override de calificaciones bloqueadas</h3>
+            <p>Consulta y ajusta calificaciones formativas de un grupo, incluso si la fecha limite ya vencio para el docente.</p>
+
+            <div className="coord-curricular-grid">
+              <div className="coord-form-group">
+                <label htmlFor="coord-override-materia">Materia</label>
+                <select
+                  id="coord-override-materia"
+                  value={overrideMateriaId}
+                  onChange={(event) => {
+                    setOverrideMateriaId(event.target.value);
+                    setOverrideGrupoId('');
+                  }}
+                >
+                  <option value="">Selecciona materia</option>
+                  {materiasCalifFiltradas.map((materia) => (
+                    <option key={`ov-m-${materia.id_materia}`} value={String(materia.id_materia)}>
+                      {materia.nombre_materia}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="coord-form-group">
+                <label htmlFor="coord-override-grupo">Grupo</label>
+                <select
+                  id="coord-override-grupo"
+                  value={overrideGrupoId}
+                  onChange={(event) => setOverrideGrupoId(event.target.value)}
+                  disabled={!overrideMateriaId}
+                >
+                  <option value="">Selecciona grupo</option>
+                  {overrideGruposDisponibles.map((grupo) => (
+                    <option key={`ov-g-${grupo.materia_id}-${grupo.grupo_id}`} value={grupo.grupo_id}>
+                      {grupo.etiqueta}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="coord-form-group">
+                <label htmlFor="coord-override-motivo">Motivo del ajuste (opcional)</label>
+                <input
+                  id="coord-override-motivo"
+                  placeholder="Autorizado por Direccion / caso especial"
+                  value={overrideMotivo}
+                  onChange={(event) => setOverrideMotivo(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="table-wrap coord-table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Alumno</th>
+                    <th>Formativa 1</th>
+                    <th>Formativa 2</th>
+                    <th>Accion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overrideLoading ? (
+                    <tr>
+                      <td colSpan="4">Cargando calificaciones...</td>
+                    </tr>
+                  ) : null}
+                  {!overrideLoading && (!overrideMateriaId || !overrideGrupoId) ? (
+                    <tr>
+                      <td colSpan="4">Selecciona materia y grupo para consultar calificaciones.</td>
+                    </tr>
+                  ) : null}
+                  {!overrideLoading && overrideMateriaId && overrideGrupoId && overrideAlumnos.length === 0 ? (
+                    <tr>
+                      <td colSpan="4">Sin alumnos inscritos en ese grupo.</td>
+                    </tr>
+                  ) : null}
+                  {!overrideLoading ? overrideAlumnos.map((item) => {
+                    const draft = overrideDrafts[item.id_alumno] || { formativa_1: '', formativa_2: '' };
+                    return (
+                      <tr key={`ov-a-${item.id_alumno}`}>
+                        <td>
+                          <strong>{item.nombre_completo}</strong>
+                          <p>{item.folio_matricula || 'SIN-FOLIO'}</p>
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            step="0.1"
+                            value={draft.formativa_1}
+                            onChange={(event) => setOverrideDrafts((prev) => ({
+                              ...prev,
+                              [item.id_alumno]: { ...draft, formativa_1: event.target.value },
+                            }))}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10"
+                            step="0.1"
+                            value={draft.formativa_2}
+                            onChange={(event) => setOverrideDrafts((prev) => ({
+                              ...prev,
+                              [item.id_alumno]: { ...draft, formativa_2: event.target.value },
+                            }))}
+                          />
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            disabled={overrideSending}
+                            onClick={() => guardarOverrideCalificaciones(item.id_alumno)}
+                          >
+                            Guardar
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  }) : null}
+                </tbody>
+              </table>
+            </div>
           </article>
         </div>
       ) : null}

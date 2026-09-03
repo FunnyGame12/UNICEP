@@ -33,6 +33,14 @@ router.delete('/materias/:id', coordinacionController.eliminarMateriaPrograma);
 
 router.get('/alumnos-progreso', coordinacionController.alumnosProgreso);
 router.get('/alumnos/:alumnoId/portafolio', coordinacionController.portafolioAlumno);
+router.put('/alumnos/:alumnoId/estado-academico', coordinacionController.actualizarEstadoAcademicoAlumno);
+
+router.get('/periodo-activo', coordinacionController.obtenerPeriodoActivo);
+router.put('/periodo-activo/fecha-limite-calificaciones', coordinacionController.actualizarFechaLimiteCalificaciones);
+
+router.get('/calificaciones-formativas', coordinacionController.listarCalificacionesFormativasOverride);
+router.put('/calificaciones-formativas/override', coordinacionController.actualizarCalificacionFormativaOverride);
+
 router.get('/meritos-recientes', coordinacionController.meritosRecientes);
 router.post('/asignar-merito', coordinacionController.asignarMerito);
 
