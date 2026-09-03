@@ -11,7 +11,7 @@ const {
   Tarea,
   EvaluacionExtraordinaria,
   AsistenciaDocente,
-  PortafolioEvidencia,
+  PortafolioMateriaEvidencia,
 } = require('../../models');
 
 const CICLO_ESCOLAR_LABEL = 'CICLO ESCOLAR 2025-2026';
@@ -83,7 +83,7 @@ async function construirDatosBoleta(alumno) {
   const materiasInscritas = [...materiasMap.values()];
   const materiaIds = materiasInscritas.map((item) => item.id_materia);
 
-  const [entregasCalificadas, evidenciasPortafolio, extraordinarios, asistencias] = await Promise.all([
+  const [entregasCalificadas, validacionesPortafolio, extraordinarios, asistencias] = await Promise.all([
     materiaIds.length > 0
       ? EntregaTarea.findAll({
         where: {
@@ -107,12 +107,13 @@ async function construirDatosBoleta(alumno) {
       })
       : Promise.resolve([]),
     materiaIds.length > 0
-      ? PortafolioEvidencia.findAll({
+      ? PortafolioMateriaEvidencia.findAll({
         where: {
-          id_alumno: idAlumno,
-          id_materia: { [Op.in]: materiaIds },
+          alumno_id: idAlumno,
+          materia_id: { [Op.in]: materiaIds },
+          estado: 'validado',
         },
-        attributes: ['id_materia'],
+        attributes: ['materia_id'],
       })
       : Promise.resolve([]),
     materiaIds.length > 0
@@ -148,9 +149,9 @@ async function construirDatosBoleta(alumno) {
     finalesByMateria.set(idMateria, base);
   });
 
-  const portafolioMateriasSet = new Set(
-    evidenciasPortafolio
-      .map((item) => Number(item.id_materia))
+  const portafolioValidadoMateriasSet = new Set(
+    validacionesPortafolio
+      .map((item) => Number(item.materia_id))
       .filter(Number.isInteger),
   );
 
@@ -176,7 +177,7 @@ async function construirDatosBoleta(alumno) {
     return {
       ...materia,
       final,
-      entrego_portafolio: portafolioMateriasSet.has(materia.id_materia),
+      entrego_portafolio: portafolioValidadoMateriasSet.has(materia.id_materia),
     };
   });
 
