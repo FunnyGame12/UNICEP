@@ -114,6 +114,7 @@ export default function ControlEscolarPage() {
   const [searchAlumno, setSearchAlumno] = useState('');
   const [filterEstatus, setFilterEstatus] = useState('');
   const [draftAccesos, setDraftAccesos] = useState({});
+  const [descargandoBoletaId, setDescargandoBoletaId] = useState(null);
 
   const [portafolioSearch, setPortafolioSearch] = useState('');
   const [selectedPortafolioAlumnoId, setSelectedPortafolioAlumnoId] = useState(null);
@@ -507,6 +508,34 @@ export default function ControlEscolarPage() {
     }
   }
 
+  async function handleDescargarBoleta(alumnoId, matricula) {
+    setError('');
+    setMessage('');
+    setDescargandoBoletaId(alumnoId);
+
+    try {
+      const response = await api.get(`/control-escolar/alumnos/${alumnoId}/boleta`, {
+        responseType: 'blob',
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Boleta_${matricula || alumnoId}.xlsx`);
+
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      setMessage('Boleta descargada correctamente.');
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo generar la boleta.');
+    } finally {
+      setDescargandoBoletaId(null);
+    }
+  }
+
   async function guardarTramite(values) {
     if (!selectedTramite) {
       setError('Selecciona un trámite para actualizar.');
@@ -719,17 +748,18 @@ export default function ControlEscolarPage() {
                   <th>Bloqueo plataforma</th>
                   <th>Bloqueo calificaciones</th>
                   <th>Acción</th>
+                  <th>Boleta</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan="5">Cargando alumnos...</td>
+                    <td colSpan="6">Cargando alumnos...</td>
                   </tr>
                 ) : null}
                 {!loading && alumnosFiltered.length === 0 ? (
                   <tr>
-                    <td colSpan="5">Sin resultados para los filtros seleccionados.</td>
+                    <td colSpan="6">Sin resultados para los filtros seleccionados.</td>
                   </tr>
                 ) : null}
 
@@ -796,6 +826,16 @@ export default function ControlEscolarPage() {
                       <td>
                         <button type="button" className="btn-secondary" onClick={() => guardarAccesos(item.id_alumno)} disabled={sending}>
                           Guardar
+                        </button>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => handleDescargarBoleta(item.id_alumno, item.folio_matricula)}
+                          disabled={descargandoBoletaId === item.id_alumno}
+                        >
+                          {descargandoBoletaId === item.id_alumno ? 'Generando...' : '📄 Descargar Boleta'}
                         </button>
                       </td>
                     </tr>
