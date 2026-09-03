@@ -33,6 +33,7 @@ const ESTATUS_PROGRAMA_VALIDOS = new Set(['en_revision', 'horas_cubiertas', 'lib
 const TIPOS_NIVEL_VALIDOS = new Set(['preparatoria', 'licenciatura', 'ingenieria', 'maestria']);
 const MODALIDADES_PERIODO_VALIDAS = new Set(['cuatrimestral']);
 const ESTATUS_PROGRAMA_ACADEMICO_VALIDOS = new Set(['activo', 'inactivo']);
+const CURP_REGEX = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/;
 
 function toInt(value) {
   const parsed = Number(value);
@@ -54,6 +55,10 @@ function normalizeEnum(value) {
 }
 
 function normalizeGrupo(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function normalizeCurp(value) {
   return String(value || '').trim().toUpperCase();
 }
 
@@ -608,7 +613,7 @@ async function alumnosProgreso(_req, res) {
       include: [{
         model: Usuario,
         as: 'usuario',
-        attributes: ['id_usuario', 'folio_matricula', 'nombre_completo', 'correo'],
+        attributes: ['id_usuario', 'folio_matricula', 'nombre_completo', 'correo', 'curp'],
       }],
       order: [[{ model: Usuario, as: 'usuario' }, 'nombre_completo', 'ASC']],
     }),
@@ -646,6 +651,7 @@ async function alumnosProgreso(_req, res) {
       id_alumno: alumno.id_alumno,
       nombre_completo: alumno.usuario?.nombre_completo || `Alumno ${alumno.id_alumno}`,
       folio_matricula: alumno.usuario?.folio_matricula || null,
+      curp: alumno.usuario?.curp || null,
       carrera: alumno.carrera,
       porcentaje_avance: porcentaje,
       promedio_global: promedio,
@@ -752,6 +758,70 @@ async function actualizarEstadoAcademicoAlumno(req, res) {
   });
 
   return res.json({ id_alumno: alumno.id_alumno, estado_academico: alumno.estado_academico });
+}
+
+async function actualizarCurpAlumno(req, res) {
+  const alumnoId = toInt(req.params.alumnoId);
+  const curp = normalizeCurp(req.body.curp);
+
+  if (!Number.isInteger(alumnoId)) {
+    return res.status(400).json({ message: 'alumnoId invalido.' });
+  }
+
+  if (!CURP_REGEX.test(curp)) {
+    return res.status(400).json({ message: 'CURP invalida. Debe contener 18 caracteres con formato oficial.' });
+  }
+
+  const [alumno, usuarioDuplicado] = await Promise.all([
+    AlumnoPerfil.findByPk(alumnoId, {
+      include: [{
+        model: Usuario,
+        as: 'usuario',
+        attributes: ['id_usuario', 'curp', 'nombre_completo', 'folio_matricula'],
+      }],
+    }),
+    Usuario.findOne({
+      where: {
+        curp,
+        id_usuario: { [Op.ne]: alumnoId },
+      },
+      attributes: ['id_usuario'],
+    }),
+  ]);
+
+  if (!alumno || !alumno.usuario) {
+    return res.status(404).json({ message: 'Alumno no encontrado.' });
+  }
+
+  if (usuarioDuplicado) {
+    return res.status(409).json({ message: 'La CURP ya esta asignada a otro usuario.' });
+  }
+
+  const curpAnterior = alumno.usuario.curp || null;
+  alumno.usuario.curp = curp;
+  await alumno.usuario.save();
+
+  await registrarEventoAuditoria({
+    idUsuario: req.user.id_usuario,
+    rolActor: req.user.rol,
+    accion: 'actualizar_curp_alumno',
+    modulo: 'coordinacion_academica',
+    entidad: 'usuarios',
+    idEntidad: alumno.usuario.id_usuario,
+    detalle: {
+      id_alumno: alumnoId,
+      curp_anterior: curpAnterior,
+      curp_nueva: curp,
+    },
+  });
+
+  return res.json({
+    id_alumno: alumnoId,
+    id_usuario: alumno.usuario.id_usuario,
+    nombre_completo: alumno.usuario.nombre_completo,
+    folio_matricula: alumno.usuario.folio_matricula,
+    curp: alumno.usuario.curp,
+  });
 }
 
 async function obtenerPeriodoActivo(_req, res) {
@@ -1374,6 +1444,7 @@ module.exports = {
   alumnosProgreso,
   portafolioAlumno,
   actualizarEstadoAcademicoAlumno,
+  actualizarCurpAlumno,
   obtenerPeriodoActivo,
   actualizarFechaLimiteCalificaciones,
   listarCalificacionesFormativasOverride,

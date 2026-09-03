@@ -24,6 +24,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         unique: true,
       },
+      curp: {
+        type: DataTypes.STRING(18),
+        allowNull: true,
+        unique: true,
+      },
       password_hash: {
         type: DataTypes.STRING(255),
         allowNull: false,

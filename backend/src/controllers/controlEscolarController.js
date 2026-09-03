@@ -560,7 +560,7 @@ async function descargarBoletaAlumno(req, res) {
       {
         model: Usuario,
         as: 'usuario',
-        attributes: ['id_usuario', 'folio_matricula', 'nombre_completo', 'correo'],
+        attributes: ['id_usuario', 'folio_matricula', 'nombre_completo', 'correo', 'curp'],
       },
       {
         model: AlumnoGrupo,
