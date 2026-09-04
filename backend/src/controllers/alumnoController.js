@@ -498,7 +498,12 @@ async function asistencia(req, res) {
     return res.status(validacion.status).json(validacion.payload);
   }
 
-  const { materiasIds, asignaciones } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+  const {
+    grupos,
+    materiasIds,
+    gruposPorMateria,
+    asignaciones,
+  } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
   if (materiasIds.length === 0) {
     return res.json({ items: [], acumulado: [] });
   }
@@ -520,33 +525,109 @@ async function asistencia(req, res) {
     }
   });
 
-  const acumuladoMap = new Map();
-  items.forEach((item) => {
+  const materiaMeta = new Map();
+  grupos.forEach((item) => {
     const idMateria = Number(item.id_materia);
-    const base = acumuladoMap.get(idMateria) || {
-      id_materia: idMateria,
+    if (!Number.isInteger(idMateria) || materiaMeta.has(idMateria)) return;
+    materiaMeta.set(idMateria, {
       materia: item.materia?.nombre_materia || `Materia ${idMateria}`,
-      docente: docentePorMateria.get(idMateria) || 'Por asignar',
-      total: 0,
+      codigo_materia: item.materia?.codigo_materia || null,
+    });
+  });
+
+  const filtrosMateriaGrupo = [];
+  gruposPorMateria.forEach((gruposSet, materiaId) => {
+    gruposSet.forEach((grupo) => {
+      filtrosMateriaGrupo.push({ id_materia: Number(materiaId), grupo: String(grupo || '').trim() });
+    });
+  });
+
+  const companerosGrupo = filtrosMateriaGrupo.length > 0
+    ? await AlumnoGrupo.findAll({
+      where: { [Op.or]: filtrosMateriaGrupo },
+      attributes: ['id_materia', 'id_alumno'],
+      raw: true,
+    })
+    : [];
+
+  const universoAlumnoIds = [...new Set(
+    companerosGrupo
+      .map((row) => Number(row.id_alumno))
+      .filter(Number.isInteger),
+  )];
+
+  const clasesUnicasPorMateriaRows = universoAlumnoIds.length > 0
+    ? await AsistenciaDocente.findAll({
+      where: {
+        id_materia: { [Op.in]: materiasIds },
+        id_alumno: { [Op.in]: universoAlumnoIds },
+      },
+      attributes: ['id_materia', 'fecha_clase'],
+      group: ['id_materia', 'fecha_clase'],
+      raw: true,
+    })
+    : [];
+
+  const totalClasesPorMateria = new Map();
+  clasesUnicasPorMateriaRows.forEach((row) => {
+    const idMateria = Number(row.id_materia);
+    if (!Number.isInteger(idMateria)) return;
+    totalClasesPorMateria.set(idMateria, (totalClasesPorMateria.get(idMateria) || 0) + 1);
+  });
+
+  const resumenAlumnoRows = await AsistenciaDocente.findAll({
+    where: {
+      id_alumno: validacion.idAlumno,
+      id_materia: { [Op.in]: materiasIds },
+    },
+    attributes: [
+      'id_materia',
+      [AsistenciaDocente.sequelize.fn('SUM', AsistenciaDocente.sequelize.literal("CASE WHEN estatus_asistencia = 'presente' THEN 1 ELSE 0 END")), 'presentes'],
+      [AsistenciaDocente.sequelize.fn('SUM', AsistenciaDocente.sequelize.literal("CASE WHEN estatus_asistencia = 'ausente' THEN 1 ELSE 0 END")), 'faltas'],
+      [AsistenciaDocente.sequelize.fn('SUM', AsistenciaDocente.sequelize.literal("CASE WHEN estatus_asistencia = 'retardo' THEN 1 ELSE 0 END")), 'retardos'],
+      [AsistenciaDocente.sequelize.fn('SUM', AsistenciaDocente.sequelize.literal("CASE WHEN estatus_asistencia = 'justificado' THEN 1 ELSE 0 END")), 'justificados'],
+    ],
+    group: ['id_materia'],
+    raw: true,
+  });
+
+  const resumenAlumnoMap = new Map();
+  resumenAlumnoRows.forEach((row) => {
+    const idMateria = Number(row.id_materia);
+    if (!Number.isInteger(idMateria)) return;
+    resumenAlumnoMap.set(idMateria, {
+      presentes: Number(row.presentes || 0),
+      faltas: Number(row.faltas || 0),
+      retardos: Number(row.retardos || 0),
+      justificados: Number(row.justificados || 0),
+    });
+  });
+
+  const acumulado = materiasIds.map((idMateria) => {
+    const meta = materiaMeta.get(idMateria) || {};
+    const stats = resumenAlumnoMap.get(idMateria) || {
       presentes: 0,
       faltas: 0,
       retardos: 0,
       justificados: 0,
     };
+    const totalClases = Number(totalClasesPorMateria.get(idMateria) || 0);
 
-    base.total += 1;
-    if (item.estatus_asistencia === 'presente') base.presentes += 1;
-    if (item.estatus_asistencia === 'ausente') base.faltas += 1;
-    if (item.estatus_asistencia === 'retardo') base.retardos += 1;
-    if (item.estatus_asistencia === 'justificado') base.justificados += 1;
-
-    acumuladoMap.set(idMateria, base);
+    return {
+      id_materia: idMateria,
+      materia: meta.materia || `Materia ${idMateria}`,
+      codigo_materia: meta.codigo_materia || null,
+      docente: docentePorMateria.get(idMateria) || 'Por asignar',
+      total: totalClases,
+      presentes: stats.presentes,
+      faltas: stats.faltas,
+      retardos: stats.retardos,
+      justificados: stats.justificados,
+      porcentaje_asistencia: totalClases > 0
+        ? Number(((stats.presentes / totalClases) * 100).toFixed(1))
+        : 0,
+    };
   });
-
-  const acumulado = [...acumuladoMap.values()].map((item) => ({
-    ...item,
-    porcentaje_asistencia: item.total > 0 ? Number(((item.presentes / item.total) * 100).toFixed(1)) : 0,
-  }));
 
   return res.json({ items, acumulado });
 }
