@@ -38,6 +38,10 @@ function normalizeGrupo(value) {
   return String(value || '').trim().toUpperCase();
 }
 
+function isIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
+}
+
 function resolveBackendFileUrl(filePath) {
   const raw = String(filePath || '').trim();
   if (!raw) return '';
@@ -245,13 +249,15 @@ export default function DocentePage() {
     const grupoId = String(selectedAsignacion.grupo_id);
     const materiaId = Number(selectedAsignacion.materia_id);
     const response = await api.get(`/asistencias/historial/${materiaId}/${encodeURIComponent(grupoId)}`);
-    setHistorialFechas(response?.data?.fechas || []);
+    const fechas = Array.isArray(response?.data?.fechas) ? response.data.fechas : [];
+    setHistorialFechas([...new Set(fechas.filter((item) => isIsoDate(item)))]);
   }
 
   function handleSeleccionarFechaHistorial(value) {
-    if (!value) return;
+    const fecha = String(value || '').trim();
+    if (!isIsoDate(fecha) || !historialFechas.includes(fecha)) return;
     setModoRegistro('historial');
-    setFechaActiva(value);
+    setFechaActiva(fecha);
   }
 
   function handleSeleccionarNuevaFecha(value) {
@@ -533,7 +539,7 @@ export default function DocentePage() {
                   onChange={(event) => handleSeleccionarFechaHistorial(event.target.value)}
                   disabled={historialFechas.length === 0}
                 >
-                  <option value="">
+                  <option value="" disabled hidden>
                     {historialFechas.length === 0 ? 'Sin clases registradas aún' : 'Selecciona una fecha registrada'}
                   </option>
                   {historialFechas.map((fecha) => (
