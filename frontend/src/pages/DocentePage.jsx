@@ -26,12 +26,31 @@ function normalizeBackendStatus(value) {
   return raw === 'falta' ? 'ausente' : raw;
 }
 
+function getLocalIsoDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseIsoDateLocal(value) {
+  if (!isIsoDate(value)) return null;
+  const [year, month, day] = String(value).split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
 function formatDate(value, withTime = false) {
   if (!value) return 'Sin fecha';
+  const fecha = typeof value === 'string' && isIsoDate(value)
+    ? parseIsoDateLocal(value)
+    : new Date(value);
+
+  if (!fecha || Number.isNaN(fecha.getTime())) return 'Sin fecha';
+
   return new Intl.DateTimeFormat('es-MX', {
     dateStyle: 'medium',
     ...(withTime ? { timeStyle: 'short' } : {}),
-  }).format(new Date(value));
+  }).format(fecha);
 }
 
 function normalizeGrupo(value) {
@@ -60,7 +79,7 @@ function resolveBackendFileUrl(filePath) {
 }
 
 export default function DocentePage() {
-  const todayIso = new Date().toISOString().split('T')[0];
+  const todayIso = getLocalIsoDate();
   const [activeTab, setActiveTab] = useState('asistencia');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -78,7 +97,8 @@ export default function DocentePage() {
   const [avisos, setAvisos] = useState([]);
   const [historialFechas, setHistorialFechas] = useState([]);
   const [modoRegistro, setModoRegistro] = useState('nuevo');
-  const [fechaActiva, setFechaActiva] = useState(new Date().toISOString().split('T')[0]);
+  const [fechaActiva, setFechaActiva] = useState(todayIso);
+  const [fechaVisual, setFechaVisual] = useState(parseIsoDateLocal(todayIso));
   const [asistenciaPorAlumno, setAsistenciaPorAlumno] = useState({});
   const [calificacionesPorAlumno, setCalificacionesPorAlumno] = useState({});
   const [portafolioValidadoPorAlumno, setPortafolioValidadoPorAlumno] = useState({});
@@ -98,9 +118,9 @@ export default function DocentePage() {
   }, [periodoActivo]);
 
   const fechaActivaLabel = useMemo(() => {
-    if (!isIsoDate(fechaActiva)) return 'Sin fecha';
-    return formatDate(fechaActiva);
-  }, [fechaActiva]);
+    if (!fechaVisual) return 'Sin fecha';
+    return formatDate(fechaVisual);
+  }, [fechaVisual]);
 
   useEffect(() => {
     if (!message && !error) return undefined;
@@ -262,18 +282,32 @@ export default function DocentePage() {
   function handleSeleccionarFechaHistorial(value) {
     const fecha = String(value || '').trim();
     if (!isIsoDate(fecha) || !historialFechas.includes(fecha)) return;
+
+    const fechaExacta = parseIsoDateLocal(fecha);
+    if (!fechaExacta) return;
+
     setModoRegistro('historial');
     setFechaActiva(fecha);
+    setFechaVisual(fechaExacta);
   }
 
   function handleSeleccionarNuevaFecha(value) {
-    if (!value) return;
-    if (value > todayIso) {
+    const fechaString = String(value || '').trim();
+    if (!fechaString) return;
+    if (fechaString > todayIso) {
       setError('Solo puedes registrar asistencia con fecha de hoy o anterior.');
       return;
     }
+
+    const fechaExacta = parseIsoDateLocal(fechaString);
+    if (!fechaExacta) {
+      setError('Fecha invalida.');
+      return;
+    }
+
     setModoRegistro('nuevo');
-    setFechaActiva(value);
+    setFechaActiva(fechaString);
+    setFechaVisual(fechaExacta);
   }
 
   async function loadMaterialesParaAsignacion(asignacion) {
