@@ -71,7 +71,9 @@ export default function DocentePage() {
   const [alumnos, setAlumnos] = useState([]);
   const [justificantes, setJustificantes] = useState([]);
   const [avisos, setAvisos] = useState([]);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [historialFechas, setHistorialFechas] = useState([]);
+  const [modoRegistro, setModoRegistro] = useState('nuevo');
+  const [fechaActiva, setFechaActiva] = useState(new Date().toISOString().split('T')[0]);
   const [asistenciaPorAlumno, setAsistenciaPorAlumno] = useState({});
   const [calificacionesPorAlumno, setCalificacionesPorAlumno] = useState({});
   const [portafolioValidadoPorAlumno, setPortafolioValidadoPorAlumno] = useState({});
@@ -101,11 +103,22 @@ export default function DocentePage() {
 
   useEffect(() => {
     if (!selectedAsignacion) return;
-    loadAsistenciaPorFecha(selectedDate).catch((requestError) => {
+    loadAsistenciaPorFecha(fechaActiva).catch((requestError) => {
       setError(requestError?.response?.data?.message || 'No se pudo cargar la asistencia seleccionada.');
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAsignacionId, selectedDate]);
+  }, [selectedAsignacionId, fechaActiva]);
+
+  useEffect(() => {
+    if (!selectedAsignacion) {
+      setHistorialFechas([]);
+      return;
+    }
+    loadHistorialFechas().catch((requestError) => {
+      setError(requestError?.response?.data?.message || 'No se pudo cargar el historial de asistencia.');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAsignacionId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -201,7 +214,7 @@ export default function DocentePage() {
     };
   }, [selectedAsignacionId]);
 
-  async function loadAsistenciaPorFecha(fecha = selectedDate) {
+  async function loadAsistenciaPorFecha(fecha = fechaActiva) {
     if (!selectedAsignacion) {
       setAsistenciaPorAlumno({});
       return;
@@ -221,6 +234,30 @@ export default function DocentePage() {
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo cargar la asistencia seleccionada.');
     }
+  }
+
+  async function loadHistorialFechas() {
+    if (!selectedAsignacion) {
+      setHistorialFechas([]);
+      return;
+    }
+
+    const grupoId = String(selectedAsignacion.grupo_id);
+    const materiaId = Number(selectedAsignacion.materia_id);
+    const response = await api.get(`/asistencias/historial/${materiaId}/${encodeURIComponent(grupoId)}`);
+    setHistorialFechas(response?.data?.fechas || []);
+  }
+
+  function handleSeleccionarFechaHistorial(value) {
+    if (!value) return;
+    setModoRegistro('historial');
+    setFechaActiva(value);
+  }
+
+  function handleSeleccionarNuevaFecha(value) {
+    if (!value) return;
+    setModoRegistro('nuevo');
+    setFechaActiva(value);
   }
 
   async function loadMaterialesParaAsignacion(asignacion) {
@@ -335,11 +372,11 @@ export default function DocentePage() {
       await api.post('/docente/asistencia', {
         alumno_id: Number(alumnoId),
         materia_id: Number(selectedAsignacion.materia_id),
-        fecha: selectedDate,
-        estatus: nextStatus,
+        fecha: fechaActiva,
+        estado: nextStatus,
       });
       setMessage('Asistencia guardada correctamente.');
-      await loadAsistenciaPorFecha(selectedDate);
+      await Promise.all([loadAsistenciaPorFecha(fechaActiva), loadHistorialFechas()]);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo guardar la asistencia.');
     } finally {
@@ -488,14 +525,32 @@ export default function DocentePage() {
       {activeTab === 'asistencia' ? (
         <article className="docente-card">
           <div className="docente-toolbar">
-            <label className="docente-date-picker">
-              <span>Fecha</span>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(event) => setSelectedDate(event.target.value)}
-              />
-            </label>
+            <div className="docente-date-controls flex flex-wrap items-end gap-3">
+              <label className="docente-date-picker">
+                <span>Editar clase anterior</span>
+                <select
+                  value={modoRegistro === 'historial' ? fechaActiva : ''}
+                  onChange={(event) => handleSeleccionarFechaHistorial(event.target.value)}
+                  disabled={historialFechas.length === 0}
+                >
+                  <option value="">
+                    {historialFechas.length === 0 ? 'Sin clases registradas aún' : 'Selecciona una fecha registrada'}
+                  </option>
+                  {historialFechas.map((fecha) => (
+                    <option key={fecha} value={fecha}>{formatDate(fecha)}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="docente-date-picker">
+                <span>Registrar nueva clase</span>
+                <input
+                  type="date"
+                  value={fechaActiva}
+                  onChange={(event) => handleSeleccionarNuevaFecha(event.target.value)}
+                />
+              </label>
+            </div>
             <button type="button" className="btn-secondary download-button" onClick={() => {
               const rows = [
                 ['Alumno', 'Folio', 'Asistencia'],
@@ -514,7 +569,7 @@ export default function DocentePage() {
               const url = URL.createObjectURL(blob);
               const anchor = document.createElement('a');
               anchor.href = url;
-              anchor.download = `asistencia-${selectedDate}.csv`;
+              anchor.download = `asistencia-${fechaActiva}.csv`;
               anchor.click();
               URL.revokeObjectURL(url);
             }}>
