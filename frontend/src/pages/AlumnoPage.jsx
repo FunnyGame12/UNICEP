@@ -66,6 +66,12 @@ function formatDate(value, withTime = false) {
   }).format(new Date(value));
 }
 
+function justificanteAlertClass(modulo) {
+  if (Number(modulo) === 2) return 'justificante-alert justificante-alert-danger';
+  if (Number(modulo) === 1) return 'justificante-alert justificante-alert-warn';
+  return 'justificante-alert justificante-alert-safe';
+}
+
 function getTramiteEstatusInfo(estatus) {
   if (['entregado', 'resuelto'].includes(estatus)) {
     return { label: 'Finalizado', badgeClass: 'badge-success', finalizado: true };
@@ -679,7 +685,12 @@ export default function AlumnoPage() {
                           <td>{item.total}</td>
                           <td>{item.presentes}</td>
                           <td>{item.faltas}</td>
-                          <td>{item.porcentaje_asistencia}%</td>
+                          <td>
+                            <strong>{item.porcentaje_asistencia}%</strong>
+                            {item.mensaje_justificantes ? (
+                              <p className={justificanteAlertClass(item.modulo_justificantes)}>{item.mensaje_justificantes}</p>
+                            ) : null}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

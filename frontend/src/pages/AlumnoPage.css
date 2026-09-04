@@ -224,6 +224,25 @@
   font-weight: 600;
 }
 
+.justificante-alert {
+  margin: 0.3rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
+.justificante-alert-safe {
+  color: #9ca3af;
+}
+
+.justificante-alert-warn {
+  color: #fbbf24;
+}
+
+.justificante-alert-danger {
+  color: #f87171;
+  font-weight: 700;
+}
+
 .section-head {
   display: flex;
   align-items: center;

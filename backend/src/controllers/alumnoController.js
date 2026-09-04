@@ -612,6 +612,22 @@ async function asistencia(req, res) {
       justificados: 0,
     };
     const totalClases = Number(totalClasesPorMateria.get(idMateria) || 0);
+    const totalJustificados = Number(stats.justificados || 0);
+    const faltasPorJustificante = Math.floor(totalJustificados / 3);
+    const asistenciasPorJustificante = totalJustificados - faltasPorJustificante;
+    const asistenciasReales = Number(stats.presentes || 0);
+    const faltasReales = Number(stats.faltas || 0);
+    const asistenciasEfectivas = asistenciasReales + asistenciasPorJustificante;
+    const faltasEfectivas = faltasReales + faltasPorJustificante;
+    const moduloJustificantes = totalJustificados % 3;
+
+    let mensajeJustificantes = 'Tienes 2 justificantes disponibles antes de penalizacion.';
+    if (moduloJustificantes === 1) {
+      mensajeJustificantes = 'Te queda 1 justificante disponible antes de que cuente como falta.';
+    }
+    if (moduloJustificantes === 2) {
+      mensajeJustificantes = 'Atencion: tu proximo justificante contara como falta.';
+    }
 
     return {
       id_materia: idMateria,
@@ -619,12 +635,20 @@ async function asistencia(req, res) {
       codigo_materia: meta.codigo_materia || null,
       docente: docentePorMateria.get(idMateria) || 'Por asignar',
       total: totalClases,
-      presentes: stats.presentes,
-      faltas: stats.faltas,
+      presentes_reales: asistenciasReales,
+      faltas_reales: faltasReales,
+      asistencias_efectivas: asistenciasEfectivas,
+      faltas_efectivas: faltasEfectivas,
+      presentes: asistenciasEfectivas,
+      faltas: faltasEfectivas,
       retardos: stats.retardos,
-      justificados: stats.justificados,
+      justificados: totalJustificados,
+      modulo_justificantes: moduloJustificantes,
+      faltas_por_justificante: faltasPorJustificante,
+      asistencias_por_justificante: asistenciasPorJustificante,
+      mensaje_justificantes: mensajeJustificantes,
       porcentaje_asistencia: totalClases > 0
-        ? Number(((stats.presentes / totalClases) * 100).toFixed(1))
+        ? Number(((asistenciasEfectivas / totalClases) * 100).toFixed(1))
         : 0,
     };
   });
