@@ -60,6 +60,7 @@ function resolveBackendFileUrl(filePath) {
 }
 
 export default function DocentePage() {
+  const todayIso = new Date().toISOString().split('T')[0];
   const [activeTab, setActiveTab] = useState('asistencia');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -95,6 +96,11 @@ export default function DocentePage() {
     if (!periodoActivo?.fecha_limite_calificaciones) return false;
     return Date.now() > new Date(periodoActivo.fecha_limite_calificaciones).getTime();
   }, [periodoActivo]);
+
+  const fechaActivaLabel = useMemo(() => {
+    if (!isIsoDate(fechaActiva)) return 'Sin fecha';
+    return formatDate(fechaActiva);
+  }, [fechaActiva]);
 
   useEffect(() => {
     if (!message && !error) return undefined;
@@ -250,7 +256,7 @@ export default function DocentePage() {
     const materiaId = Number(selectedAsignacion.materia_id);
     const response = await api.get(`/asistencias/historial/${materiaId}/${encodeURIComponent(grupoId)}`);
     const fechas = Array.isArray(response?.data?.fechas) ? response.data.fechas : [];
-    setHistorialFechas([...new Set(fechas.filter((item) => isIsoDate(item)))]);
+    setHistorialFechas([...new Set(fechas.filter((item) => isIsoDate(item) && item <= todayIso))]);
   }
 
   function handleSeleccionarFechaHistorial(value) {
@@ -262,6 +268,10 @@ export default function DocentePage() {
 
   function handleSeleccionarNuevaFecha(value) {
     if (!value) return;
+    if (value > todayIso) {
+      setError('Solo puedes registrar asistencia con fecha de hoy o anterior.');
+      return;
+    }
     setModoRegistro('nuevo');
     setFechaActiva(value);
   }
@@ -553,6 +563,7 @@ export default function DocentePage() {
                 <input
                   type="date"
                   value={fechaActiva}
+                  max={todayIso}
                   onChange={(event) => handleSeleccionarNuevaFecha(event.target.value)}
                 />
               </label>
@@ -581,6 +592,13 @@ export default function DocentePage() {
             }}>
               ⬇️ Descargar Lista (CSV)
             </button>
+          </div>
+
+          <div className="docente-asistencia-hint">
+            <span className={`docente-mode-badge ${modoRegistro === 'historial' ? 'is-history' : 'is-new'}`}>
+              {modoRegistro === 'historial' ? 'Editando historial' : 'Registro nuevo'}
+            </span>
+            <p>Fecha activa: <strong>{fechaActivaLabel}</strong>. Solo se permiten fechas de hoy o anteriores.</p>
           </div>
 
           <h3>Control de Asistencia</h3>
