@@ -23,7 +23,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       fecha_clase: {
-        type: DataTypes.DATE,
+        type: DataTypes.DATEONLY,
         allowNull: false,
       },
       estatus_asistencia: {

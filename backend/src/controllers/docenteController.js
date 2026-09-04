@@ -26,6 +26,15 @@ function sanitizeText(value) {
   return String(value || '').trim();
 }
 
+function getLocalIsoDate(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function normalizeGrupo(value) {
   return String(value || '').trim().toUpperCase();
 }
@@ -57,15 +66,29 @@ function serializarEstadoAsistencia(estatus) {
 }
 
 function fechaIsoYYYYMMDD(value) {
+  if (typeof value === 'string') {
+    const raw = sanitizeText(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  }
   const fecha = new Date(value);
   if (Number.isNaN(fecha.getTime())) return null;
-  return fecha.toISOString().slice(0, 10);
+  return getLocalIsoDate(fecha);
 }
 
 function normalizaFechaAsistencia(value) {
-  const parsed = normalizaFecha(value, null);
+  if (value == null) return null;
+  if (value instanceof Date) {
+    return getLocalIsoDate(value);
+  }
+
+  const raw = sanitizeText(value);
+  if (!raw) return null;
+  const fechaPura = raw.includes('T') ? raw.split('T')[0] : raw;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(fechaPura)) return fechaPura;
+
+  const parsed = normalizaFecha(raw, null);
   if (!parsed) return null;
-  return fechaIsoYYYYMMDD(parsed);
+  return getLocalIsoDate(parsed);
 }
 
 function construirPayloadAsistencias(body) {
@@ -153,7 +176,7 @@ async function prepararAsistenciaParaUpsert({ row, req, contexto }) {
       id_docente: req.user.id_usuario,
       id_materia: materiaId,
       id_alumno: alumnoId,
-      fecha_clase: `${fechaIso} 00:00:00`,
+      fecha_clase: fechaIso,
       estatus_asistencia: estatus,
       aprovechamiento: 'medio',
       observaciones: observaciones || null,
@@ -684,7 +707,7 @@ async function listarAsistencias(req, res) {
 async function registrarAsistencia(req, res) {
   const idMateria = Number(req.body.id_materia);
   const idAlumno = req.body.id_alumno == null ? null : Number(req.body.id_alumno);
-  const fechaClase = normalizaFecha(req.body.fecha_clase) || new Date();
+  const fechaClase = normalizaFechaAsistencia(req.body.fecha_clase) || getLocalIsoDate();
   const estatusAsistencia = sanitizeText(req.body.estatus_asistencia).toLowerCase() || 'presente';
   const aprovechamiento = sanitizeText(req.body.aprovechamiento).toLowerCase() || 'medio';
   const observaciones = sanitizeText(req.body.observaciones);
@@ -1197,8 +1220,8 @@ async function listarAsistenciaGrupoFecha(req, res) {
     return res.status(400).json({ message: 'fecha es obligatoria.' });
   }
 
-  const fechaBase = new Date(`${fechaQuery}T00:00:00`);
-  if (Number.isNaN(fechaBase.getTime())) {
+  const fechaPura = normalizaFechaAsistencia(fechaQuery);
+  if (!fechaPura) {
     return res.status(400).json({ message: 'fecha invalida. Usa YYYY-MM-DD.' });
   }
 
@@ -1217,15 +1240,10 @@ async function listarAsistenciaGrupoFecha(req, res) {
     order: [['id_alumno_grupo', 'DESC']],
   });
 
-  const fechaInicio = new Date(fechaBase);
-  fechaInicio.setHours(0, 0, 0, 0);
-  const fechaFin = new Date(fechaBase);
-  fechaFin.setHours(23, 59, 59, 999);
-
   const registros = await AsistenciaDocente.findAll({
     where: {
       id_materia: materiaId,
-      fecha_clase: { [Op.gte]: fechaInicio, [Op.lte]: fechaFin },
+      fecha_clase: fechaPura,
     },
     raw: true,
   });
@@ -1240,7 +1258,7 @@ async function listarAsistenciaGrupoFecha(req, res) {
     estado: registrosMap.get(Number(row.id_alumno)) || null,
   }));
 
-  return res.json({ items: responseItems, fecha: fechaQuery });
+  return res.json({ items: responseItems, fecha: fechaPura });
 }
 
 async function historialAsistenciaGrupo(req, res) {
@@ -1275,14 +1293,14 @@ async function historialAsistenciaGrupo(req, res) {
       id_materia: materiaId,
       id_alumno: { [Op.in]: alumnosIds },
     },
-    attributes: [[AsistenciaDocente.sequelize.fn('DATE', AsistenciaDocente.sequelize.col('fecha_clase')), 'fecha']],
-    group: [AsistenciaDocente.sequelize.fn('DATE', AsistenciaDocente.sequelize.col('fecha_clase'))],
-    order: [[AsistenciaDocente.sequelize.literal('fecha'), 'DESC']],
+    attributes: ['fecha_clase'],
+    group: ['fecha_clase'],
+    order: [['fecha_clase', 'DESC']],
     raw: true,
   });
 
   const fechasUnicas = registros
-    .map((item) => fechaIsoYYYYMMDD(item.fecha))
+    .map((item) => fechaIsoYYYYMMDD(item.fecha_clase))
     .filter(Boolean);
 
   return res.json({ fechas: fechasUnicas });
