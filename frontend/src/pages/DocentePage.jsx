@@ -45,6 +45,19 @@ function parseIsoDateLocal(value) {
   return new Date(year, month - 1, day);
 }
 
+function ensurePayloadIsoDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return getLocalIsoDate(value);
+  }
+
+  const raw = String(value || '').trim();
+  if (isIsoDate(raw)) return raw;
+
+  const parsed = parseIsoDateLocal(raw);
+  if (parsed) return getLocalIsoDate(parsed);
+  return '';
+}
+
 function formatDate(value, withTime = false) {
   if (!value) return 'Sin fecha';
   const fecha = typeof value === 'string' && isIsoDate(value)
@@ -430,6 +443,12 @@ export default function DocentePage() {
   async function guardarAsistencia(alumnoId) {
     if (!selectedAsignacion) return;
     const nextStatus = normalizeBackendStatus(asistenciaPorAlumno[alumnoId] || 'presente');
+    const fechaPayload = ensurePayloadIsoDate(fechaActiva);
+
+    if (!isIsoDate(fechaPayload)) {
+      setError('Fecha de asistencia invalida. Intenta seleccionar nuevamente la fecha.');
+      return;
+    }
 
     try {
       setSending(true);
@@ -437,11 +456,11 @@ export default function DocentePage() {
       await api.post('/docente/asistencia', {
         alumno_id: Number(alumnoId),
         materia_id: Number(selectedAsignacion.materia_id),
-        fecha: fechaActiva,
+        fecha: fechaPayload,
         estado: nextStatus,
       });
       setMessage('Asistencia guardada correctamente.');
-      await Promise.all([loadAsistenciaPorFecha(fechaActiva), loadHistorialFechas()]);
+      await Promise.all([loadAsistenciaPorFecha(fechaPayload), loadHistorialFechas()]);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo guardar la asistencia.');
     } finally {
