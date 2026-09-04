@@ -41,6 +41,108 @@ function normalizaFecha(value, fallback = new Date()) {
   return parsed;
 }
 
+function normalizarEstatusAsistencia(value) {
+  const raw = sanitizeText(value).toLowerCase();
+  if (!raw) return '';
+  if (raw === 'falta') return 'ausente';
+  return raw;
+}
+
+function serializarEstadoAsistencia(estatus) {
+  if (estatus === 'ausente') return 'Falta';
+  if (estatus === 'presente') return 'Presente';
+  if (estatus === 'retardo') return 'Retardo';
+  if (estatus === 'justificado') return 'Justificado';
+  return null;
+}
+
+function fechaIsoYYYYMMDD(value) {
+  const fecha = new Date(value);
+  if (Number.isNaN(fecha.getTime())) return null;
+  return fecha.toISOString().slice(0, 10);
+}
+
+async function upsertAsistenciaGrupoRegistro({ row, req, contexto }) {
+  const materiaId = Number(row?.materia_id ?? row?.id_materia);
+  const alumnoId = Number(row?.alumno_id ?? row?.id_alumno);
+  const fechaClase = normalizaFecha(row?.fecha ?? row?.fecha_clase, null);
+  const estatus = normalizarEstatusAsistencia(row?.estado ?? row?.estatus ?? row?.estatus_asistencia);
+  const observaciones = sanitizeText(row?.observaciones);
+
+  if (!Number.isInteger(materiaId) || !Number.isInteger(alumnoId) || !fechaClase || !estatus) {
+    return {
+      error: {
+        status: 400,
+        message: 'alumno_id, materia_id, fecha y estado son obligatorios.',
+      },
+    };
+  }
+
+  const estatusValidos = new Set(['presente', 'ausente', 'retardo', 'justificado']);
+  if (!estatusValidos.has(estatus)) {
+    return {
+      error: {
+        status: 400,
+        message: 'estado invalido. Usa Presente, Falta, Retardo o Justificado.',
+      },
+    };
+  }
+
+  const inscripcion = await AlumnoGrupo.findOne({ where: { id_alumno: alumnoId, id_materia: materiaId } });
+  if (!inscripcion) {
+    return {
+      error: {
+        status: 400,
+        message: 'El alumno no pertenece a esa materia/grupo.',
+      },
+    };
+  }
+
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, inscripcion.grupo)) {
+    return {
+      error: {
+        status: 403,
+        message: 'No tienes asignacion para ese grupo/materia.',
+      },
+    };
+  }
+
+  const fechaInicio = new Date(fechaClase);
+  fechaInicio.setHours(0, 0, 0, 0);
+  const fechaFin = new Date(fechaClase);
+  fechaFin.setHours(23, 59, 59, 999);
+
+  let registro = await AsistenciaDocente.findOne({
+    where: {
+      id_materia: materiaId,
+      id_alumno: alumnoId,
+      fecha_clase: { [Op.gte]: fechaInicio, [Op.lte]: fechaFin },
+    },
+  });
+
+  if (registro) {
+    registro.id_docente = req.user.id_usuario;
+    registro.estatus_asistencia = estatus;
+    registro.aprovechamiento = registro.aprovechamiento || 'medio';
+    registro.observaciones = observaciones || registro.observaciones || null;
+    await registro.save();
+    return { registro, created: false };
+  }
+
+  registro = await AsistenciaDocente.create({
+    id_docente: req.user.id_usuario,
+    id_materia: materiaId,
+    id_alumno: alumnoId,
+    fecha_clase: fechaClase,
+    estatus_asistencia: estatus,
+    aprovechamiento: 'medio',
+    observaciones: observaciones || null,
+    fecha_creacion: new Date(),
+  });
+
+  return { registro, created: true };
+}
+
 function crearEnlaceSala(plataforma, titulo) {
   const base = sanitizeText(plataforma).toLowerCase().includes('zoom')
     ? 'https://zoom.us/j'
@@ -1108,7 +1210,7 @@ async function listarAsistenciaGrupoFecha(req, res) {
     raw: true,
   });
 
-  const registrosMap = new Map(registros.map((row) => [Number(row.id_alumno), row.estatus_asistencia === 'ausente' ? 'falta' : row.estatus_asistencia]));
+  const registrosMap = new Map(registros.map((row) => [Number(row.id_alumno), serializarEstadoAsistencia(row.estatus_asistencia)]));
 
   const responseItems = items.map((row) => ({
     id_alumno: Number(row.id_alumno),
@@ -1121,66 +1223,103 @@ async function listarAsistenciaGrupoFecha(req, res) {
   return res.json({ items: responseItems, fecha: fechaQuery });
 }
 
-async function registrarAsistenciaGrupo(req, res) {
-  const materiaId = Number(req.body.materia_id || req.body.id_materia);
-  const alumnoId = Number(req.body.alumno_id || req.body.id_alumno);
-  const fechaClase = normalizaFecha(req.body.fecha || req.body.fecha_clase, null);
-  const estatusRaw = sanitizeText(req.body.estatus || req.body.estatus_asistencia).toLowerCase();
-  const estatus = estatusRaw === 'falta' ? 'ausente' : estatusRaw;
+async function historialAsistenciaGrupo(req, res) {
+  const materiaId = Number(req.params.materiaId);
+  const grupoId = normalizeGrupo(req.params.grupoId);
 
-  if (!Number.isInteger(materiaId) || !Number.isInteger(alumnoId) || !fechaClase || !estatus) {
-    return res.status(400).json({ message: 'alumno_id, materia_id, fecha y estatus son obligatorios.' });
-  }
-
-  const estatusValidos = new Set(['presente', 'ausente', 'retardo', 'justificado']);
-  if (!estatusValidos.has(estatus)) {
-    return res.status(400).json({ message: 'estatus invalido. Usa presente, falta, retardo o justificado.' });
-  }
-
-  const inscripcion = await AlumnoGrupo.findOne({ where: { id_alumno: alumnoId, id_materia: materiaId } });
-  if (!inscripcion) {
-    return res.status(400).json({ message: 'El alumno no pertenece a esa materia/grupo.' });
+  if (!Number.isInteger(materiaId) || !grupoId) {
+    return res.status(400).json({ message: 'materiaId/grupoId invalidos.' });
   }
 
   const contexto = await obtenerContextoDocente(req.user.id_usuario);
-  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, inscripcion.grupo)) {
+  if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
     return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
   }
 
-  const fechaInicio = new Date(fechaClase);
-  fechaInicio.setHours(0, 0, 0, 0);
-  const fechaFin = new Date(fechaClase);
-  fechaFin.setHours(23, 59, 59, 999);
-
-  let registro = await AsistenciaDocente.findOne({
-    where: {
-      id_materia: materiaId,
-      id_alumno: alumnoId,
-      fecha_clase: { [Op.gte]: fechaInicio, [Op.lte]: fechaFin },
-    },
+  const inscripciones = await AlumnoGrupo.findAll({
+    where: { id_materia: materiaId, grupo: grupoId },
+    attributes: ['id_alumno'],
+    raw: true,
   });
 
-  if (registro) {
-    registro.id_docente = req.user.id_usuario;
-    registro.estatus_asistencia = estatus;
-    registro.aprovechamiento = registro.aprovechamiento || 'medio';
-    registro.observaciones = sanitizeText(req.body.observaciones) || registro.observaciones || null;
-    await registro.save();
-    return res.status(200).json(registro);
+  const alumnosIds = inscripciones
+    .map((item) => Number(item.id_alumno))
+    .filter(Number.isInteger);
+
+  if (alumnosIds.length === 0) {
+    return res.json({ fechas: [] });
   }
 
-  registro = await AsistenciaDocente.create({
-    id_docente: req.user.id_usuario,
-    id_materia: materiaId,
-    id_alumno: alumnoId,
-    fecha_clase: fechaClase,
-    estatus_asistencia: estatus,
-    aprovechamiento: 'medio',
-    observaciones: sanitizeText(req.body.observaciones) || null,
-    fecha_creacion: new Date(),
+  const registros = await AsistenciaDocente.findAll({
+    where: {
+      id_materia: materiaId,
+      id_alumno: { [Op.in]: alumnosIds },
+    },
+    attributes: ['fecha_clase'],
+    order: [['fecha_clase', 'DESC']],
+    raw: true,
   });
 
-  return res.status(201).json(registro);
+  const fechasUnicas = [];
+  const fechasSet = new Set();
+
+  registros.forEach((item) => {
+    const fecha = fechaIsoYYYYMMDD(item.fecha_clase);
+    if (!fecha || fechasSet.has(fecha)) return;
+    fechasSet.add(fecha);
+    fechasUnicas.push(fecha);
+  });
+
+  return res.json({ fechas: fechasUnicas });
+}
+
+async function registrarAsistenciaGrupo(req, res) {
+  const payload = Array.isArray(req.body)
+    ? req.body
+    : (Array.isArray(req.body.registros) ? req.body.registros : [req.body]);
+
+  if (payload.length === 0) {
+    return res.status(400).json({ message: 'Debes enviar al menos un registro de asistencia.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  const esLote = Array.isArray(req.body) || Array.isArray(req.body.registros) || payload.length > 1;
+  const resultados = [];
+  let creados = 0;
+  let actualizados = 0;
+
+  for (let idx = 0; idx < payload.length; idx += 1) {
+    const row = payload[idx];
+    const result = await upsertAsistenciaGrupoRegistro({ row, req, contexto });
+
+    if (result.error) {
+      return res.status(result.error.status).json({
+        message: result.error.message,
+        index: idx,
+      });
+    }
+
+    if (result.created) {
+      creados += 1;
+    } else {
+      actualizados += 1;
+    }
+
+    resultados.push(result.registro);
+  }
+
+  if (!esLote) {
+    return res.status(creados > 0 ? 201 : 200).json(resultados[0]);
+  }
+
+  return res.status(200).json({
+    items: resultados,
+    resumen: {
+      total: resultados.length,
+      creados,
+      actualizados,
+    },
+  });
 }
 
 async function capturarCalificacionesFormativa(req, res) {
@@ -1611,6 +1750,7 @@ async function recursosCoordinacion(req, res) {
 module.exports = {
   misMaterias,
   alumnosPorGrupoMateria,
+  historialAsistenciaGrupo,
   listarAsistenciaGrupoFecha,
   registrarAsistenciaGrupo,
   capturarCalificacionesFormativa,
