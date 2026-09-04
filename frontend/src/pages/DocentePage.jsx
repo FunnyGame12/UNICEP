@@ -18,7 +18,13 @@ const statusOptions = [
 ];
 
 function normalizeUiStatus(value) {
-  return value === 'ausente' ? 'falta' : value;
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === 'ausente' || raw === 'falta') return 'falta';
+  if (raw === 'presente') return 'presente';
+  if (raw === 'retardo') return 'retardo';
+  if (raw === 'justificado') return 'justificado';
+  return null;
 }
 
 function normalizeBackendStatus(value) {
@@ -279,7 +285,7 @@ export default function DocentePage() {
     setHistorialFechas([...new Set(fechas.filter((item) => isIsoDate(item) && item <= todayIso))]);
   }
 
-  function handleSeleccionarFechaHistorial(value) {
+  async function handleSeleccionarFechaHistorial(value) {
     const fecha = String(value || '').trim();
     if (!isIsoDate(fecha) || !historialFechas.includes(fecha)) return;
 
@@ -289,6 +295,8 @@ export default function DocentePage() {
     setModoRegistro('historial');
     setFechaActiva(fecha);
     setFechaVisual(fechaExacta);
+
+    await loadAsistenciaPorFecha(fecha);
   }
 
   function handleSeleccionarNuevaFecha(value) {
@@ -308,6 +316,13 @@ export default function DocentePage() {
     setModoRegistro('nuevo');
     setFechaActiva(fechaString);
     setFechaVisual(fechaExacta);
+  }
+
+  function marcarAsistencia(alumnoId, nuevoEstado) {
+    setAsistenciaPorAlumno((prev) => ({
+      ...prev,
+      [alumnoId]: normalizeUiStatus(nuevoEstado),
+    }));
   }
 
   async function loadMaterialesParaAsignacion(asignacion) {
@@ -666,10 +681,7 @@ export default function DocentePage() {
                                 key={option.value}
                                 type="button"
                                 className={currentStatus === option.value ? `toggle-btn ${option.className} active` : `toggle-btn ${option.className}`}
-                                onClick={() => setAsistenciaPorAlumno((prev) => ({
-                                  ...prev,
-                                  [row.id_alumno]: option.value,
-                                }))}
+                                onClick={() => marcarAsistencia(row.id_alumno, option.value)}
                               >
                                 {option.label}
                               </button>
