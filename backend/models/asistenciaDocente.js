@@ -46,6 +46,13 @@ module.exports = (sequelize, DataTypes) => {
     {
       tableName: 'asistencias_docente',
       timestamps: false,
+      indexes: [
+        {
+          name: 'uq_asistencia_docente_alumno_materia_fecha',
+          unique: true,
+          fields: ['id_alumno', 'id_materia', 'fecha_clase'],
+        },
+      ],
     },
   );
 

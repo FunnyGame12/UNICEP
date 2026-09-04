@@ -62,14 +62,46 @@ function fechaIsoYYYYMMDD(value) {
   return fecha.toISOString().slice(0, 10);
 }
 
-async function upsertAsistenciaGrupoRegistro({ row, req, contexto }) {
+function normalizaFechaAsistencia(value) {
+  const parsed = normalizaFecha(value, null);
+  if (!parsed) return null;
+  return fechaIsoYYYYMMDD(parsed);
+}
+
+function construirPayloadAsistencias(body) {
+  if (Array.isArray(body)) {
+    return body;
+  }
+
+  if (Array.isArray(body?.registros)) {
+    return body.registros;
+  }
+
+  if (Array.isArray(body?.asistencias)) {
+    return body.asistencias.map((item) => ({
+      ...item,
+      materia_id: body?.materia_id ?? body?.id_materia,
+      grupo_id: body?.grupo_id ?? body?.id_grupo,
+      fecha: body?.fecha ?? body?.fecha_clase,
+    }));
+  }
+
+  return [body];
+}
+
+function buildAsistenciaKey(row) {
+  return `${row.id_materia}::${row.id_alumno}::${row.fecha_iso}`;
+}
+
+async function prepararAsistenciaParaUpsert({ row, req, contexto }) {
   const materiaId = Number(row?.materia_id ?? row?.id_materia);
   const alumnoId = Number(row?.alumno_id ?? row?.id_alumno);
-  const fechaClase = normalizaFecha(row?.fecha ?? row?.fecha_clase, null);
+  const grupoRow = normalizeGrupo(row?.grupo_id ?? row?.id_grupo);
+  const fechaIso = normalizaFechaAsistencia(row?.fecha ?? row?.fecha_clase);
   const estatus = normalizarEstatusAsistencia(row?.estado ?? row?.estatus ?? row?.estatus_asistencia);
   const observaciones = sanitizeText(row?.observaciones);
 
-  if (!Number.isInteger(materiaId) || !Number.isInteger(alumnoId) || !fechaClase || !estatus) {
+  if (!Number.isInteger(materiaId) || !Number.isInteger(alumnoId) || !fechaIso || !estatus) {
     return {
       error: {
         status: 400,
@@ -98,6 +130,15 @@ async function upsertAsistenciaGrupoRegistro({ row, req, contexto }) {
     };
   }
 
+  if (grupoRow && normalizeGrupo(inscripcion.grupo) !== grupoRow) {
+    return {
+      error: {
+        status: 400,
+        message: 'grupo_id no coincide con la inscripcion del alumno.',
+      },
+    };
+  }
+
   if (!docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, inscripcion.grupo)) {
     return {
       error: {
@@ -107,40 +148,19 @@ async function upsertAsistenciaGrupoRegistro({ row, req, contexto }) {
     };
   }
 
-  const fechaInicio = new Date(fechaClase);
-  fechaInicio.setHours(0, 0, 0, 0);
-  const fechaFin = new Date(fechaClase);
-  fechaFin.setHours(23, 59, 59, 999);
-
-  let registro = await AsistenciaDocente.findOne({
-    where: {
+  return {
+    row: {
+      id_docente: req.user.id_usuario,
       id_materia: materiaId,
       id_alumno: alumnoId,
-      fecha_clase: { [Op.gte]: fechaInicio, [Op.lte]: fechaFin },
+      fecha_clase: `${fechaIso} 00:00:00`,
+      estatus_asistencia: estatus,
+      aprovechamiento: 'medio',
+      observaciones: observaciones || null,
+      fecha_creacion: new Date(),
+      fecha_iso: fechaIso,
     },
-  });
-
-  if (registro) {
-    registro.id_docente = req.user.id_usuario;
-    registro.estatus_asistencia = estatus;
-    registro.aprovechamiento = registro.aprovechamiento || 'medio';
-    registro.observaciones = observaciones || registro.observaciones || null;
-    await registro.save();
-    return { registro, created: false };
-  }
-
-  registro = await AsistenciaDocente.create({
-    id_docente: req.user.id_usuario,
-    id_materia: materiaId,
-    id_alumno: alumnoId,
-    fecha_clase: fechaClase,
-    estatus_asistencia: estatus,
-    aprovechamiento: 'medio',
-    observaciones: observaciones || null,
-    fecha_creacion: new Date(),
-  });
-
-  return { registro, created: true };
+  };
 }
 
 function crearEnlaceSala(plataforma, titulo) {
@@ -1255,28 +1275,21 @@ async function historialAsistenciaGrupo(req, res) {
       id_materia: materiaId,
       id_alumno: { [Op.in]: alumnosIds },
     },
-    attributes: ['fecha_clase'],
-    order: [['fecha_clase', 'DESC']],
+    attributes: [[AsistenciaDocente.sequelize.fn('DATE', AsistenciaDocente.sequelize.col('fecha_clase')), 'fecha']],
+    group: [AsistenciaDocente.sequelize.fn('DATE', AsistenciaDocente.sequelize.col('fecha_clase'))],
+    order: [[AsistenciaDocente.sequelize.literal('fecha'), 'DESC']],
     raw: true,
   });
 
-  const fechasUnicas = [];
-  const fechasSet = new Set();
-
-  registros.forEach((item) => {
-    const fecha = fechaIsoYYYYMMDD(item.fecha_clase);
-    if (!fecha || fechasSet.has(fecha)) return;
-    fechasSet.add(fecha);
-    fechasUnicas.push(fecha);
-  });
+  const fechasUnicas = registros
+    .map((item) => fechaIsoYYYYMMDD(item.fecha))
+    .filter(Boolean);
 
   return res.json({ fechas: fechasUnicas });
 }
 
 async function registrarAsistenciaGrupo(req, res) {
-  const payload = Array.isArray(req.body)
-    ? req.body
-    : (Array.isArray(req.body.registros) ? req.body.registros : [req.body]);
+  const payload = construirPayloadAsistencias(req.body);
 
   if (payload.length === 0) {
     return res.status(400).json({ message: 'Debes enviar al menos un registro de asistencia.' });
@@ -1284,13 +1297,11 @@ async function registrarAsistenciaGrupo(req, res) {
 
   const contexto = await obtenerContextoDocente(req.user.id_usuario);
   const esLote = Array.isArray(req.body) || Array.isArray(req.body.registros) || payload.length > 1;
-  const resultados = [];
-  let creados = 0;
-  let actualizados = 0;
+  const rowsParaUpsert = [];
 
   for (let idx = 0; idx < payload.length; idx += 1) {
     const row = payload[idx];
-    const result = await upsertAsistenciaGrupoRegistro({ row, req, contexto });
+    const result = await prepararAsistenciaParaUpsert({ row, req, contexto });
 
     if (result.error) {
       return res.status(result.error.status).json({
@@ -1299,14 +1310,49 @@ async function registrarAsistenciaGrupo(req, res) {
       });
     }
 
-    if (result.created) {
-      creados += 1;
-    } else {
-      actualizados += 1;
-    }
-
-    resultados.push(result.registro);
+    rowsParaUpsert.push(result.row);
   }
+
+  const keySet = new Set(rowsParaUpsert.map((item) => buildAsistenciaKey(item)));
+  const whereOr = rowsParaUpsert.map((item) => ({
+    id_materia: item.id_materia,
+    id_alumno: item.id_alumno,
+    fecha_clase: item.fecha_clase,
+  }));
+
+  const existentes = whereOr.length > 0
+    ? await AsistenciaDocente.findAll({
+      where: { [Op.or]: whereOr },
+      attributes: ['id_materia', 'id_alumno', 'fecha_clase'],
+      raw: true,
+    })
+    : [];
+
+  const existentesSet = new Set(
+    existentes.map((item) => buildAsistenciaKey({
+      id_materia: Number(item.id_materia),
+      id_alumno: Number(item.id_alumno),
+      fecha_iso: fechaIsoYYYYMMDD(item.fecha_clase),
+    })),
+  );
+
+  await AsistenciaDocente.bulkCreate(rowsParaUpsert.map((item) => {
+    const copy = { ...item };
+    delete copy.fecha_iso;
+    return copy;
+  }), {
+    updateOnDuplicate: ['id_docente', 'estatus_asistencia', 'aprovechamiento', 'observaciones'],
+  });
+
+  const resultados = whereOr.length > 0
+    ? await AsistenciaDocente.findAll({
+      where: { [Op.or]: whereOr },
+      order: [['id_registro', 'DESC']],
+    })
+    : [];
+
+  const creados = rowsParaUpsert.filter((item) => !existentesSet.has(buildAsistenciaKey(item))).length;
+  const actualizados = keySet.size - creados;
 
   if (!esLote) {
     return res.status(creados > 0 ? 201 : 200).json(resultados[0]);
@@ -1320,6 +1366,10 @@ async function registrarAsistenciaGrupo(req, res) {
       actualizados,
     },
   });
+}
+
+async function guardarAsistenciaGrupoMasiva(req, res) {
+  return registrarAsistenciaGrupo(req, res);
 }
 
 async function capturarCalificacionesFormativa(req, res) {
@@ -1753,6 +1803,7 @@ module.exports = {
   historialAsistenciaGrupo,
   listarAsistenciaGrupoFecha,
   registrarAsistenciaGrupo,
+  guardarAsistenciaGrupoMasiva,
   capturarCalificacionesFormativa,
   enviarActaCoordinacion,
   justificantesRecibidos,
