@@ -1190,6 +1190,76 @@ function getPeriodoLabel(modalidad, numero) {
   return `Cuatrimestre ${numero}`;
 }
 
+async function obtenerCatalogosCoordinacion() {
+  const [docentesRows, materiasRows, gruposRaw] = await Promise.all([
+    DocentePerfil.findAll({
+      where: { estatus_laboral: 'activo' },
+      include: [{
+        model: Usuario,
+        as: 'usuario',
+        attributes: ['id_usuario', 'nombre_completo', 'rol'],
+      }],
+      order: [[{ model: Usuario, as: 'usuario' }, 'nombre_completo', 'ASC']],
+    }),
+    Materia.findAll({
+      attributes: ['id_materia', 'nombre_materia', 'codigo_materia', 'programa_academico_id', 'periodo_numero', 'bimestre_pertenece'],
+      where: { activa: true },
+      order: [['nombre_materia', 'ASC']],
+    }),
+    AlumnoGrupo.findAll({
+      attributes: ['id_materia', 'grupo'],
+      group: ['id_materia', 'grupo'],
+      raw: true,
+    }),
+  ]);
+
+  const docentes = docentesRows
+    .filter((row) => row.usuario && row.usuario.rol === 'docente')
+    .map((row) => ({
+      id: row.id_docente,
+      nombre: row.usuario?.nombre_completo || `Docente ${row.id_docente}`,
+    }));
+
+  const materias = materiasRows.map((row) => ({
+    id: row.id_materia,
+    nombre: row.nombre_materia,
+    codigo_materia: row.codigo_materia,
+    programa_academico_id: row.programa_academico_id || null,
+    periodo_numero: row.periodo_numero || row.bimestre_pertenece || null,
+  }));
+
+  const grupos = gruposRaw.map((row) => {
+    const grupoId = normalizeGrupo(row.grupo);
+    return {
+      id: grupoId,
+      nombre_grupo: grupoId,
+      materia_id: Number(row.id_materia),
+    };
+  });
+
+  return { docentes, materias, grupos };
+}
+
+async function catalogoDocentes(_req, res) {
+  const { docentes } = await obtenerCatalogosCoordinacion();
+  return res.json({ items: docentes });
+}
+
+async function catalogoMaterias(_req, res) {
+  const { materias } = await obtenerCatalogosCoordinacion();
+  return res.json({ items: materias });
+}
+
+async function catalogoGrupos(_req, res) {
+  const { grupos } = await obtenerCatalogosCoordinacion();
+  return res.json({ items: grupos });
+}
+
+async function catalogosCompletos(_req, res) {
+  const catalogos = await obtenerCatalogosCoordinacion();
+  return res.json(catalogos);
+}
+
 async function listarProgramasAcademicos(_req, res) {
   try {
     const programas = await ProgramaAcademico.findAll({
@@ -1667,6 +1737,10 @@ async function publicarAviso(req, res) {
 }
 
 module.exports = {
+  catalogoDocentes,
+  catalogoMaterias,
+  catalogoGrupos,
+  catalogosCompletos,
   docentesAsignaciones,
   asignarMateriaDocente,
   aulasDisponibilidad,

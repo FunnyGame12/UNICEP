@@ -182,6 +182,9 @@ export default function CoordinacionAcademicaPage() {
   const [docentes, setDocentes] = useState([]);
   const [materias, setMaterias] = useState([]);
   const [grupos, setGrupos] = useState([]);
+  const [listaDocentes, setListaDocentes] = useState([]);
+  const [listaMaterias, setListaMaterias] = useState([]);
+  const [listaGrupos, setListaGrupos] = useState([]);
   const [aulas, setAulas] = useState([]);
   const [actas, setActas] = useState([]);
   const [programas, setProgramas] = useState([]);
@@ -343,6 +346,8 @@ export default function CoordinacionAcademicaPage() {
   })), [alumnosProgreso]);
 
   const alumnoGrupoSelectedMateria = alumnoGrupoForm.watch('id_materia');
+  const asignacionMateriaId = asignacionForm.watch('materia_id');
+  const horarioMateriaId = horarioForm.watch('materia_id');
   const alumnoGrupoGruposDisponibles = useMemo(() => {
     if (alumnoGrupoSelectedMateria && alumnoGrupoGruposPorMateria[alumnoGrupoSelectedMateria]) {
       return alumnoGrupoGruposPorMateria[alumnoGrupoSelectedMateria];
@@ -430,8 +435,26 @@ export default function CoordinacionAcademicaPage() {
     }
   }
 
+  async function loadCatalogosCompletos() {
+    try {
+      const response = await api.get('/coordinacion/catalogos-completos');
+      setListaDocentes(response?.data?.docentes || []);
+      setListaMaterias(response?.data?.materias || []);
+      setListaGrupos(response?.data?.grupos || []);
+    } catch {
+      setListaDocentes([]);
+      setListaMaterias([]);
+      setListaGrupos([]);
+    }
+  }
+
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    loadCatalogosCompletos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -723,6 +746,7 @@ export default function CoordinacionAcademicaPage() {
       setMessage('Asignacion docente registrada correctamente.');
       asignacionForm.reset({ docente_id: '', materia_id: '', grupo_id: '', horas_semanales: '' });
       await loadData();
+      await loadCatalogosCompletos();
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo registrar la asignacion docente.');
     } finally {
@@ -750,6 +774,7 @@ export default function CoordinacionAcademicaPage() {
       });
       setMessage('Horario programado y notificacion enviada al maestro y alumnos del grupo.');
       await loadData();
+      await loadCatalogosCompletos();
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo programar el horario.');
     } finally {
@@ -951,6 +976,19 @@ export default function CoordinacionAcademicaPage() {
     return true;
   }), [materias, selectedProgramaCargaId, selectedPeriodoCarga]);
 
+  const listaMateriasCargaFiltradas = useMemo(() => listaMaterias.filter((materia) => {
+    if (!selectedProgramaCargaId) {
+      return false;
+    }
+    if (selectedProgramaCargaId && String(materia.programa_academico_id || '') !== String(selectedProgramaCargaId)) {
+      return false;
+    }
+    if (selectedPeriodoCarga && String(materia.periodo_numero || '') !== String(selectedPeriodoCarga)) {
+      return false;
+    }
+    return true;
+  }), [listaMaterias, selectedProgramaCargaId, selectedPeriodoCarga]);
+
   const materiasCalifFiltradas = useMemo(() => materias.filter((materia) => {
     if (!selectedProgramaCalifId) {
       return false;
@@ -968,6 +1006,16 @@ export default function CoordinacionAcademicaPage() {
   const gruposCargaFiltrados = useMemo(
     () => grupos.filter((grupo) => materiaIdsCarga.has(Number(grupo.materia_id))),
     [grupos, materiaIdsCarga],
+  );
+
+  const listaGruposAsignacion = useMemo(
+    () => listaGrupos.filter((grupo) => String(grupo.materia_id) === String(asignacionMateriaId || '')),
+    [listaGrupos, asignacionMateriaId],
+  );
+
+  const listaGruposHorario = useMemo(
+    () => listaGrupos.filter((grupo) => String(grupo.materia_id) === String(horarioMateriaId || '')),
+    [listaGrupos, horarioMateriaId],
   );
 
   useEffect(() => {
@@ -1425,9 +1473,9 @@ export default function CoordinacionAcademicaPage() {
               <label htmlFor="coord-docente">Docente</label>
               <select id="coord-docente" {...asignacionForm.register('docente_id')}>
                 <option value="">Selecciona docente</option>
-                {docentes.map((docente) => (
-                  <option key={docente.id_docente} value={String(docente.id_docente)}>
-                    {docente.nombre_completo}
+                {listaDocentes.map((docente) => (
+                  <option key={docente.id} value={String(docente.id)}>
+                    {docente.nombre}
                   </option>
                 ))}
               </select>
@@ -1436,9 +1484,9 @@ export default function CoordinacionAcademicaPage() {
               <label htmlFor="coord-materia">Materia</label>
               <select id="coord-materia" {...asignacionForm.register('materia_id')}>
                 <option value="">Selecciona materia</option>
-                {materiasCargaFiltradas.map((materia) => (
-                  <option key={materia.id_materia} value={String(materia.id_materia)}>
-                    {materia.nombre_materia}
+                {listaMateriasCargaFiltradas.map((materia) => (
+                  <option key={materia.id} value={String(materia.id)}>
+                    {`${materia.codigo_materia || 'SIN-CODIGO'} - ${materia.nombre}`}
                   </option>
                 ))}
               </select>
@@ -1447,9 +1495,9 @@ export default function CoordinacionAcademicaPage() {
               <label htmlFor="coord-grupo">Grupo</label>
               <select id="coord-grupo" {...asignacionForm.register('grupo_id')}>
                 <option value="">Selecciona grupo</option>
-                {gruposCargaFiltrados.map((grupo) => (
-                  <option key={`${grupo.materia_id}-${grupo.grupo_id}`} value={grupo.grupo_id}>
-                    {grupo.etiqueta}
+                {listaGruposAsignacion.map((grupo) => (
+                  <option key={`${grupo.materia_id}-${grupo.id}`} value={grupo.id}>
+                    {grupo.nombre_grupo}
                   </option>
                 ))}
               </select>
@@ -1471,9 +1519,9 @@ export default function CoordinacionAcademicaPage() {
               <label htmlFor="coord-h-grupo">Grupo</label>
               <select id="coord-h-grupo" {...horarioForm.register('grupo_id')}>
                 <option value="">Selecciona grupo</option>
-                {gruposCargaFiltrados.map((grupo) => (
-                  <option key={`h-${grupo.materia_id}-${grupo.grupo_id}`} value={grupo.grupo_id}>
-                    {grupo.etiqueta}
+                {listaGruposHorario.map((grupo) => (
+                  <option key={`h-${grupo.materia_id}-${grupo.id}`} value={grupo.id}>
+                    {grupo.nombre_grupo}
                   </option>
                 ))}
               </select>
@@ -1481,9 +1529,9 @@ export default function CoordinacionAcademicaPage() {
               <label htmlFor="coord-h-materia">Materia</label>
               <select id="coord-h-materia" {...horarioForm.register('materia_id')}>
                 <option value="">Selecciona materia</option>
-                {materiasCargaFiltradas.map((materia) => (
-                  <option key={`h-m-${materia.id_materia}`} value={String(materia.id_materia)}>
-                    {materia.nombre_materia}
+                {listaMateriasCargaFiltradas.map((materia) => (
+                  <option key={`h-m-${materia.id}`} value={String(materia.id)}>
+                    {`${materia.codigo_materia || 'SIN-CODIGO'} - ${materia.nombre}`}
                   </option>
                 ))}
               </select>
@@ -1491,9 +1539,9 @@ export default function CoordinacionAcademicaPage() {
               <label htmlFor="coord-h-docente">Docente</label>
               <select id="coord-h-docente" {...horarioForm.register('docente_id')}>
                 <option value="">Selecciona docente</option>
-                {docentes.map((docente) => (
-                  <option key={`h-d-${docente.id_docente}`} value={String(docente.id_docente)}>
-                    {docente.nombre_completo}
+                {listaDocentes.map((docente) => (
+                  <option key={`h-d-${docente.id}`} value={String(docente.id)}>
+                    {docente.nombre}
                   </option>
                 ))}
               </select>

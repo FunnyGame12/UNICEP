@@ -13,6 +13,10 @@ router.use(authorizeRoles('coordinacion_academica', 'director'));
 
 router.get('/docentes-asignaciones', coordinacionController.docentesAsignaciones);
 router.post('/asignar-materia-docente', coordinacionController.asignarMateriaDocente);
+router.get('/catalogos/docentes', coordinacionController.catalogoDocentes);
+router.get('/catalogos/materias', coordinacionController.catalogoMaterias);
+router.get('/catalogos/grupos', coordinacionController.catalogoGrupos);
+router.get('/catalogos-completos', coordinacionController.catalogosCompletos);
 
 router.get('/aulas-disponibilidad', coordinacionController.aulasDisponibilidad);
 router.post('/programar-horario-grupo', coordinacionController.programarHorarioGrupo);
