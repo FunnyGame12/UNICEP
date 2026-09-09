@@ -40,6 +40,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
+      grupo_id: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
       activo: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

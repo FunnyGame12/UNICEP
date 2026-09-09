@@ -748,7 +748,7 @@ export default function CoordinacionAcademicaPage() {
         periodo: values.periodo,
         turno: values.turno,
       });
-      setMessage('Horario programado sin empalmes.');
+      setMessage('Horario programado y notificacion enviada al maestro y alumnos del grupo.');
       await loadData();
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo programar el horario.');

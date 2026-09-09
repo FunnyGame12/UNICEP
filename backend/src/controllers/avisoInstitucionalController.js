@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { AvisoInstitucional } = require('../../models');
+const { AvisoInstitucional, AlumnoGrupo, AsignacionGrupo } = require('../../models');
 
 const DESTINATARIOS_VALIDOS = new Set(['alumnos', 'docentes', 'general']);
 const TIPOS_ADJUNTO_VALIDOS = new Set(['ninguno', 'archivo_local', 'enlace_drive']);
@@ -19,6 +19,11 @@ function toIntOrNull(value) {
   return Number.isInteger(parsed) ? parsed : NaN;
 }
 
+function normalizeGrupo(value) {
+  const text = String(value || '').trim().toUpperCase();
+  return text || null;
+}
+
 function serializeAviso(item) {
   return {
     id: item.id_aviso_institucional,
@@ -29,6 +34,7 @@ function serializeAviso(item) {
     url_adjunto: item.url_adjunto,
     carrera_id: item.carrera_id,
     cuatrimestre_id: item.cuatrimestre_id,
+    grupo_id: item.grupo_id,
     activo: Boolean(item.activo),
     created_at: item.created_at,
     updated_at: item.updated_at,
@@ -42,6 +48,7 @@ async function crearAviso(req, res) {
   const tipoAdjunto = normalizeEnum(req.body.tipo_adjunto || 'ninguno');
   const carreraId = normalizeText(req.body.carrera_id);
   const cuatrimestreId = toIntOrNull(req.body.cuatrimestre_id);
+  const grupoId = normalizeGrupo(req.body.grupo_id);
 
   if (!titulo || !mensaje) {
     return res.status(400).json({ message: 'titulo y mensaje son obligatorios.' });
@@ -90,6 +97,7 @@ async function crearAviso(req, res) {
     url_adjunto: urlAdjunto,
     carrera_id: carreraId,
     cuatrimestre_id: cuatrimestreId,
+    grupo_id: grupoId,
     activo: true,
     created_at: now,
     updated_at: now,
@@ -144,6 +152,37 @@ async function listarAvisosPublicosPorRol(req, res) {
       ? ['docentes', 'general']
       : ['general', 'alumnos', 'docentes'];
 
+  let gruposPermitidos = [];
+  if (rol.startsWith('alumno')) {
+    const idAlumno = Number(req.user?.id_usuario);
+    if (!Number.isInteger(idAlumno)) {
+      return res.status(401).json({ message: 'Sesion invalida.' });
+    }
+
+    const grupos = await AlumnoGrupo.findAll({
+      where: { id_alumno: idAlumno },
+      attributes: ['grupo'],
+      raw: true,
+    });
+
+    gruposPermitidos = [...new Set(grupos.map((item) => normalizeGrupo(item.grupo)).filter(Boolean))];
+  }
+
+  if (rol.startsWith('docente')) {
+    const idDocente = Number(req.user?.id_usuario);
+    if (!Number.isInteger(idDocente)) {
+      return res.status(401).json({ message: 'Sesion invalida.' });
+    }
+
+    const grupos = await AsignacionGrupo.findAll({
+      where: { id_docente: idDocente },
+      attributes: ['grupo'],
+      raw: true,
+    });
+
+    gruposPermitidos = [...new Set(grupos.map((item) => normalizeGrupo(item.grupo)).filter(Boolean))];
+  }
+
   const where = {
     activo: true,
     destinatario: { [Op.in]: destinatarios },
@@ -158,6 +197,12 @@ async function listarAvisosPublicosPorRol(req, res) {
         [Op.or]: [
           { cuatrimestre_id: null },
           ...(cuatrimestreId !== null ? [{ cuatrimestre_id: cuatrimestreId }] : []),
+        ],
+      },
+      {
+        [Op.or]: [
+          { grupo_id: null },
+          ...(gruposPermitidos.length > 0 ? [{ grupo_id: { [Op.in]: gruposPermitidos } }] : []),
         ],
       },
     ],

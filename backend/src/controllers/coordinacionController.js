@@ -19,6 +19,7 @@ const {
   TramiteSolicitud,
   RecursoAcademico,
   Aviso,
+  AvisoInstitucional,
 } = require('../../models');
 const { registrarEventoAuditoria } = require('../services/auditService');
 
@@ -400,6 +401,26 @@ async function programarHorarioGrupo(req, res) {
     hora_inicio: horaInicio,
     hora_fin: horaFin,
     descripcion: toCoordMetaText(descripcionMeta),
+  });
+
+  const materiaNombre = materia.nombre_materia || `Materia ${materiaId}`;
+  const grupoNombre = grupoId;
+  const diasTexto = diasSemana.join(', ');
+  const mensajeAviso = `Se ha programado/actualizado el horario para el grupo ${grupoNombre}.\nAula: ${aula}\nDias: ${diasTexto}\nHorario: de ${horaInicio} a ${horaFin}.`;
+  const now = new Date();
+
+  await AvisoInstitucional.create({
+    titulo: `Actualizacion de Horario y Aula: ${materiaNombre}`,
+    mensaje: mensajeAviso,
+    destinatario: 'general',
+    tipo_adjunto: 'ninguno',
+    url_adjunto: null,
+    carrera_id: materia.carrera || null,
+    cuatrimestre_id: toInt(materia.periodo_numero || materia.bimestre_pertenece),
+    grupo_id: grupoId,
+    activo: true,
+    created_at: now,
+    updated_at: now,
   });
 
   return res.status(201).json({

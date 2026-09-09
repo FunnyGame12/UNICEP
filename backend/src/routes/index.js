@@ -21,7 +21,7 @@ router.get('/health', (_req, res) => {
 });
 
 router.use('/auth', authRoutes);
-router.get('/avisos/:rol', avisoInstitucionalController.listarAvisosPublicosPorRol);
+router.get('/avisos/:rol', auth(), avisoInstitucionalController.listarAvisosPublicosPorRol);
 router.post('/tramites', auth(['alumno']), requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), handlePortafolioUpload, alumnoController.solicitarTramite);
 router.use('/alumnos', alumnoRoutes);
 router.use('/alumno', alumnoRoutes);
