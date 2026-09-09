@@ -176,11 +176,13 @@ export default function DocentePage() {
       try {
         setLoading(true);
         const response = await api.get('/docente/mis-materias');
+        const avisosInstitucionalesResp = await api.get('/avisos/docentes').catch(() => ({ data: { items: [] } }));
         const items = response?.data?.items || [];
 
         if (!isMounted) return;
 
         setMisMaterias(items);
+        setAvisos(avisosInstitucionalesResp?.data?.items || []);
         setPeriodoActivo(response?.data?.periodo_activo || null);
         const nextSelection = items.find((item) => String(item.id_asignacion) === String(selectedAsignacionId)) || items[0] || null;
         setSelectedAsignacion(nextSelection);
@@ -189,7 +191,6 @@ export default function DocentePage() {
         if (!nextSelection) {
           setAlumnos([]);
           setJustificantes([]);
-          setAvisos([]);
           setAsistenciaPorAlumno({});
           setCalificacionesPorAlumno({});
           setPortafolioValidadoPorAlumno({});
@@ -200,10 +201,9 @@ export default function DocentePage() {
 
         const materiaId = Number(nextSelection.materia_id);
         const grupoId = String(nextSelection.grupo_id);
-        const [alumnosResp, justificantesResp, avisosResp] = await Promise.all([
+        const [alumnosResp, justificantesResp] = await Promise.all([
           api.get(`/docente/grupos/${encodeURIComponent(grupoId)}/materias/${materiaId}/alumnos`),
           api.get('/docente/justificantes-recibidos'),
-          api.get('/docente/avisos-grupales'),
         ]);
 
         if (!isMounted) return;
@@ -211,7 +211,6 @@ export default function DocentePage() {
         const alumnosItems = alumnosResp?.data?.items || [];
         setAlumnos(alumnosItems);
         setJustificantes(justificantesResp?.data?.items || []);
-        setAvisos(avisosResp?.data?.items || []);
 
         setAsistenciaPorAlumno((prev) => {
           const next = { ...prev };
@@ -847,16 +846,47 @@ export default function DocentePage() {
           <article className="docente-card">
             <h3>Avisos institucionales</h3>
             {avisos.length === 0 ? (
-              <p className="docente-empty">Sin avisos institucionales para este grupo o materia.</p>
+              <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                <p className="text-gray-300">No hay comunicados nuevos por el momento.</p>
+              </div>
             ) : (
               <div className="docente-list">
-                {avisos.map((item) => (
-                  <article key={item.id_anuncio} className="docente-list-item">
-                    <strong>{item.titulo}</strong>
-                    <span>{item.materia?.nombre_materia || 'Aviso general'} · {formatDate(item.fecha_publicacion, true)}</span>
-                    <p>{item.descripcion}</p>
-                  </article>
-                ))}
+                {avisos.map((item) => {
+                  const adjuntoUrl = resolveBackendFileUrl(item.url_adjunto);
+                  return (
+                    <article
+                      key={item.id}
+                      className="docente-list-item bg-gray-800 border border-gray-700 hover:border-blue-500 transition-colors"
+                    >
+                      <strong className="text-lg">{item.titulo}</strong>
+                      <span>Fecha de publicación: {formatDate(item.created_at, true)}</span>
+                      <p className="text-gray-300 whitespace-pre-wrap">{item.mensaje}</p>
+
+                      {item.tipo_adjunto === 'enlace_drive' && adjuntoUrl ? (
+                        <a
+                          href={adjuntoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-primary"
+                        >
+                          Abrir en Drive 🔗
+                        </a>
+                      ) : null}
+
+                      {item.tipo_adjunto === 'archivo_local' && adjuntoUrl ? (
+                        <a
+                          href={adjuntoUrl}
+                          download
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-secondary"
+                        >
+                          Descargar Documento 📥
+                        </a>
+                      ) : null}
+                    </article>
+                  );
+                })}
               </div>
             )}
           </article>

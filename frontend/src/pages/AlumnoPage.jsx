@@ -127,7 +127,6 @@ export default function AlumnoPage() {
   const [historialTramites, setHistorialTramites] = useState([]);
   const [tiposTramiteCatalogo, setTiposTramiteCatalogo] = useState([]);
   const [avisos, setAvisos] = useState([]);
-  const [avisosDescartados, setAvisosDescartados] = useState(new Set());
   const [pagos, setPagos] = useState({ items: [], resumen: null });
   const [conceptosPago, setConceptosPago] = useState([]);
   const [misEvidencias, setMisEvidencias] = useState([]);
@@ -162,20 +161,6 @@ export default function AlumnoPage() {
   function handleTramiteFileChange(event) {
     setTramiteArchivo(event.target.files?.[0] || null);
   }
-
-  async function handleDescartarAviso(idAviso) {
-    try {
-      await api.post(`/alumno/avisos/${idAviso}/descartar`);
-      setAvisosDescartados((prev) => new Set(prev).add(idAviso));
-    } catch (_error) {
-      setError('No se pudo descartar el aviso. Intenta de nuevo.');
-    }
-  }
-
-  const avisosVisibles = useMemo(
-    () => avisos.filter((item) => !avisosDescartados.has(item.id_aviso)),
-    [avisos, avisosDescartados],
-  );
 
   const kardexRows = useMemo(() => {
     const partialMap = new Map();
@@ -310,7 +295,7 @@ export default function AlumnoPage() {
       const [horarioResp, asistenciaResp, avisosResp, calificacionesResp, portafolioResp] = await Promise.all([
         api.get('/alumno/horario-aulas'),
         api.get('/alumno/asistencia'),
-        api.get('/alumno/avisos').catch(() => ({ data: { items: [] } })),
+        api.get('/avisos/alumnos').catch(() => ({ data: { items: [] } })),
         api.get('/alumno/calificaciones').catch((requestError) => {
           if (requestError?.response?.status === 403) {
             setCalificacionesBloqueadas(true);
@@ -493,33 +478,53 @@ export default function AlumnoPage() {
       {activeTab === 'resumen' ? (
         <div className="alumno-section-grid">
           <article className="alumno-card full-width">
-            <h3>Alertas y avisos</h3>
-            {avisosVisibles.length === 0 ? (
-              <p className="alumno-empty">No hay avisos recientes de Coordinación, Docentes o Control Escolar.</p>
+            <h3>📢 Avisos y Comunicados Oficiales</h3>
+            {avisos.length === 0 ? (
+              <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+                <p className="text-gray-300">No hay comunicados nuevos por el momento.</p>
+              </div>
             ) : (
               <div className="alumno-list scroll-area">
-                {avisosVisibles.map((item) => (
-                  <article key={item.id_aviso} className="alumno-list-item">
-                    <div className="alumno-list-head">
-                      <strong>{item.titulo}</strong>
-                      <button
-                        type="button"
-                        className="dismiss-btn"
-                        aria-label="Descartar aviso"
-                        title="Descartar aviso"
-                        onClick={() => handleDescartarAviso(item.id_aviso)}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <p>{item.mensaje}</p>
-                    <small>
-                      {item.remitente_tipo === 'coordinacion' ? 'Coordinación Académica' : item.remitente_tipo === 'control_escolar' ? 'Control Escolar' : 'Docente'}
-                      {' · '}
-                      {formatDate(item.created_at, true)}
-                    </small>
-                  </article>
-                ))}
+                {avisos.map((item) => {
+                  const adjuntoUrl = resolveBackendFileUrl(item.url_adjunto);
+                  return (
+                    <article
+                      key={item.id}
+                      className="alumno-list-item bg-gray-800 border border-gray-700 hover:border-blue-500 transition-colors"
+                    >
+                      <div className="alumno-list-head">
+                        <strong className="text-lg">{item.titulo}</strong>
+                      </div>
+                      <small>
+                        Fecha de publicación: {formatDate(item.created_at, true)}
+                      </small>
+                      <p className="text-gray-300 whitespace-pre-wrap">{item.mensaje}</p>
+
+                      {item.tipo_adjunto === 'enlace_drive' && adjuntoUrl ? (
+                        <a
+                          href={adjuntoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-primary"
+                        >
+                          Abrir en Drive 🔗
+                        </a>
+                      ) : null}
+
+                      {item.tipo_adjunto === 'archivo_local' && adjuntoUrl ? (
+                        <a
+                          href={adjuntoUrl}
+                          download
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn-secondary"
+                        >
+                          Descargar Documento 📥
+                        </a>
+                      ) : null}
+                    </article>
+                  );
+                })}
               </div>
             )}
           </article>
