@@ -42,6 +42,15 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      recurso_sep_tipo: {
+        type: DataTypes.ENUM('enlace_drive', 'archivo_local', 'ninguno'),
+        allowNull: false,
+        defaultValue: 'ninguno',
+      },
+      recurso_sep_url: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+      },
       carrera: {
         type: DataTypes.STRING(120),
         allowNull: true,

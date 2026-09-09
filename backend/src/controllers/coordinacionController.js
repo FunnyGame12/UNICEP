@@ -36,6 +36,7 @@ const ESTATUS_PROGRAMA_VALIDOS = new Set(['en_revision', 'horas_cubiertas', 'lib
 const TIPOS_NIVEL_VALIDOS = new Set(['preparatoria', 'licenciatura', 'ingenieria', 'maestria']);
 const MODALIDADES_PERIODO_VALIDAS = new Set(['cuatrimestral']);
 const ESTATUS_PROGRAMA_ACADEMICO_VALIDOS = new Set(['activo', 'inactivo']);
+const TIPOS_RECURSO_SEP_VALIDOS = new Set(['enlace_drive', 'archivo_local', 'ninguno']);
 const CURP_REGEX = /^[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/;
 
 function toInt(value) {
@@ -1092,7 +1093,75 @@ function serializeMateria(item) {
     creditos: item.creditos,
     horas_semanales: item.horas_semanales,
     imagen_portada_url: item.imagen_portada_url,
-    recursos_sep: item.recursos_sep,
+    recursos_sep: item.recurso_sep_url || item.recursos_sep || null,
+    recurso_sep_tipo: item.recurso_sep_tipo || 'ninguno',
+    recurso_sep_url: item.recurso_sep_url || item.recursos_sep || null,
+  };
+}
+
+function resolveRecursoSepPayload(req, { allowPartial = false } = {}) {
+  const tipoRaw = req.body.recurso_sep_tipo;
+  const urlRaw = req.body.recurso_sep_url;
+  const legacyRaw = req.body.recursos_sep;
+  const hasFile = Boolean(req.file);
+
+  const tipo = tipoRaw !== undefined ? normalizeEnum(tipoRaw) : null;
+  const url = urlRaw !== undefined ? normalizeText(urlRaw) : null;
+  const legacy = legacyRaw !== undefined ? normalizeText(legacyRaw) : null;
+
+  if (tipo !== null && !TIPOS_RECURSO_SEP_VALIDOS.has(tipo)) {
+    return { error: 'recurso_sep_tipo invalido. Usa enlace_drive, archivo_local o ninguno.' };
+  }
+
+  if (allowPartial && tipo === null && urlRaw === undefined && legacyRaw === undefined && !hasFile) {
+    return { hasChanges: false };
+  }
+
+  let resolvedTipo = tipo;
+  let resolvedUrl = null;
+
+  if (!resolvedTipo) {
+    if (hasFile) {
+      resolvedTipo = 'archivo_local';
+    } else if (url) {
+      resolvedTipo = 'enlace_drive';
+    } else if (legacy) {
+      resolvedTipo = 'enlace_drive';
+    } else if (!allowPartial) {
+      resolvedTipo = 'ninguno';
+    } else {
+      return { hasChanges: false };
+    }
+  }
+
+  if (resolvedTipo === 'archivo_local') {
+    if (!hasFile) {
+      return { error: 'Adjunta archivo_sep cuando recurso_sep_tipo sea archivo_local.' };
+    }
+    resolvedUrl = `/uploads/temarios/${req.file.filename}`;
+  }
+
+  if (resolvedTipo === 'enlace_drive') {
+    resolvedUrl = url || legacy;
+    if (!resolvedUrl) {
+      return { error: 'Proporciona recurso_sep_url cuando recurso_sep_tipo sea enlace_drive.' };
+    }
+    try {
+      // eslint-disable-next-line no-new
+      new URL(resolvedUrl);
+    } catch (_error) {
+      return { error: 'recurso_sep_url debe ser una URL valida.' };
+    }
+  }
+
+  if (resolvedTipo === 'ninguno') {
+    resolvedUrl = null;
+  }
+
+  return {
+    hasChanges: true,
+    recurso_sep_tipo: resolvedTipo,
+    recurso_sep_url: resolvedUrl,
   };
 }
 
@@ -1298,7 +1367,10 @@ async function crearMateriaPrograma(req, res) {
     const creditos = req.body.creditos !== undefined ? toInt(req.body.creditos) : null;
     const horasSemanales = req.body.horas_semanales !== undefined ? toInt(req.body.horas_semanales) : null;
     const imagenPortadaUrl = req.body.imagen_portada_url !== undefined ? normalizeText(req.body.imagen_portada_url) : null;
-    const recursosSep = req.body.recursos_sep !== undefined ? normalizeText(req.body.recursos_sep) : null;
+    const recursoSep = resolveRecursoSepPayload(req);
+    if (recursoSep.error) {
+      return res.status(400).json({ message: recursoSep.error });
+    }
 
     if (!Number.isInteger(programaAcademicoId) || !Number.isInteger(periodoNumero) || !codigoMateria || !nombreMateria) {
       return res.status(400).json({ message: 'programa_academico_id, periodo_numero, codigo_materia y nombre_materia son obligatorios.' });
@@ -1322,7 +1394,9 @@ async function crearMateriaPrograma(req, res) {
       creditos: Number.isInteger(creditos) ? creditos : null,
       horas_semanales: Number.isInteger(horasSemanales) ? horasSemanales : null,
       imagen_portada_url: imagenPortadaUrl,
-      recursos_sep: recursosSep,
+      recursos_sep: recursoSep.recurso_sep_url,
+      recurso_sep_tipo: recursoSep.recurso_sep_tipo,
+      recurso_sep_url: recursoSep.recurso_sep_url,
       carrera: programa.nombre,
       activa: true,
     });
@@ -1356,7 +1430,13 @@ async function actualizarMateriaPrograma(req, res) {
     const creditos = req.body.creditos !== undefined ? toInt(req.body.creditos) : null;
     const horasSemanales = req.body.horas_semanales !== undefined ? toInt(req.body.horas_semanales) : null;
     const imagenPortadaUrl = req.body.imagen_portada_url !== undefined ? normalizeText(req.body.imagen_portada_url) : null;
-    const recursosSep = req.body.recursos_sep !== undefined ? normalizeText(req.body.recursos_sep) : null;
+    const recursoSepTipoRaw = req.body.recurso_sep_tipo;
+    const recursoSepUrlRaw = req.body.recurso_sep_url;
+    const recursosSepLegacyRaw = req.body.recursos_sep;
+    const recursoSep = resolveRecursoSepPayload(req, { allowPartial: true });
+    if (recursoSep.error) {
+      return res.status(400).json({ message: recursoSep.error });
+    }
 
     if (
       nombreMateria === null
@@ -1365,7 +1445,10 @@ async function actualizarMateriaPrograma(req, res) {
       && creditos === null
       && horasSemanales === null
       && imagenPortadaUrl === null
-      && recursosSep === null
+      && recursoSepTipoRaw === undefined
+      && recursoSepUrlRaw === undefined
+      && recursosSepLegacyRaw === undefined
+      && !req.file
     ) {
       return res.status(400).json({ message: 'Proporciona al menos un campo editable.' });
     }
@@ -1387,7 +1470,11 @@ async function actualizarMateriaPrograma(req, res) {
     if (creditos !== null) materia.creditos = Number.isInteger(creditos) ? creditos : null;
     if (horasSemanales !== null) materia.horas_semanales = Number.isInteger(horasSemanales) ? horasSemanales : null;
     if (imagenPortadaUrl !== null) materia.imagen_portada_url = imagenPortadaUrl;
-    if (recursosSep !== null) materia.recursos_sep = recursosSep;
+    if (recursoSep.hasChanges) {
+      materia.recurso_sep_tipo = recursoSep.recurso_sep_tipo;
+      materia.recurso_sep_url = recursoSep.recurso_sep_url;
+      materia.recursos_sep = recursoSep.recurso_sep_url;
+    }
 
     await materia.save();
 

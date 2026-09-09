@@ -7,6 +7,7 @@ const multer = require('multer');
 const UPLOAD_ROOT = path.join(__dirname, '../../uploads');
 const PORTAFOLIO_DIR = path.join(UPLOAD_ROOT, 'portafolio');
 const INSTITUCIONAL_DIR = path.join(UPLOAD_ROOT, 'institucional');
+const TEMARIOS_DIR = path.join(UPLOAD_ROOT, 'temarios');
 
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
@@ -24,6 +25,8 @@ const EXTENSION_BY_MIME = {
   'image/webp': '.webp',
   'application/msword': '.doc',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/zip': '.zip',
+  'application/x-zip-compressed': '.zip',
 };
 
 const storage = multer.diskStorage({
@@ -134,11 +137,61 @@ function handleTramiteRespuestaUpload(req, res, next) {
   });
 }
 
+const TEMARIO_ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/zip',
+  'application/x-zip-compressed',
+]);
+
+const temarioStorage = multer.diskStorage({
+  destination(_req, _file, cb) {
+    fs.mkdirSync(TEMARIOS_DIR, { recursive: true });
+    cb(null, TEMARIOS_DIR);
+  },
+  filename(_req, file, cb) {
+    const extension = EXTENSION_BY_MIME[file.mimetype] || path.extname(file.originalname).slice(0, 10) || '.bin';
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${extension}`;
+    cb(null, uniqueName);
+  },
+});
+
+const uploadTemario = multer({
+  storage: temarioStorage,
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    if (!TEMARIO_ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      cb(new Error('Tipo de archivo no permitido para temario. Usa PDF, DOC, DOCX o ZIP.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+function handleMateriaSepUpload(req, res, next) {
+  uploadTemario.single('archivo_sep')(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({ message: 'El archivo de temario excede el tamano maximo permitido (15MB).' });
+      return;
+    }
+
+    res.status(400).json({ message: error.message || 'No se pudo procesar el archivo de temario.' });
+  });
+}
+
 module.exports = {
   uploadPortafolio,
   handlePortafolioUpload,
   handleManualServicioSocialUpload,
   handleTramiteRespuestaUpload,
+  handleMateriaSepUpload,
   PORTAFOLIO_DIR,
   INSTITUCIONAL_DIR,
+  TEMARIOS_DIR,
 };

@@ -170,7 +170,6 @@ const materiaPlanSchema = z.object({
     z.number().int().min(0, 'No puede ser negativo.').optional(),
   ),
   imagen_portada_url: z.string().trim().url('Ingresa una URL valida.').or(z.literal('')),
-  recursos_sep: z.string().trim().optional(),
 });
 
 export default function CoordinacionAcademicaPage() {
@@ -206,6 +205,9 @@ export default function CoordinacionAcademicaPage() {
   const [avisoTipoAdjunto, setAvisoTipoAdjunto] = useState('ninguno');
   const [avisoUrlAdjunto, setAvisoUrlAdjunto] = useState('');
   const [avisoArchivo, setAvisoArchivo] = useState(null);
+  const [tipoRecursoSep, setTipoRecursoSep] = useState('ninguno');
+  const [urlDriveSep, setUrlDriveSep] = useState('');
+  const [archivoFisicoSep, setArchivoFisicoSep] = useState(null);
 
   const [periodoActivoCoord, setPeriodoActivoCoord] = useState(null);
   const [fechaLimiteSending, setFechaLimiteSending] = useState(false);
@@ -1091,10 +1093,47 @@ export default function CoordinacionAcademicaPage() {
         creditos: values.creditos === undefined ? undefined : Number(values.creditos),
         horas_semanales: values.horas_semanales === undefined ? undefined : Number(values.horas_semanales),
         imagen_portada_url: values.imagen_portada_url?.trim() || null,
-        recursos_sep: values.recursos_sep?.trim() || null,
+        recurso_sep_tipo: tipoRecursoSep,
+        recurso_sep_url: tipoRecursoSep === 'enlace_drive' ? (urlDriveSep.trim() || null) : null,
       };
 
-      if (editingMateriaPlanId) {
+      if (tipoRecursoSep === 'enlace_drive' && !urlDriveSep.trim()) {
+        setError('Ingresa la URL de Google Drive para el recurso SEP.');
+        return;
+      }
+
+      if (tipoRecursoSep === 'archivo_local' && !archivoFisicoSep) {
+        setError('Selecciona un archivo local para el recurso SEP.');
+        return;
+      }
+
+      const shouldUseFormData = tipoRecursoSep === 'archivo_local' || Boolean(archivoFisicoSep);
+
+      if (shouldUseFormData) {
+        const formData = new FormData();
+        formData.append('programa_academico_id', String(payload.programa_academico_id));
+        formData.append('periodo_numero', String(payload.periodo_numero));
+        formData.append('codigo_materia', payload.codigo_materia);
+        formData.append('nombre_materia', payload.nombre_materia);
+        if (payload.creditos !== undefined) formData.append('creditos', String(payload.creditos));
+        if (payload.horas_semanales !== undefined) formData.append('horas_semanales', String(payload.horas_semanales));
+        if (payload.imagen_portada_url) formData.append('imagen_portada_url', payload.imagen_portada_url);
+        formData.append('recurso_sep_tipo', payload.recurso_sep_tipo);
+        if (payload.recurso_sep_url) formData.append('recurso_sep_url', payload.recurso_sep_url);
+        if (archivoFisicoSep) formData.append('archivo_sep', archivoFisicoSep);
+
+        if (editingMateriaPlanId) {
+          await api.put(`/coordinacion/materias/${editingMateriaPlanId}`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          setMessage('Materia actualizada.');
+        } else {
+          await api.post('/coordinacion/materias', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          setMessage('Materia agregada al plan de estudios.');
+        }
+      } else if (editingMateriaPlanId) {
         await api.put(`/coordinacion/materias/${editingMateriaPlanId}`, payload);
         setMessage('Materia actualizada.');
       } else {
@@ -1111,8 +1150,10 @@ export default function CoordinacionAcademicaPage() {
         creditos: 0,
         horas_semanales: 0,
         imagen_portada_url: '',
-        recursos_sep: '',
       });
+      setTipoRecursoSep('ninguno');
+      setUrlDriveSep('');
+      setArchivoFisicoSep(null);
 
       await loadData();
       const response = await api.get(`/coordinacion/programas/${Number(selectedProgramaOfertaId)}/materias`);
@@ -1967,9 +2008,59 @@ export default function CoordinacionAcademicaPage() {
               </div>
 
               <div className="coord-form-group coord-col-span-2">
-                <label htmlFor="coord-mat-recursos-sep">Recursos SEP / temario oficial</label>
-                <textarea id="coord-mat-recursos-sep" rows="3" {...materiaPlanForm.register('recursos_sep')} />
+                <label htmlFor="coord-mat-recurso-tipo">Recurso SEP / Temario</label>
+                <select
+                  id="coord-mat-recurso-tipo"
+                  value={tipoRecursoSep}
+                  onChange={(event) => {
+                    setTipoRecursoSep(event.target.value);
+                    setUrlDriveSep('');
+                    setArchivoFisicoSep(null);
+                  }}
+                >
+                  <option value="ninguno">Ninguno</option>
+                  <option value="enlace_drive">Enlace de Google Drive</option>
+                  <option value="archivo_local">Archivo local</option>
+                </select>
               </div>
+
+              {tipoRecursoSep === 'enlace_drive' ? (
+                <div className="coord-form-group coord-col-span-2">
+                  <label htmlFor="coord-mat-recurso-url">URL de Google Drive</label>
+                  <input
+                    id="coord-mat-recurso-url"
+                    type="url"
+                    value={urlDriveSep}
+                    onChange={(event) => setUrlDriveSep(event.target.value)}
+                    placeholder="https://drive.google.com/..."
+                  />
+                </div>
+              ) : null}
+
+              {tipoRecursoSep === 'archivo_local' ? (
+                <div className="coord-form-group coord-col-span-2">
+                  <label htmlFor="coord-mat-recurso-archivo">Archivo de temario</label>
+                  <input
+                    id="coord-mat-recurso-archivo"
+                    type="file"
+                    accept=".pdf,.doc,.docx,.zip"
+                    onChange={(event) => setArchivoFisicoSep(event.target.files?.[0] || null)}
+                  />
+                  {archivoFisicoSep ? <small>{`Archivo seleccionado: ${archivoFisicoSep.name}`}</small> : null}
+                </div>
+              ) : null}
+
+              {editingMateriaPlanId && tipoRecursoSep === 'archivo_local' ? (
+                <div className="coord-form-group coord-col-span-2">
+                  <small>Al editar con archivo local, selecciona un archivo nuevo para reemplazar el actual.</small>
+                </div>
+              ) : null}
+
+              {editingMateriaPlanId && tipoRecursoSep === 'enlace_drive' && urlDriveSep ? (
+                <div className="coord-form-group coord-col-span-2">
+                  <a href={urlDriveSep} target="_blank" rel="noreferrer">Abrir recurso actual</a>
+                </div>
+              ) : null}
 
               <button type="submit" className="btn-primary" disabled={loading || sending || !selectedProgramaOfertaId}>
                 {editingMateriaPlanId ? 'Actualizar materia' : 'Agregar Materia'}
@@ -1989,8 +2080,10 @@ export default function CoordinacionAcademicaPage() {
                       creditos: 0,
                       horas_semanales: 0,
                       imagen_portada_url: '',
-                      recursos_sep: '',
                     });
+                    setTipoRecursoSep('ninguno');
+                    setUrlDriveSep('');
+                    setArchivoFisicoSep(null);
                   }}
                 >
                   Cancelar edicion
@@ -2021,8 +2114,10 @@ export default function CoordinacionAcademicaPage() {
                               creditos: materia.creditos ?? 0,
                               horas_semanales: materia.horas_semanales ?? 0,
                               imagen_portada_url: materia.imagen_portada_url || '',
-                              recursos_sep: materia.recursos_sep || '',
                             });
+                            setTipoRecursoSep(materia.recurso_sep_tipo || 'ninguno');
+                            setUrlDriveSep(materia.recurso_sep_tipo === 'enlace_drive' ? (materia.recurso_sep_url || '') : '');
+                            setArchivoFisicoSep(null);
                           }}
                         >
                           Editar

@@ -874,7 +874,9 @@ async function misMaterias(req, res) {
       periodo_numero: item.materia?.periodo_numero || item.materia?.bimestre_pertenece || null,
       carrera: item.materia?.carrera || null,
       imagen_portada_url: item.materia?.imagen_portada_url || null,
-      recursos_sep: item.materia?.recursos_sep || null,
+      recursos_sep: item.materia?.recurso_sep_url || item.materia?.recursos_sep || null,
+      recurso_sep_tipo: item.materia?.recurso_sep_tipo || 'ninguno',
+      recurso_sep_url: item.materia?.recurso_sep_url || item.materia?.recursos_sep || null,
     },
   }));
 

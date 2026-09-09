@@ -4,7 +4,7 @@ const { authorizeRoles } = require('../middlewares/auth');
 const coordinacionController = require('../controllers/coordinacionController');
 const avisoInstitucionalController = require('../controllers/avisoInstitucionalController');
 const controlEscolarController = require('../controllers/controlEscolarController');
-const { handleTramiteRespuestaUpload, handlePortafolioUpload } = require('../middlewares/upload');
+const { handleTramiteRespuestaUpload, handlePortafolioUpload, handleMateriaSepUpload } = require('../middlewares/upload');
 
 const router = express.Router();
 
@@ -34,8 +34,8 @@ router.put('/programas/:id', coordinacionController.actualizarProgramaAcademico)
 router.delete('/programas/:id', coordinacionController.eliminarProgramaAcademico);
 
 router.get('/programas/:id/materias', coordinacionController.materiasPorPrograma);
-router.post('/materias', coordinacionController.crearMateriaPrograma);
-router.put('/materias/:id', coordinacionController.actualizarMateriaPrograma);
+router.post('/materias', handleMateriaSepUpload, coordinacionController.crearMateriaPrograma);
+router.put('/materias/:id', handleMateriaSepUpload, coordinacionController.actualizarMateriaPrograma);
 router.delete('/materias/:id', coordinacionController.eliminarMateriaPrograma);
 
 router.get('/alumnos-progreso', coordinacionController.alumnosProgreso);

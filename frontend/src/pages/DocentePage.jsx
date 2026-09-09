@@ -131,6 +131,36 @@ export default function DocentePage() {
     [selectedAsignacion],
   );
 
+  const recursosMateriaActual = useMemo(() => {
+    const materia = selectedAsignacion?.materia;
+    const tipo = String(materia?.recurso_sep_tipo || 'ninguno').trim();
+    const url = String(materia?.recurso_sep_url || materia?.recursos_sep || '').trim();
+
+    if (!materia || tipo === 'ninguno' || !url) return [];
+
+    return [{
+      id: `materia-sep-${materia.id_materia}`,
+      titulo: `Temario SEP · ${materia.nombre_materia || 'Materia'}`,
+      url_archivo: url,
+      tipo_recurso: tipo,
+      fuente: 'materia',
+    }];
+  }, [selectedAsignacion]);
+
+  const recursosMaestroConsolidados = useMemo(() => {
+    const vistos = new Set();
+    const items = [];
+
+    [...recursosMateriaActual, ...(recursosCoordinacion || [])].forEach((item) => {
+      const key = `${item.titulo || ''}::${item.url_archivo || ''}`;
+      if (vistos.has(key)) return;
+      vistos.add(key);
+      items.push(item);
+    });
+
+    return items;
+  }, [recursosMateriaActual, recursosCoordinacion]);
+
   const calificacionesBloqueadas = useMemo(() => {
     if (!periodoActivo?.fecha_limite_calificaciones) return false;
     return Date.now() > new Date(periodoActivo.fecha_limite_calificaciones).getTime();
@@ -916,13 +946,13 @@ export default function DocentePage() {
           <div className="mb-6 bg-gray-900 border border-gray-700 rounded-lg p-5">
             <h3 className="text-lg font-semibold text-white mb-4">Recursos del Maestro</h3>
 
-            {(!recursosCoordinacion || recursosCoordinacion.length === 0) ? (
+            {(!recursosMaestroConsolidados || recursosMaestroConsolidados.length === 0) ? (
               <div className="border-2 border-dashed border-gray-700 rounded-lg p-8 flex items-center justify-center">
                 <p className="text-gray-500 text-sm">Sin recursos SEP/temario configurados para esta materia.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {recursosCoordinacion.map((recurso) => (
+                {recursosMaestroConsolidados.map((recurso) => (
                   <div
                     key={recurso.id}
                     className="flex items-center justify-between bg-gray-800 border border-gray-700 p-3 rounded-md"
@@ -931,18 +961,19 @@ export default function DocentePage() {
                       <span className="text-2xl">📄</span>
                       <div>
                         <p className="text-sm font-medium text-gray-200">{recurso.titulo}</p>
-                        <p className="text-xs text-gray-500">Proporcionado por: Coordinación</p>
+                        <p className="text-xs text-gray-500">
+                          {recurso.fuente === 'materia' ? 'Proporcionado por: Materia (Coordinación)' : 'Proporcionado por: Coordinación'}
+                        </p>
                       </div>
                     </div>
 
                     <a
                       href={resolveBackendFileUrl(recurso.url_archivo)}
-                      download
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-colors"
                     >
-                      Descargar 📥
+                      {recurso.tipo_recurso === 'enlace_drive' ? 'Abrir en Drive 🔗' : 'Descargar 📥'}
                     </a>
                   </div>
                 ))}
