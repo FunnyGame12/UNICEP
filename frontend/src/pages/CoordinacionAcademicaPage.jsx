@@ -6,19 +6,23 @@ import api from '../services/api';
 import './CoordinacionAcademicaPage.css';
 
 const tabs = [
-  { id: 'carga', label: 'Carga Horaria y Grupos' },
-  { id: 'calificaciones', label: 'Calificaciones y Extraordinarios' },
-  { id: 'oferta', label: 'Planes de Estudio y Materias' },
-  { id: 'servicio', label: 'Servicio Social y Practicas' },
-  { id: 'progreso', label: 'Progreso y Reconocimientos' },
+  { id: 'carga', label: 'Carga Horaria y Docentes' },
+  { id: 'calificaciones', label: 'Calificaciones y Planes' },
+  { id: 'progreso', label: 'Progreso y Servicio' },
+  { id: 'comunicados', label: 'Comunicados Oficiales' },
 ];
 
-const documentoPortafolioLabels = {
-  curp: 'CURP',
-  acta_nacimiento: 'Acta de nacimiento',
-  certificado_bachillerato: 'Certificado de bachillerato',
-  foto_oficial: 'Foto oficial',
-};
+const avisoDestinatarioOptions = [
+  { value: 'alumnos', label: 'Todos los Alumnos' },
+  { value: 'docentes', label: 'Todos los Docentes' },
+  { value: 'general', label: 'General/Ambos' },
+];
+
+const avisoAdjuntoOptions = [
+  { value: 'ninguno', label: 'Sin adjunto' },
+  { value: 'enlace_drive', label: 'Enlace de Google Drive' },
+  { value: 'archivo_local', label: 'Subir Archivo' },
+];
 
 function resolveBackendFileUrl(filePath) {
   const raw = String(filePath || '').trim();
@@ -195,9 +199,13 @@ export default function CoordinacionAcademicaPage() {
   const [alumnosProgreso, setAlumnosProgreso] = useState([]);
   const [meritosRecientes, setMeritosRecientes] = useState([]);
   const [selectedPrograma, setSelectedPrograma] = useState(null);
-  const [selectedPortafolioAlumnoId, setSelectedPortafolioAlumnoId] = useState('');
-  const [portafolioAlumnoData, setPortafolioAlumnoData] = useState(null);
-  const [portafolioAlumnoLoading, setPortafolioAlumnoLoading] = useState(false);
+  const [avisosPublicados, setAvisosPublicados] = useState([]);
+  const [avisoTitulo, setAvisoTitulo] = useState('');
+  const [avisoMensaje, setAvisoMensaje] = useState('');
+  const [avisoDestinatario, setAvisoDestinatario] = useState('general');
+  const [avisoTipoAdjunto, setAvisoTipoAdjunto] = useState('ninguno');
+  const [avisoUrlAdjunto, setAvisoUrlAdjunto] = useState('');
+  const [avisoArchivo, setAvisoArchivo] = useState(null);
 
   const [periodoActivoCoord, setPeriodoActivoCoord] = useState(null);
   const [fechaLimiteSending, setFechaLimiteSending] = useState(false);
@@ -350,7 +358,7 @@ export default function CoordinacionAcademicaPage() {
     setError('');
 
     try {
-      const [docentesResp, aulasResp, actasResp, programasResp, progresoResp, meritosResp, programasAcademicosResp] = await Promise.all([
+      const [docentesResp, aulasResp, actasResp, programasResp, progresoResp, meritosResp, programasAcademicosResp, avisosResp] = await Promise.all([
         api.get('/coordinacion/docentes-asignaciones'),
         api.get('/coordinacion/aulas-disponibilidad'),
         api.get('/coordinacion/actas-pendientes'),
@@ -358,6 +366,7 @@ export default function CoordinacionAcademicaPage() {
         api.get('/coordinacion/alumnos-progreso'),
         api.get('/coordinacion/meritos-recientes'),
         api.get('/coordinacion/programas'),
+        api.get('/coordinacion/avisos'),
       ]);
 
       const docentesData = docentesResp?.data?.items || [];
@@ -369,6 +378,7 @@ export default function CoordinacionAcademicaPage() {
       const progresoData = progresoResp?.data?.items || [];
       const meritosData = meritosResp?.data?.items || [];
       const programasAcademicosData = programasAcademicosResp?.data?.items || [];
+      const avisosData = avisosResp?.data?.items || [];
 
       setDocentes(docentesData);
       setMaterias(materiasData);
@@ -379,6 +389,7 @@ export default function CoordinacionAcademicaPage() {
       setProgramasAcademicos(programasAcademicosData);
       setAlumnosProgreso(progresoData);
       setMeritosRecientes(meritosData);
+      setAvisosPublicados(avisosData);
 
       const firstProgramaAcademico = programasAcademicosData[0] || null;
       if (firstProgramaAcademico) {
@@ -461,42 +472,6 @@ export default function CoordinacionAcademicaPage() {
 
     cargarOverrideCalificaciones();
   }, [overrideMateriaId, overrideGrupoId]);
-
-  useEffect(() => {
-    if (!alumnos.length) {
-      setSelectedPortafolioAlumnoId('');
-      setPortafolioAlumnoData(null);
-      return;
-    }
-
-    setSelectedPortafolioAlumnoId((current) => {
-      if (current && alumnos.some((item) => String(item.id_alumno) === String(current))) {
-        return current;
-      }
-      return String(alumnos[0].id_alumno);
-    });
-  }, [alumnos]);
-
-  useEffect(() => {
-    async function cargarPortafolioAlumno() {
-      if (!selectedPortafolioAlumnoId) {
-        setPortafolioAlumnoData(null);
-        return;
-      }
-
-      setPortafolioAlumnoLoading(true);
-      try {
-        const response = await api.get(`/coordinacion/alumnos/${Number(selectedPortafolioAlumnoId)}/portafolio`);
-        setPortafolioAlumnoData(response?.data || null);
-      } catch {
-        setPortafolioAlumnoData(null);
-      } finally {
-        setPortafolioAlumnoLoading(false);
-      }
-    }
-
-    cargarPortafolioAlumno();
-  }, [selectedPortafolioAlumnoId]);
 
   useEffect(() => {
     async function loadAlumnoGrupoCatalogos() {
@@ -868,6 +843,81 @@ export default function CoordinacionAcademicaPage() {
     }
   }
 
+  async function publicarComunicado() {
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      if (!avisoTitulo.trim() || !avisoMensaje.trim()) {
+        setError('El titulo y el mensaje del comunicado son obligatorios.');
+        return;
+      }
+
+      if (avisoTipoAdjunto === 'enlace_drive' && !avisoUrlAdjunto.trim()) {
+        setError('Proporciona una URL de Google Drive para el adjunto.');
+        return;
+      }
+
+      if (avisoTipoAdjunto === 'archivo_local' && !avisoArchivo) {
+        setError('Selecciona un archivo para adjuntar.');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('titulo', avisoTitulo.trim());
+      formData.append('mensaje', avisoMensaje.trim());
+      formData.append('destinatario', avisoDestinatario);
+      formData.append('tipo_adjunto', avisoTipoAdjunto);
+
+      if (avisoTipoAdjunto === 'enlace_drive') {
+        formData.append('url_adjunto', avisoUrlAdjunto.trim());
+      }
+      if (avisoTipoAdjunto === 'archivo_local' && avisoArchivo) {
+        formData.append('archivo', avisoArchivo);
+      }
+
+      await api.post('/coordinacion/avisos', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      setMessage('Comunicado publicado correctamente.');
+      setAvisoTitulo('');
+      setAvisoMensaje('');
+      setAvisoDestinatario('general');
+      setAvisoTipoAdjunto('ninguno');
+      setAvisoUrlAdjunto('');
+      setAvisoArchivo(null);
+      await loadData();
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo publicar el comunicado.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function eliminarComunicado(avisoId) {
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      await api.delete(`/coordinacion/avisos/${avisoId}`);
+      setMessage('Comunicado revocado correctamente.');
+      await loadData();
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo eliminar el comunicado.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function getAvisoDestinatarioInfo(destinatario) {
+    if (destinatario === 'docentes') return { label: 'Para: Docentes', className: 'is-docentes' };
+    if (destinatario === 'alumnos') return { label: 'Para: Alumnos', className: 'is-alumnos' };
+    return { label: 'Para: General', className: 'is-general' };
+  }
+
   const periodoOptionsCarga = useMemo(() => {
     const programa = programasAcademicos.find((item) => String(item.id) === String(selectedProgramaCargaId));
     if (!programa) return [];
@@ -998,7 +1048,7 @@ export default function CoordinacionAcademicaPage() {
       programaAcademicoForm.reset({
         tipo_nivel: 'licenciatura',
         nombre: '',
-        modalidad_periodo: 'semestral',
+        modalidad_periodo: 'cuatrimestral',
         total_periodos: 9,
       });
     } catch (requestError) {
@@ -1774,7 +1824,7 @@ export default function CoordinacionAcademicaPage() {
         </div>
       ) : null}
 
-      {activeTab === 'oferta' ? (
+      {activeTab === 'calificaciones' ? (
         <div className="coord-grid-2">
           <article className="coord-card">
             <h3>{editingProgramaAcademicoId ? 'Editar programa academico' : 'Crear programa academico'}</h3>
@@ -1994,7 +2044,7 @@ export default function CoordinacionAcademicaPage() {
         </div>
       ) : null}
 
-      {activeTab === 'servicio' ? (
+      {activeTab === 'progreso' ? (
         <div className="coord-grid-2">
           <article className="coord-card">
             <h3>Bandeja de programas externos</h3>
@@ -2159,53 +2209,132 @@ export default function CoordinacionAcademicaPage() {
               )}
             </div>
 
-            <div>
-              <h3>Portafolio documental por alumno</h3>
-              <div className="form-grid">
-                <label htmlFor="coord-portafolio-alumno">Alumno</label>
-                <select
-                  id="coord-portafolio-alumno"
-                  value={selectedPortafolioAlumnoId}
-                  onChange={(event) => setSelectedPortafolioAlumnoId(event.target.value)}
-                >
-                  <option value="">Selecciona alumno</option>
-                  {alumnos.map((alumno) => (
-                    <option key={`pa-${alumno.id_alumno}`} value={String(alumno.id_alumno)}>
-                      {`${alumno.folio_matricula || 'SIN-FOLIO'} · ${alumno.nombre_completo}`}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          </article>
+        </div>
+      ) : null}
 
-              {portafolioAlumnoLoading ? <p>Cargando portafolio...</p> : null}
-              {!portafolioAlumnoLoading && !portafolioAlumnoData ? <p className="coord-empty-state">Sin datos de portafolio para mostrar.</p> : null}
+      {activeTab === 'comunicados' ? (
+        <div className="coord-grid-2">
+          <article className="coord-card">
+            <h3>Redactar nuevo aviso</h3>
+            <div className="form-grid">
+              <label htmlFor="coord-aviso-titulo">Titulo del aviso</label>
+              <input
+                id="coord-aviso-titulo"
+                value={avisoTitulo}
+                onChange={(event) => setAvisoTitulo(event.target.value)}
+                placeholder="Suspension de actividades del viernes"
+              />
 
-              {portafolioAlumnoData ? (
+              <label htmlFor="coord-aviso-mensaje">Mensaje</label>
+              <textarea
+                id="coord-aviso-mensaje"
+                className="coord-textarea"
+                rows="5"
+                value={avisoMensaje}
+                onChange={(event) => setAvisoMensaje(event.target.value)}
+                placeholder="Detalle del comunicado oficial..."
+              />
+
+              <label htmlFor="coord-aviso-destinatario">Enviar a</label>
+              <select
+                id="coord-aviso-destinatario"
+                value={avisoDestinatario}
+                onChange={(event) => setAvisoDestinatario(event.target.value)}
+              >
+                {avisoDestinatarioOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+
+              <label htmlFor="coord-aviso-adjunto">Adjuntar material</label>
+              <select
+                id="coord-aviso-adjunto"
+                value={avisoTipoAdjunto}
+                onChange={(event) => {
+                  setAvisoTipoAdjunto(event.target.value);
+                  setAvisoUrlAdjunto('');
+                  setAvisoArchivo(null);
+                }}
+              >
+                {avisoAdjuntoOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+
+              {avisoTipoAdjunto === 'enlace_drive' ? (
                 <>
-                  <div className="coord-list">
-                    {(portafolioAlumnoData.documentos || []).map((item) => (
-                      <div key={`doc-${item.key}`} className="coord-list-item">
-                        <strong>{item.label}</strong>
-                        <span>{item.estatus === 'entregado' ? 'Entregado' : 'Faltante'}</span>
-                        {item.archivo_url ? (
-                          <a href={resolveBackendFileUrl(item.archivo_url)} target="_blank" rel="noreferrer">Descargar documento</a>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="coord-list" style={{ marginTop: 12 }}>
-                    {(portafolioAlumnoData.items || []).map((item) => (
-                      <div key={`ev-${item.id_evidencia}`} className="coord-list-item">
-                        <strong>{item.nombre_archivo || 'Archivo sin nombre'}</strong>
-                        <span>{documentoPortafolioLabels[item.tipo_documento] || item.materia || 'Documento general'}</span>
-                        <a href={resolveBackendFileUrl(item.archivo_url)} target="_blank" rel="noreferrer">Descargar archivo</a>
-                      </div>
-                    ))}
-                  </div>
+                  <label htmlFor="coord-aviso-url">URL de Google Drive</label>
+                  <input
+                    id="coord-aviso-url"
+                    type="url"
+                    value={avisoUrlAdjunto}
+                    onChange={(event) => setAvisoUrlAdjunto(event.target.value)}
+                    placeholder="https://drive.google.com/..."
+                  />
                 </>
               ) : null}
+
+              {avisoTipoAdjunto === 'archivo_local' ? (
+                <>
+                  <label htmlFor="coord-aviso-archivo">Archivo adjunto</label>
+                  <input
+                    id="coord-aviso-archivo"
+                    type="file"
+                    onChange={(event) => setAvisoArchivo(event.target.files?.[0] || null)}
+                  />
+                </>
+              ) : null}
+
+              <button type="button" className="btn-primary" disabled={sending} onClick={publicarComunicado}>
+                {sending ? 'Publicando...' : 'Publicar Comunicado'}
+              </button>
             </div>
+          </article>
+
+          <article className="coord-card">
+            <h3>Historial de comunicados publicados</h3>
+            {avisosPublicados.length === 0 ? (
+              <p className="coord-empty-state">Aun no hay comunicados oficiales publicados.</p>
+            ) : (
+              <div className="coord-list coord-avisos-list">
+                {avisosPublicados.map((aviso) => {
+                  const destinatarioInfo = getAvisoDestinatarioInfo(aviso.destinatario);
+                  const adjuntoUrl = resolveBackendFileUrl(aviso.url_adjunto);
+                  const tieneAdjunto = Boolean(adjuntoUrl);
+
+                  return (
+                    <article key={`aviso-${aviso.id}`} className="coord-list-item coord-aviso-item">
+                      <div className="coord-aviso-head">
+                        <strong>{aviso.titulo}</strong>
+                        <span className={`coord-aviso-badge ${destinatarioInfo.className}`}>{destinatarioInfo.label}</span>
+                      </div>
+                      <p>{aviso.mensaje}</p>
+                      <small>{new Date(aviso.created_at).toLocaleString()}</small>
+
+                      <div className="coord-aviso-actions">
+                        {tieneAdjunto ? (
+                          <a href={adjuntoUrl} target="_blank" rel="noreferrer" className="btn-secondary-sm">
+                            {aviso.tipo_adjunto === 'enlace_drive' ? 'Abrir enlace' : 'Abrir adjunto'}
+                          </a>
+                        ) : (
+                          <span className="coord-empty-inline">Sin adjunto</span>
+                        )}
+
+                        <button
+                          type="button"
+                          className="btn-danger-sm"
+                          disabled={sending || aviso.activo === false}
+                          onClick={() => eliminarComunicado(aviso.id)}
+                        >
+                          {aviso.activo === false ? 'Revocado' : 'Eliminar'}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
           </article>
         </div>
       ) : null}

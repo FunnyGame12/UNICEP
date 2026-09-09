@@ -9,6 +9,7 @@ const auth = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/permissions');
 const docenteController = require('../controllers/docenteController');
 const alumnoController = require('../controllers/alumnoController');
+const avisoInstitucionalController = require('../controllers/avisoInstitucionalController');
 const { handlePortafolioUpload } = require('../middlewares/upload');
 const { PERMISSIONS } = require('../constants/rbac');
 
@@ -20,6 +21,7 @@ router.get('/health', (_req, res) => {
 });
 
 router.use('/auth', authRoutes);
+router.get('/avisos/:rol', avisoInstitucionalController.listarAvisosPublicosPorRol);
 router.post('/tramites', auth(['alumno']), requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), handlePortafolioUpload, alumnoController.solicitarTramite);
 router.use('/alumnos', alumnoRoutes);
 router.use('/alumno', alumnoRoutes);

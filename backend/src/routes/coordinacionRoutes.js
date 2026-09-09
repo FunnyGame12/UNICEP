@@ -2,6 +2,7 @@ const express = require('express');
 const auth = require('../middlewares/auth');
 const { authorizeRoles } = require('../middlewares/auth');
 const coordinacionController = require('../controllers/coordinacionController');
+const avisoInstitucionalController = require('../controllers/avisoInstitucionalController');
 const controlEscolarController = require('../controllers/controlEscolarController');
 const { handleTramiteRespuestaUpload, handlePortafolioUpload } = require('../middlewares/upload');
 
@@ -53,6 +54,8 @@ router.post('/asignar-merito', coordinacionController.asignarMerito);
 
 router.get('/recursos-academicos', coordinacionController.listarRecursosAcademicos);
 router.post('/recursos-academicos', handlePortafolioUpload, coordinacionController.publicarRecursoAcademico);
-router.post('/avisos', coordinacionController.publicarAviso);
+router.post('/avisos', handlePortafolioUpload, avisoInstitucionalController.crearAviso);
+router.get('/avisos', avisoInstitucionalController.listarAvisosCoordinacion);
+router.delete('/avisos/:avisoId', avisoInstitucionalController.eliminarAvisoCoordinacion);
 
 module.exports = router;
