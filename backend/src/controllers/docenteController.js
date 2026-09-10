@@ -131,6 +131,49 @@ function isSchemaMismatchError(error) {
   );
 }
 
+function mapRecursoAcademicError(error) {
+  if (!error) return null;
+
+  if (isSchemaMismatchError(error)) {
+    return {
+      status: 503,
+      message: 'No se pudo guardar el material porque faltan migraciones de recursos academicos. Ejecuta npm run migrate en backend.',
+    };
+  }
+
+  if (error.name === 'SequelizeForeignKeyConstraintError') {
+    return {
+      status: 400,
+      message: 'No se pudo guardar el material: materia o docente invalido en base de datos.',
+    };
+  }
+
+  if (error.name === 'SequelizeValidationError') {
+    return {
+      status: 400,
+      message: error.errors?.[0]?.message || 'Datos invalidos para guardar el material.',
+    };
+  }
+
+  const code = String(error?.original?.code || error?.parent?.code || '').toUpperCase();
+  const sqlMessage = String(error?.original?.sqlMessage || '').toLowerCase();
+  if (code === 'ER_DATA_TOO_LONG' || sqlMessage.includes('data too long')) {
+    return {
+      status: 400,
+      message: 'Uno de los campos excede la longitud permitida (titulo, URL o grupo).',
+    };
+  }
+
+  if (code === 'ER_TRUNCATED_WRONG_VALUE_FOR_FIELD' || sqlMessage.includes('data truncated')) {
+    return {
+      status: 400,
+      message: 'Valor invalido en tipo de recurso o campos relacionados.',
+    };
+  }
+
+  return null;
+}
+
 async function prepararAsistenciaParaUpsert({ row, req, contexto }) {
   const materiaId = Number(row?.materia_id ?? row?.id_materia);
   const alumnoId = Number(row?.alumno_id ?? row?.id_alumno);
@@ -1688,65 +1731,75 @@ async function publicarAvisoGrupal(req, res) {
 }
 
 async function publicarRecursoAcademico(req, res) {
-  const titulo = sanitizeText(req.body.titulo);
-  const materiaId = Number(req.body.materia_id);
-  const grupoId = req.body.grupo_id ? normalizeGrupo(req.body.grupo_id) : null;
-  const tipoRecurso = sanitizeText(req.body.tipo_recurso).toLowerCase();
-  const remitenteNombre = sanitizeText(req.body.remitente_nombre) || req.user.nombre_completo;
-
-  if (!titulo || !Number.isInteger(materiaId)) {
-    return res.status(400).json({ message: 'titulo y materia_id son obligatorios.' });
-  }
-  if (!['archivo_local', 'enlace_drive'].includes(tipoRecurso)) {
-    return res.status(400).json({ message: 'tipo_recurso invalido. Usa archivo_local o enlace_drive.' });
-  }
-
-  const contexto = await obtenerContextoDocente(req.user.id_usuario);
-  if (!contexto.materiasIds.includes(materiaId)) {
-    return res.status(403).json({ message: 'No tienes asignacion para esa materia.' });
-  }
-  if (grupoId && !docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
-    return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
-  }
-
-  const urlRecurso = req.file
-    ? `/uploads/portafolio/${req.file.filename}`
-    : sanitizeText(req.body.url_recurso);
-
-  if (!urlRecurso) {
-    return res.status(400).json({ message: 'Adjunta un archivo o proporciona url_recurso.' });
-  }
-  if (tipoRecurso === 'enlace_drive') {
-    try {
-      // eslint-disable-next-line no-new
-      new URL(urlRecurso);
-    } catch (_error) {
-      return res.status(400).json({ message: 'url_recurso debe ser una URL valida.' });
-    }
-  }
-
-  let recurso;
   try {
-    recurso = await RecursoAcademico.create({
+    const titulo = sanitizeText(req.body.titulo);
+    const materiaId = Number(req.body.materia_id);
+    const grupoId = req.body.grupo_id ? normalizeGrupo(req.body.grupo_id) : null;
+    const tipoRecurso = sanitizeText(req.body.tipo_recurso).toLowerCase();
+    const remitenteNombre = sanitizeText(req.body.remitente_nombre)
+      || sanitizeText(req.user?.nombre_completo)
+      || sanitizeText(req.user?.correo)
+      || 'Docente';
+
+    if (!titulo || !Number.isInteger(materiaId)) {
+      return res.status(400).json({ message: 'titulo y materia_id son obligatorios.' });
+    }
+    if (!['archivo_local', 'enlace_drive'].includes(tipoRecurso)) {
+      return res.status(400).json({ message: 'tipo_recurso invalido. Usa archivo_local o enlace_drive.' });
+    }
+
+    const idDocente = Number(req.user?.id_usuario || req.user?.id);
+    if (!Number.isInteger(idDocente)) {
+      return res.status(401).json({ message: 'Sesion invalida para publicar material.' });
+    }
+
+    const contexto = await obtenerContextoDocente(idDocente);
+    if (!contexto.materiasIds.includes(materiaId)) {
+      return res.status(403).json({ message: 'No tienes asignacion para esa materia.' });
+    }
+    if (grupoId && !docenteAsignadoMateriaGrupo(contexto.asignacionesSet, materiaId, grupoId)) {
+      return res.status(403).json({ message: 'No tienes asignacion para ese grupo/materia.' });
+    }
+
+    const urlRecurso = req.file
+      ? `/uploads/portafolio/${req.file.filename}`
+      : sanitizeText(req.body.url_recurso);
+
+    if (!urlRecurso) {
+      return res.status(400).json({ message: 'Adjunta un archivo o proporciona url_recurso.' });
+    }
+    if (tipoRecurso === 'enlace_drive') {
+      try {
+        // eslint-disable-next-line no-new
+        new URL(urlRecurso);
+      } catch (_error) {
+        return res.status(400).json({ message: 'url_recurso debe ser una URL valida.' });
+      }
+    }
+
+    const recurso = await RecursoAcademico.create({
       titulo,
       tipo_recurso: tipoRecurso,
       url_recurso: urlRecurso,
       remitente_tipo: 'docente',
       remitente_nombre: remitenteNombre,
-      id_docente: req.user.id_usuario,
+      id_docente: idDocente,
       id_materia: materiaId,
       grupo_id: grupoId,
       activo: true,
       created_at: new Date(),
     });
-  } catch (error) {
-    if (isSchemaMismatchError(error)) {
-      return res.status(503).json({ message: 'No se pudo guardar el material porque faltan migraciones de recursos academicos. Ejecuta npm run migrate en backend.' });
-    }
-    throw error;
-  }
 
-  return res.status(201).json(recurso);
+    return res.status(201).json(recurso);
+  } catch (error) {
+    const mapped = mapRecursoAcademicError(error);
+    if (mapped) {
+      return res.status(mapped.status).json({ message: mapped.message });
+    }
+
+    console.error('Error inesperado al publicar recurso academico docente:', error);
+    return res.status(500).json({ message: 'No se pudo compartir el material por un error interno.' });
+  }
 }
 
 async function eliminarRecursoAcademico(req, res) {
