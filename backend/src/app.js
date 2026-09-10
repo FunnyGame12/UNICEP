@@ -7,6 +7,7 @@ const env = require('./config/env');
 const apiRoutes = require('./routes');
 
 const app = express();
+const uploadsPath = path.join(__dirname, '../uploads');
 const cspDirectives = {
   defaultSrc: ["'self'"],
   baseUri: ["'self'"],
@@ -62,7 +63,8 @@ app.use(
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('dev'));
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static(uploadsPath));
+app.use('/api/v1/uploads', express.static(uploadsPath));
 
 app.get('/', (_req, res) => {
   res.json({

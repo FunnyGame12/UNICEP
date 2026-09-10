@@ -86,9 +86,13 @@ function getTramiteEstatusInfo(estatus) {
 }
 
 function resolveBackendFileUrl(filePath) {
-  const raw = String(filePath || '').trim();
+  let raw = String(filePath || '').trim();
   if (!raw) return '';
   if (/^https?:\/\//i.test(raw)) return raw;
+
+  // Produccion: cuando Nginx solo proxya /api, redirige descargas de /uploads
+  // a /api/v1/uploads para evitar 404.
+  raw = raw.replace(/^\/?uploads\//i, '/api/v1/uploads/');
 
   const baseUrl = String(api.defaults.baseURL || '').trim();
   const absoluteBase = /^https?:\/\//i.test(baseUrl)
