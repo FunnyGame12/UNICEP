@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -7,7 +8,12 @@ const env = require('./config/env');
 const apiRoutes = require('./routes');
 
 const app = express();
-const uploadsPath = path.join(__dirname, '../uploads');
+const primaryUploadsPath = path.join(__dirname, '../uploads');
+const legacyUploadsPath = path.join(__dirname, '../../uploads');
+
+fs.mkdirSync(primaryUploadsPath, { recursive: true });
+
+const uploadDirectories = [...new Set([primaryUploadsPath, legacyUploadsPath])];
 const cspDirectives = {
   defaultSrc: ["'self'"],
   baseUri: ["'self'"],
@@ -63,8 +69,10 @@ app.use(
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('dev'));
-app.use('/uploads', express.static(uploadsPath));
-app.use('/api/v1/uploads', express.static(uploadsPath));
+uploadDirectories.forEach((directoryPath) => {
+  app.use('/uploads', express.static(directoryPath));
+  app.use('/api/v1/uploads', express.static(directoryPath));
+});
 
 app.get('/', (_req, res) => {
   res.json({
