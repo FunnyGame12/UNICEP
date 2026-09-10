@@ -57,6 +57,18 @@ function normalizarEstatusAsistencia(value) {
   return raw;
 }
 
+function normalizarPortafolioEstado(value, fallback = 'no_entregado') {
+  const raw = sanitizeText(value).toLowerCase();
+  if (['pendiente', 'validado', 'rechazado', 'no_entregado'].includes(raw)) return raw;
+  return fallback;
+}
+
+function legacyEstadoDesdePortafolioEstado(portafolioEstado) {
+  if (portafolioEstado === 'validado') return 'validado';
+  if (portafolioEstado === 'no_entregado') return 'pendiente';
+  return 'entregado';
+}
+
 function serializarEstadoAsistencia(estatus) {
   if (estatus === 'ausente') return 'Falta';
   if (estatus === 'presente') return 'Presente';
@@ -1257,7 +1269,13 @@ async function alumnosPorGrupoMateria(req, res) {
       ...row.toJSON(),
       portafolio_evidencia: evidencia
         ? {
+          id_evidencia_materia: evidencia.id_evidencia_materia,
           drive_url: evidencia.drive_url,
+          portafolio_estado: normalizarPortafolioEstado(
+            evidencia.portafolio_estado,
+            evidencia.estado === 'validado' ? 'validado' : (evidencia.estado === 'entregado' ? 'pendiente' : 'no_entregado'),
+          ),
+          portafolio_feedback: evidencia.portafolio_feedback || null,
           estado: evidencia.estado,
           fecha_actualizacion: evidencia.fecha_actualizacion,
         }
@@ -1526,6 +1544,8 @@ async function capturarCalificacionesFormativa(req, res) {
 
       if (evidencia && evidencia.estado !== 'validado') {
         evidencia.estado = 'validado';
+        evidencia.portafolio_estado = 'validado';
+        evidencia.portafolio_feedback = null;
         evidencia.fecha_actualizacion = new Date();
         // eslint-disable-next-line no-await-in-loop
         await evidencia.save();
@@ -1538,6 +1558,66 @@ async function capturarCalificacionesFormativa(req, res) {
     materia_id: materiaId,
     grupo_id: grupoId,
     total_registros: upserts.length,
+  });
+}
+
+async function evaluarPortafolio(req, res) {
+  const evidenciaId = Number(req.params.id);
+  if (!Number.isInteger(evidenciaId)) {
+    return res.status(400).json({ message: 'id de evidencia invalido.' });
+  }
+
+  const portafolioEstado = normalizarPortafolioEstado(req.body.portafolio_estado, '');
+  const portafolioFeedback = sanitizeText(req.body.portafolio_feedback) || null;
+
+  if (!['validado', 'rechazado', 'pendiente', 'no_entregado'].includes(portafolioEstado)) {
+    return res.status(400).json({ message: 'portafolio_estado invalido. Usa pendiente, validado, rechazado o no_entregado.' });
+  }
+
+  if (portafolioEstado === 'rechazado' && !portafolioFeedback) {
+    return res.status(400).json({ message: 'portafolio_feedback es obligatorio cuando el estado sea rechazado.' });
+  }
+
+  const evidencia = await PortafolioMateriaEvidencia.findByPk(evidenciaId);
+  if (!evidencia) {
+    return res.status(404).json({ message: 'Evidencia de portafolio no encontrada.' });
+  }
+
+  const contexto = await obtenerContextoDocente(req.user.id_usuario);
+  const gruposAlumno = await AlumnoGrupo.findAll({
+    where: {
+      id_alumno: evidencia.alumno_id,
+      id_materia: evidencia.materia_id,
+    },
+    attributes: ['grupo'],
+    raw: true,
+  });
+
+  const autorizado = gruposAlumno.some((row) => docenteAsignadoMateriaGrupo(
+    contexto.asignacionesSet,
+    evidencia.materia_id,
+    normalizeGrupo(row.grupo),
+  ));
+
+  if (!autorizado) {
+    return res.status(403).json({ message: 'No tienes asignacion para evaluar este portafolio.' });
+  }
+
+  evidencia.portafolio_estado = portafolioEstado;
+  evidencia.portafolio_feedback = portafolioEstado === 'rechazado' ? portafolioFeedback : null;
+  evidencia.estado = legacyEstadoDesdePortafolioEstado(portafolioEstado);
+  evidencia.fecha_actualizacion = new Date();
+  await evidencia.save();
+
+  return res.json({
+    id_evidencia_materia: evidencia.id_evidencia_materia,
+    alumno_id: evidencia.alumno_id,
+    materia_id: evidencia.materia_id,
+    drive_url: evidencia.drive_url,
+    portafolio_estado: evidencia.portafolio_estado,
+    portafolio_feedback: evidencia.portafolio_feedback,
+    estado: evidencia.estado,
+    fecha_actualizacion: evidencia.fecha_actualizacion,
   });
 }
 
@@ -1909,6 +1989,7 @@ module.exports = {
   registrarAsistenciaGrupo,
   guardarAsistenciaGrupoMasiva,
   capturarCalificacionesFormativa,
+  evaluarPortafolio,
   enviarActaCoordinacion,
   justificantesRecibidos,
   listarAvisosGrupales,

@@ -565,6 +565,46 @@
   height: 14px;
 }
 
+.docente-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.7);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+  padding: 1rem;
+}
+
+.docente-modal-card {
+  width: min(560px, 100%);
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 14px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.docente-modal-card select,
+.docente-modal-card textarea {
+  background: #1f2937;
+  border: 1px solid #4b5563;
+  color: #f3f4f6;
+  border-radius: 10px;
+  padding: 0.6rem 0.7rem;
+  font: inherit;
+}
+
+.docente-modal-card a {
+  color: #93c5fd;
+}
+
+.docente-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 .dark-table table {
   width: 100%;
   border-collapse: collapse;

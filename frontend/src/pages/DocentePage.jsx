@@ -17,6 +17,13 @@ const statusOptions = [
   { value: 'justificado', label: 'Justificado', className: 'is-justified' },
 ];
 
+const portafolioStatusMeta = {
+  no_entregado: { label: 'No entregado', className: 'badge-neutral' },
+  pendiente: { label: 'Pendiente', className: 'badge-warn' },
+  validado: { label: 'Validado', className: 'badge-success' },
+  rechazado: { label: 'Rechazado', className: 'badge-danger' },
+};
+
 function normalizeUiStatus(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (!raw) return null;
@@ -125,6 +132,14 @@ export default function DocentePage() {
   const [materialesPublicados, setMaterialesPublicados] = useState([]);
   const [materialForm, setMaterialForm] = useState({ titulo: '', tipo: 'enlace_drive', url: '', archivo: null });
   const [deletingRecursoId, setDeletingRecursoId] = useState(null);
+  const [evaluacionModal, setEvaluacionModal] = useState({
+    open: false,
+    alumnoId: null,
+    evidenciaId: null,
+    driveUrl: '',
+    estado: 'validado',
+    feedback: '',
+  });
 
   const selectedMateria = useMemo(
     () => (selectedAsignacion ? Number(selectedAsignacion.materia_id) : null),
@@ -533,7 +548,7 @@ export default function DocentePage() {
     if (value === null) return;
     if (!Number.isFinite(value) || value < 0 || value > 10) {
       setError('La calificación debe estar entre 0 y 10.');
-      return;
+      return false;
     }
 
     const formativaMap = {
@@ -554,9 +569,103 @@ export default function DocentePage() {
         entrego_portafolio: Boolean(portafolioValidadoPorAlumno[alumnoId]),
         retroalimentacion: '',
       });
+      setCalificacionesPorAlumno((prev) => {
+        const current = prev[alumnoId] || {};
+        return {
+          ...prev,
+          [alumnoId]: {
+            ...current,
+            [field]: value,
+          },
+        };
+      });
       setMessage('Calificación guardada correctamente.');
+      return true;
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo guardar la calificación.');
+      return false;
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function handleGuardarFila(alumnoId) {
+    const fields = ['formativa_1', 'formativa_2', 'proyecto_final'];
+    for (const field of fields) {
+      const value = calificacionesPorAlumno[alumnoId]?.[field];
+      if (value === '' || value === undefined || value === null) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const ok = await guardarCalificacion(alumnoId, field);
+      if (!ok) return;
+    }
+
+    setAlumnos((prev) => prev.map((row) => (Number(row.id_alumno) === Number(alumnoId)
+      ? { ...row, updated_at_ui: Date.now() }
+      : row)));
+  }
+
+  function abrirEvaluacionPortafolio(row) {
+    const evidencia = row?.portafolio_evidencia;
+    if (!evidencia?.id_evidencia_materia) return;
+
+    const estadoActual = String(evidencia.portafolio_estado || evidencia.estado || 'pendiente').toLowerCase();
+    setEvaluacionModal({
+      open: true,
+      alumnoId: Number(row.id_alumno),
+      evidenciaId: Number(evidencia.id_evidencia_materia),
+      driveUrl: String(evidencia.drive_url || '').trim(),
+      estado: ['validado', 'rechazado', 'pendiente', 'no_entregado'].includes(estadoActual) ? estadoActual : 'pendiente',
+      feedback: String(evidencia.portafolio_feedback || '').trim(),
+    });
+  }
+
+  function cerrarEvaluacionPortafolio() {
+    setEvaluacionModal({
+      open: false,
+      alumnoId: null,
+      evidenciaId: null,
+      driveUrl: '',
+      estado: 'validado',
+      feedback: '',
+    });
+  }
+
+  async function guardarEvaluacionPortafolio() {
+    if (!evaluacionModal.evidenciaId) return;
+    if (evaluacionModal.estado === 'rechazado' && !String(evaluacionModal.feedback || '').trim()) {
+      setError('Debes capturar retroalimentación cuando rechazas un portafolio.');
+      return;
+    }
+
+    try {
+      setSending(true);
+      setError('');
+      const response = await api.patch(`/calificaciones/evaluar-portafolio/${evaluacionModal.evidenciaId}`, {
+        portafolio_estado: evaluacionModal.estado,
+        portafolio_feedback: evaluacionModal.estado === 'rechazado' ? evaluacionModal.feedback : '',
+      });
+
+      const evidenciaActualizada = response?.data || null;
+      setAlumnos((prev) => prev.map((row) => {
+        if (Number(row.id_alumno) !== Number(evaluacionModal.alumnoId)) return row;
+        return {
+          ...row,
+          portafolio_evidencia: {
+            ...(row.portafolio_evidencia || {}),
+            ...evidenciaActualizada,
+          },
+        };
+      }));
+
+      setPortafolioValidadoPorAlumno((prev) => ({
+        ...prev,
+        [evaluacionModal.alumnoId]: evidenciaActualizada?.portafolio_estado === 'validado',
+      }));
+
+      setMessage('Evaluación de portafolio guardada correctamente.');
+      cerrarEvaluacionPortafolio();
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo guardar la evaluación del portafolio.');
     } finally {
       setSending(false);
     }
@@ -792,7 +901,11 @@ export default function DocentePage() {
                     };
                     const driveUrl = String(row?.portafolio_evidencia?.drive_url || '').trim();
                     const sinEntrega = !driveUrl;
-                    const validado = Boolean(portafolioValidadoPorAlumno[row.id_alumno]);
+                    const portafolioEstadoRaw = String(row?.portafolio_evidencia?.portafolio_estado || row?.portafolio_evidencia?.estado || (sinEntrega ? 'no_entregado' : 'pendiente')).toLowerCase();
+                    const portafolioEstado = ['pendiente', 'validado', 'rechazado', 'no_entregado'].includes(portafolioEstadoRaw)
+                      ? portafolioEstadoRaw
+                      : (sinEntrega ? 'no_entregado' : 'pendiente');
+                    const estadoMeta = portafolioStatusMeta[portafolioEstado] || portafolioStatusMeta.pendiente;
 
                     return (
                       <tr key={row.id_alumno_grupo}>
@@ -812,12 +925,8 @@ export default function DocentePage() {
                               onChange={(event) => handleGradeChange(row.id_alumno, field, event.target.value)}
                               onBlur={() => handleGradeBlur(row.id_alumno, field)}
                               onKeyDown={(event) => {
-                                if (event.key === 'Tab' || event.key === 'Enter') {
+                                if (event.key === 'Enter') {
                                   event.preventDefault();
-                                  const inputs = Array.from(document.querySelectorAll('.grade-input'));
-                                  const currentIndex = inputs.indexOf(event.target);
-                                  const next = inputs[currentIndex + 1];
-                                  if (next) next.focus();
                                 }
                               }}
                             />
@@ -829,18 +938,15 @@ export default function DocentePage() {
                           ) : (
                             <div className="portafolio-drive-cell">
                               <a href={driveUrl} target="_blank" rel="noreferrer">Ver Carpeta 🔗</a>
-                              <label className="portafolio-validate-toggle">
-                                <input
-                                  type="checkbox"
-                                  checked={validado}
-                                  disabled={actaCerrada}
-                                  onChange={(event) => setPortafolioValidadoPorAlumno((prev) => ({
-                                    ...prev,
-                                    [row.id_alumno]: event.target.checked,
-                                  }))}
-                                />
-                                <span>Validar</span>
-                              </label>
+                              <span className={`status-badge ${estadoMeta.className}`}>{estadoMeta.label}</span>
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() => abrirEvaluacionPortafolio(row)}
+                                disabled={actaCerrada || !row?.portafolio_evidencia?.id_evidencia_materia}
+                              >
+                                Evaluar Portafolio
+                              </button>
                             </div>
                           )}
                         </td>
@@ -848,14 +954,7 @@ export default function DocentePage() {
                           <button
                             type="button"
                             className="save-mini"
-                            onClick={() => {
-                              ['formativa_1', 'formativa_2', 'proyecto_final'].forEach((field) => {
-                                const value = calificacionesPorAlumno[row.id_alumno]?.[field];
-                                if (value !== '' && value !== undefined && value !== null) {
-                                  guardarCalificacion(row.id_alumno, field);
-                                }
-                              });
-                            }}
+                            onClick={() => handleGuardarFila(row.id_alumno)}
                             disabled={sending || actaCerrada || calificacionesBloqueadas}
                           >
                             💾 Guardar
@@ -1066,6 +1165,48 @@ export default function DocentePage() {
               </div>
             )}
           </article>
+        </div>
+      ) : null}
+
+      {evaluacionModal.open ? (
+        <div className="docente-modal-backdrop" role="dialog" aria-modal="true">
+          <div className="docente-modal-card">
+            <h3>Evaluar Portafolio</h3>
+
+            <p>
+              <a href={evaluacionModal.driveUrl} target="_blank" rel="noreferrer">Ver Carpeta de Drive</a>
+            </p>
+
+            <label htmlFor="portafolio-estado">Resultado</label>
+            <select
+              id="portafolio-estado"
+              value={evaluacionModal.estado}
+              onChange={(event) => setEvaluacionModal((prev) => ({ ...prev, estado: event.target.value }))}
+            >
+              <option value="validado">Aprobar (Validado)</option>
+              <option value="rechazado">Requerir Cambios (Rechazado)</option>
+            </select>
+
+            {evaluacionModal.estado === 'rechazado' ? (
+              <>
+                <label htmlFor="portafolio-feedback">Retroalimentación</label>
+                <textarea
+                  id="portafolio-feedback"
+                  rows={4}
+                  value={evaluacionModal.feedback}
+                  onChange={(event) => setEvaluacionModal((prev) => ({ ...prev, feedback: event.target.value }))}
+                  placeholder="Describe qué debe corregir el alumno en su portafolio."
+                />
+              </>
+            ) : null}
+
+            <div className="docente-modal-actions">
+              <button type="button" className="btn-secondary" onClick={cerrarEvaluacionPortafolio} disabled={sending}>Cancelar</button>
+              <button type="button" className="btn-primary" onClick={guardarEvaluacionPortafolio} disabled={sending}>
+                {sending ? 'Guardando...' : 'Guardar Evaluación'}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </section>

@@ -30,6 +30,7 @@ router.get('/asistencias/historial/:materiaId/:grupoId', auth(), requirePermissi
 router.get('/asistencias/:materiaId/:grupoId', auth(), requirePermission(PERMISSIONS.MAESTRO_ASISTENCIAS_READ), docenteController.listarAsistenciaGrupoFecha);
 router.post('/asistencias', auth(), requirePermission(PERMISSIONS.MAESTRO_ASISTENCIAS_CREATE), docenteController.registrarAsistenciaGrupo);
 router.post('/asistencias/guardar', auth(), requirePermission(PERMISSIONS.MAESTRO_ASISTENCIAS_CREATE), docenteController.guardarAsistenciaGrupoMasiva);
+router.patch('/calificaciones/evaluar-portafolio/:id', auth(), requirePermission(PERMISSIONS.MAESTRO_CALIFICACIONES_FINALES_READ), docenteController.evaluarPortafolio);
 router.get('/docentes/asistencias', authMaestro, requirePermission(PERMISSIONS.MAESTRO_ASISTENCIAS_READ), docenteController.listarAsistencias);
 router.post('/docentes/asistencias', authMaestro, requirePermission(PERMISSIONS.MAESTRO_ASISTENCIAS_CREATE), docenteController.registrarAsistencia);
 router.get('/docentes/aprovechamiento', authMaestro, requirePermission(PERMISSIONS.MAESTRO_APROVECHAMIENTO_READ), docenteController.aprovechamiento);

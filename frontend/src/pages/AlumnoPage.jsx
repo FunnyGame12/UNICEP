@@ -41,8 +41,9 @@ const pagoEstatusBadgeClass = {
 
 const portafolioBadgeInfo = {
   validado: { label: 'Validado para Boleta', className: 'badge-success' },
-  entregado: { label: 'Entregado, en revision', className: 'badge-warn' },
-  pendiente: { label: 'Pendiente de entrega', className: 'badge-neutral' },
+  pendiente: { label: 'Pendiente de revision', className: 'badge-warn' },
+  rechazado: { label: 'Requiere correcciones', className: 'badge-danger' },
+  no_entregado: { label: 'No entregado', className: 'badge-neutral' },
 };
 
 const pagoSchema = z.object({
@@ -620,7 +621,7 @@ export default function AlumnoPage() {
               ) : (
                 <div className="alumno-list">
                   {misEvidencias.map((item) => {
-                    const badge = portafolioBadgeInfo[item.estado] || portafolioBadgeInfo.pendiente;
+                    const badge = portafolioBadgeInfo[item.estado] || portafolioBadgeInfo.no_entregado;
                     const isSaving = savingMateriaId === item.materia_id;
 
                     return (
@@ -651,6 +652,13 @@ export default function AlumnoPage() {
                             {isSaving ? 'Guardando...' : 'Guardar Enlace'}
                           </button>
                         </div>
+
+                        {item.estado === 'rechazado' && item.portafolio_feedback ? (
+                          <div className="alumno-portafolio-feedback">
+                            <strong>Retroalimentación del docente:</strong>
+                            <p>{item.portafolio_feedback}</p>
+                          </div>
+                        ) : null}
                       </article>
                     );
                   })}

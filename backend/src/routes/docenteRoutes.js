@@ -16,6 +16,7 @@ router.get('/grupos/:grupoId/materias/:materiaId/alumnos', docenteController.alu
 router.get('/grupos/:grupoId/materias/:materiaId/asistencia', docenteController.listarAsistenciaGrupoFecha);
 router.post('/asistencia', docenteController.registrarAsistenciaGrupo);
 router.put('/calificaciones/formativa', docenteController.capturarCalificacionesFormativa);
+router.patch('/calificaciones/evaluar-portafolio/:id', docenteController.evaluarPortafolio);
 router.post('/actas/enviar-a-coordinacion', docenteController.enviarActaCoordinacion);
 router.get('/justificantes-recibidos', docenteController.justificantesRecibidos);
 router.get('/avisos-grupales', docenteController.listarAvisosGrupales);

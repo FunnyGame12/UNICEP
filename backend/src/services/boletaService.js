@@ -111,7 +111,10 @@ async function construirDatosBoleta(alumno) {
         where: {
           alumno_id: idAlumno,
           materia_id: { [Op.in]: materiaIds },
-          estado: 'validado',
+          [Op.or]: [
+            { portafolio_estado: 'validado' },
+            { estado: 'validado' },
+          ],
         },
         attributes: ['materia_id'],
       })

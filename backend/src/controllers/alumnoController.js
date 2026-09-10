@@ -93,6 +93,12 @@ function normalizePublicUploadUrl(value) {
   return raw;
 }
 
+function normalizarPortafolioEstado(value, fallback = 'no_entregado') {
+  const raw = normalizeText(value).toLowerCase();
+  if (['pendiente', 'validado', 'rechazado', 'no_entregado'].includes(raw)) return raw;
+  return fallback;
+}
+
 function extractUploadsRelativePath(value) {
   const raw = normalizeText(value);
   if (!raw) return null;
@@ -1416,7 +1422,13 @@ async function portafolioRecursos(req, res) {
       materia_nombre: grupo.materia?.nombre_materia || `Materia ${materiaId}`,
       docente_nombre: docentesPorMateriaGrupo.get(`${materiaId}:${grupoId}`) || 'Por asignar',
       drive_url: evidencia ? evidencia.drive_url : null,
-      estado: evidencia ? evidencia.estado : 'pendiente',
+      estado: evidencia
+        ? normalizarPortafolioEstado(
+          evidencia.portafolio_estado,
+          evidencia.estado === 'validado' ? 'validado' : (evidencia.estado === 'entregado' ? 'pendiente' : 'no_entregado'),
+        )
+        : 'no_entregado',
+      portafolio_feedback: evidencia?.portafolio_feedback || null,
     };
   });
 
@@ -1521,6 +1533,8 @@ async function guardarPortafolioMateria(req, res) {
       cuatrimestre_id: Number.isInteger(cuatrimestreId) ? cuatrimestreId : (validacion.estado.perfil.bimestre_actual || null),
       drive_url: driveUrl,
       estado: 'entregado',
+      portafolio_estado: 'pendiente',
+      portafolio_feedback: null,
       fecha_actualizacion: new Date(),
       created_at: new Date(),
     },
@@ -1529,6 +1543,8 @@ async function guardarPortafolioMateria(req, res) {
   if (!evidencia.isNewRecord) {
     evidencia.drive_url = driveUrl;
     evidencia.estado = 'entregado';
+    evidencia.portafolio_estado = 'pendiente';
+    evidencia.portafolio_feedback = null;
     evidencia.fecha_actualizacion = new Date();
     if (Number.isInteger(cuatrimestreId)) {
       evidencia.cuatrimestre_id = cuatrimestreId;
