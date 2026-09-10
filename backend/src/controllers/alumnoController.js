@@ -129,10 +129,14 @@ function localUploadExists(urlValue) {
   if (!relativePath) return true;
 
   const sanitized = relativePath.replace(/^\/+/, '');
+  const configuredUploadRoot = process.env.UPLOAD_ROOT
+    ? path.resolve(process.env.UPLOAD_ROOT)
+    : null;
   const candidatePaths = [
+    configuredUploadRoot ? path.join(configuredUploadRoot, sanitized) : null,
     path.join(__dirname, '../../uploads', sanitized),
     path.join(__dirname, '../../../uploads', sanitized),
-  ];
+  ].filter(Boolean);
 
   return candidatePaths.some((candidate) => fs.existsSync(candidate));
 }
@@ -142,10 +146,14 @@ function resolveLocalUploadAbsolutePath(urlValue) {
   if (!relativePath) return null;
 
   const sanitized = relativePath.replace(/^\/+/, '');
+  const configuredUploadRoot = process.env.UPLOAD_ROOT
+    ? path.resolve(process.env.UPLOAD_ROOT)
+    : null;
   const candidatePaths = [
+    configuredUploadRoot ? path.join(configuredUploadRoot, sanitized) : null,
     path.join(__dirname, '../../uploads', sanitized),
     path.join(__dirname, '../../../uploads', sanitized),
-  ];
+  ].filter(Boolean);
 
   return candidatePaths.find((candidate) => fs.existsSync(candidate)) || null;
 }
