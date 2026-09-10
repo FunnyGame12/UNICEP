@@ -5,6 +5,14 @@ const env = require('../config/env');
 const { Usuario, AlumnoPerfil, DocentePerfil } = require('../../models');
 const { resolveUserAuthorization } = require('../services/rbacService');
 
+function normalizeLegacyRole(role) {
+  const raw = String(role || '').trim().toLowerCase();
+  if (raw === 'docente') return 'maestro';
+  if (raw === 'coordinacion_escolar') return 'coordinacion_academica';
+  if (raw === 'administrativo') return 'control_escolar';
+  return raw || 'alumno';
+}
+
 async function login(req, res) {
   const { correo, folio_matricula, password } = req.body;
 
@@ -60,12 +68,19 @@ async function login(req, res) {
     return res.status(401).json({ message: 'Credenciales invalidas.' });
   }
 
-  const authorization = await resolveUserAuthorization(user.id_usuario);
+  let authorization = null;
+  try {
+    authorization = await resolveUserAuthorization(user.id_usuario);
+  } catch (_error) {
+    authorization = null;
+  }
+
+  const roleFallback = normalizeLegacyRole(user.rol);
 
   const normalizedUser = {
     id_usuario: user.id_usuario,
     nombre_completo: user.nombre_completo,
-    rol: authorization?.rol || user.rol,
+    rol: authorization?.rol || roleFallback,
     subrol: authorization?.subrol || null,
     permisos: authorization?.permisos || [],
     correo: user.correo,
