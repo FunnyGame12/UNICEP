@@ -654,10 +654,34 @@ export default function DocentePage() {
         };
       }));
 
-      setPortafolioValidadoPorAlumno((prev) => ({
-        ...prev,
-        [evaluacionModal.alumnoId]: evidenciaActualizada?.portafolio_estado === 'validado',
-      }));
+      if (selectedAsignacion) {
+        const grupoId = String(selectedAsignacion.grupo_id || '').trim();
+        const materiaId = Number(selectedAsignacion.materia_id);
+        const alumnosResp = await api.get(`/docente/grupos/${encodeURIComponent(grupoId)}/materias/${materiaId}/alumnos`);
+        const alumnosItems = alumnosResp?.data?.items || [];
+
+        setAlumnos(alumnosItems);
+        setCalificacionesPorAlumno(() => {
+          const next = {};
+          alumnosItems.forEach((row) => {
+            next[row.id_alumno] = {
+              formativa_1: row?.calificaciones?.formativa_1 ?? '',
+              formativa_2: row?.calificaciones?.formativa_2 ?? '',
+              proyecto_final: row?.calificaciones?.proyecto_final ?? '',
+              definitiva: row?.calificaciones?.definitiva ?? '',
+            };
+          });
+          return next;
+        });
+
+        setPortafolioValidadoPorAlumno(() => {
+          const next = {};
+          alumnosItems.forEach((row) => {
+            next[row.id_alumno] = String(row?.portafolio_evidencia?.portafolio_estado || row?.portafolio_evidencia?.estado || '') === 'validado';
+          });
+          return next;
+        });
+      }
 
       setMessage('Evaluación de portafolio guardada correctamente.');
       cerrarEvaluacionPortafolio();

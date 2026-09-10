@@ -1259,7 +1259,9 @@ async function alumnosPorGrupoMateria(req, res) {
     ? await CalificacionFormativaDocente.findAll({
       where: {
         id_materia: materiaId,
-        grupo_id: grupoId,
+        grupo_id: {
+          [Op.in]: [...new Set([String(grupoId || '').trim(), normalizeGrupo(grupoId)])],
+        },
         id_alumno: { [Op.in]: alumnosIds },
       },
       order: [['id_calificacion', 'DESC']],
@@ -1669,20 +1671,24 @@ async function evaluarPortafolio(req, res) {
     await evidencia.save({ fields: ['estado', 'fecha_actualizacion'] });
   }
 
-  await registrarEventoAuditoria({
-    idUsuario: req.user.id_usuario,
-    rolActor: req.user.rol,
-    accion: 'evaluar_portafolio_alumno',
-    modulo: 'docentes',
-    entidad: 'portafolio_materia_evidencias',
-    idEntidad: evidencia.id_evidencia_materia,
-    detalle: {
-      alumno_id: evidencia.alumno_id,
-      materia_id: evidencia.materia_id,
-      portafolio_estado: portafolioEstado,
-      portafolio_feedback: evidencia.portafolio_feedback,
-    },
-  });
+  try {
+    await registrarEventoAuditoria({
+      idUsuario: req.user.id_usuario,
+      rolActor: req.user.rol,
+      accion: portafolioEstado === 'validado' ? 'validar_portafolio_alumno' : 'rechazar_portafolio_alumno',
+      modulo: 'docentes',
+      entidad: 'portafolio_materia_evidencias',
+      idEntidad: evidencia.id_evidencia_materia,
+      detalle: {
+        alumno_id: evidencia.alumno_id,
+        materia_id: evidencia.materia_id,
+        portafolio_estado: portafolioEstado,
+        portafolio_feedback: evidencia.portafolio_feedback,
+      },
+    });
+  } catch (error) {
+    console.error('No se pudo registrar auditoria de evaluacion de portafolio:', error);
+  }
 
   return res.json({
     id_evidencia_materia: evidencia.id_evidencia_materia,
