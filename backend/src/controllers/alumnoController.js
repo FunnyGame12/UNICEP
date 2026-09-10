@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const { Op } = require('sequelize');
 const {
   AlumnoPerfil,
@@ -89,6 +91,50 @@ function normalizePublicUploadUrl(value) {
   }
 
   return raw;
+}
+
+function extractUploadsRelativePath(value) {
+  const raw = normalizeText(value);
+  if (!raw) return null;
+
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const parsed = new URL(raw);
+      const pathname = String(parsed.pathname || '').trim();
+      if (/^\/api\/v1\/uploads\//i.test(pathname)) {
+        return pathname.replace(/^\/api\/v1\/uploads\//i, '');
+      }
+      if (/^\/uploads\//i.test(pathname)) {
+        return pathname.replace(/^\/uploads\//i, '');
+      }
+      return null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  if (/^\/api\/v1\/uploads\//i.test(raw)) {
+    return raw.replace(/^\/api\/v1\/uploads\//i, '');
+  }
+
+  if (/^\/?uploads\//i.test(raw)) {
+    return raw.replace(/^\/?uploads\//i, '');
+  }
+
+  return null;
+}
+
+function localUploadExists(urlValue) {
+  const relativePath = extractUploadsRelativePath(urlValue);
+  if (!relativePath) return true;
+
+  const sanitized = relativePath.replace(/^\/+/, '');
+  const candidatePaths = [
+    path.join(__dirname, '../../uploads', sanitized),
+    path.join(__dirname, '../../../uploads', sanitized),
+  ];
+
+  return candidatePaths.some((candidate) => fs.existsSync(candidate));
 }
 
 function getAuthenticatedAlumnoId(req) {
@@ -1358,14 +1404,16 @@ async function portafolioRecursos(req, res) {
     limit: 200,
   });
 
-  const recursosInstitucionales = recursos.map((item) => ({
-    titulo: item.titulo,
-    remitente_tipo: item.remitente_tipo,
-    remitente_nombre: item.remitente_nombre,
-    materia_nombre: item.materia?.nombre_materia || null,
-    tipo_recurso: item.tipo_recurso,
-    url_recurso: normalizePublicUploadUrl(item.url_recurso),
-  }));
+  const recursosInstitucionales = recursos
+    .map((item) => ({
+      titulo: item.titulo,
+      remitente_tipo: item.remitente_tipo,
+      remitente_nombre: item.remitente_nombre,
+      materia_nombre: item.materia?.nombre_materia || null,
+      tipo_recurso: item.tipo_recurso,
+      url_recurso: normalizePublicUploadUrl(item.url_recurso),
+    }))
+    .filter((item) => item.tipo_recurso !== 'archivo_local' || localUploadExists(item.url_recurso));
 
   return res.json({ misEvidencias, recursosInstitucionales });
 }
