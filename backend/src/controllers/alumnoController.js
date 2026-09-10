@@ -68,6 +68,29 @@ function esUrlValida(value) {
   }
 }
 
+function normalizePublicUploadUrl(value) {
+  const raw = normalizeText(value);
+  if (!raw) return raw;
+
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const parsed = new URL(raw);
+      if (/^\/uploads\//i.test(parsed.pathname)) {
+        parsed.pathname = parsed.pathname.replace(/^\/uploads\//i, '/api/v1/uploads/');
+      }
+      return parsed.toString();
+    } catch (_error) {
+      return raw;
+    }
+  }
+
+  if (/^\/?uploads\//i.test(raw)) {
+    return raw.replace(/^\/?uploads\//i, '/api/v1/uploads/');
+  }
+
+  return raw;
+}
+
 function getAuthenticatedAlumnoId(req) {
   const id = Number(req?.user?.id ?? req?.user?.id_usuario);
   return Number.isInteger(id) ? id : null;
@@ -1341,7 +1364,7 @@ async function portafolioRecursos(req, res) {
     remitente_nombre: item.remitente_nombre,
     materia_nombre: item.materia?.nombre_materia || null,
     tipo_recurso: item.tipo_recurso,
-    url_recurso: item.url_recurso,
+    url_recurso: normalizePublicUploadUrl(item.url_recurso),
   }));
 
   return res.json({ misEvidencias, recursosInstitucionales });
