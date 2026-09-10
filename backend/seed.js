@@ -4,6 +4,9 @@ const bcrypt = require('bcrypt');
 const {
   sequelize,
   Usuario,
+  Rol,
+  Permiso,
+  RolPermiso,
   PlanEstudio,
   ProgramaAcademico,
   Materia,
@@ -14,8 +17,116 @@ const {
   AlumnoGrupo,
   AvisoInstitucional,
 } = require('./models');
+const { ROLES, PERMISSIONS } = require('./src/constants/rbac');
 
-async function createUser({ folio, nombre, correo, rol, password }) {
+function normalizePermission(permissionCode) {
+  const parts = String(permissionCode || '').split('.');
+  const modulo = parts.slice(0, -1).join('.') || 'general';
+  const action = parts[parts.length - 1] || 'read';
+  return {
+    modulo,
+    accion: action.toUpperCase(),
+  };
+}
+
+async function seedRbac(now) {
+  await Rol.bulkCreate([
+    {
+      nombre: 'Director',
+      nombre_tecnico: ROLES.DIRECTOR,
+      descripcion: 'Nivel ejecutivo con supervision institucional.',
+      nivel_jerarquia: 100,
+      activo: true,
+      fecha_creacion: now,
+    },
+    {
+      nombre: 'Control Escolar',
+      nombre_tecnico: ROLES.CONTROL_ESCOLAR,
+      descripcion: 'Operacion administrativa y tesoreria.',
+      nivel_jerarquia: 80,
+      activo: true,
+      fecha_creacion: now,
+    },
+    {
+      nombre: 'Coordinacion Academica',
+      nombre_tecnico: ROLES.COORDINACION_ACADEMICA,
+      descripcion: 'Planeacion academica y seguimiento curricular.',
+      nivel_jerarquia: 70,
+      activo: true,
+      fecha_creacion: now,
+    },
+    {
+      nombre: 'Maestro',
+      nombre_tecnico: ROLES.MAESTRO,
+      descripcion: 'Docencia y evaluacion academica.',
+      nivel_jerarquia: 40,
+      activo: true,
+      fecha_creacion: now,
+    },
+    {
+      nombre: 'Alumno',
+      nombre_tecnico: ROLES.ALUMNO,
+      descripcion: 'Consulta y ejecucion de actividades academicas personales.',
+      nivel_jerarquia: 10,
+      activo: true,
+      fecha_creacion: now,
+    },
+  ]);
+
+  const roles = await Rol.findAll({ attributes: ['id_rol', 'nombre_tecnico'], raw: true });
+  const roleByCode = new Map(roles.map((item) => [item.nombre_tecnico, item.id_rol]));
+
+  const permissionCodes = Object.values(PERMISSIONS);
+  await Permiso.bulkCreate(
+    permissionCodes.map((code) => {
+      const parsed = normalizePermission(code);
+      return {
+        codigo: code,
+        modulo: parsed.modulo,
+        accion: parsed.accion,
+        scope: 'any',
+        descripcion: `Permiso RBAC ${code}`,
+        fecha_creacion: now,
+      };
+    }),
+  );
+
+  const permisos = await Permiso.findAll({ attributes: ['id_permiso', 'codigo'], raw: true });
+
+  const grants = [];
+  permisos.forEach((permiso) => {
+    const code = permiso.codigo;
+    const directorId = roleByCode.get(ROLES.DIRECTOR);
+    const controlEscolarId = roleByCode.get(ROLES.CONTROL_ESCOLAR);
+    const coordinacionId = roleByCode.get(ROLES.COORDINACION_ACADEMICA);
+    const maestroId = roleByCode.get(ROLES.MAESTRO);
+    const alumnoId = roleByCode.get(ROLES.ALUMNO);
+
+    if (directorId) {
+      grants.push({ id_rol: directorId, id_permiso: permiso.id_permiso, permitido: true, fecha_creacion: now });
+    }
+    if (controlEscolarId && (code.startsWith('admin.') || code.startsWith('alumno.'))) {
+      grants.push({ id_rol: controlEscolarId, id_permiso: permiso.id_permiso, permitido: true, fecha_creacion: now });
+    }
+    if (coordinacionId && (code.startsWith('admin.') || code.startsWith('maestro.'))) {
+      grants.push({ id_rol: coordinacionId, id_permiso: permiso.id_permiso, permitido: true, fecha_creacion: now });
+    }
+    if (maestroId && code.startsWith('maestro.')) {
+      grants.push({ id_rol: maestroId, id_permiso: permiso.id_permiso, permitido: true, fecha_creacion: now });
+    }
+    if (alumnoId && code.startsWith('alumno.')) {
+      grants.push({ id_rol: alumnoId, id_permiso: permiso.id_permiso, permitido: true, fecha_creacion: now });
+    }
+  });
+
+  if (grants.length > 0) {
+    await RolPermiso.bulkCreate(grants);
+  }
+
+  return roleByCode;
+}
+
+async function createUser({ folio, nombre, correo, rol, idRol, password }) {
   const now = new Date();
   const passwordHash = await bcrypt.hash(password, 10);
 
@@ -25,6 +136,7 @@ async function createUser({ folio, nombre, correo, rol, password }) {
     correo: correo.toLowerCase(),
     password_hash: passwordHash,
     cuenta_activada: true,
+    id_rol: idRol,
     rol,
     fecha_creacion: now,
   });
@@ -35,6 +147,7 @@ async function runSeed() {
   const now = new Date();
 
   await sequelize.sync({ force: true });
+  const roleByCode = await seedRbac(now);
 
   // A. Usuarios (identidades reales)
   const director = await createUser({
@@ -42,6 +155,7 @@ async function runSeed() {
     nombre: 'Dr Roberto Sandoval Medina',
     correo: 'roberto.sandoval@unicep.edu.mx',
     rol: 'director',
+    idRol: roleByCode.get(ROLES.DIRECTOR),
     password: defaultPassword,
   });
 
@@ -50,6 +164,7 @@ async function runSeed() {
     nombre: 'Lic Mariana Gomez Torres',
     correo: 'mariana.gomez@unicep.edu.mx',
     rol: 'control_escolar',
+    idRol: roleByCode.get(ROLES.CONTROL_ESCOLAR),
     password: defaultPassword,
   });
 
@@ -58,6 +173,7 @@ async function runSeed() {
     nombre: 'Ing Fernando Castro Ruiz',
     correo: 'fernando.castro@unicep.edu.mx',
     rol: 'coordinacion_escolar',
+    idRol: roleByCode.get(ROLES.COORDINACION_ACADEMICA),
     password: defaultPassword,
   });
 
@@ -66,6 +182,7 @@ async function runSeed() {
     nombre: 'Mtro Arturo Ramirez Vargas',
     correo: 'arturo.ramirez@unicep.edu.mx',
     rol: 'docente',
+    idRol: roleByCode.get(ROLES.MAESTRO),
     password: defaultPassword,
   });
 
@@ -74,6 +191,7 @@ async function runSeed() {
     nombre: 'Dra Elena Medina Canto',
     correo: 'elena.medina@unicep.edu.mx',
     rol: 'docente',
+    idRol: roleByCode.get(ROLES.MAESTRO),
     password: defaultPassword,
   });
 
@@ -82,6 +200,7 @@ async function runSeed() {
     nombre: 'Jafet Ricardo Pacheco Dzul',
     correo: 'jafet.pacheco@alumno.unicep.edu.mx',
     rol: 'alumno',
+    idRol: roleByCode.get(ROLES.ALUMNO),
     password: defaultPassword,
   });
 
@@ -90,6 +209,7 @@ async function runSeed() {
     nombre: 'Andrea Berenice Chan May',
     correo: 'andrea.chan@alumno.unicep.edu.mx',
     rol: 'alumno',
+    idRol: roleByCode.get(ROLES.ALUMNO),
     password: defaultPassword,
   });
 
@@ -98,6 +218,7 @@ async function runSeed() {
     nombre: 'Luis Fernando Pech Canul',
     correo: 'luis.pech@alumno.unicep.edu.mx',
     rol: 'alumno',
+    idRol: roleByCode.get(ROLES.ALUMNO),
     password: defaultPassword,
   });
 
@@ -106,6 +227,7 @@ async function runSeed() {
     nombre: 'Valeria Guadalupe Moo Ceh',
     correo: 'valeria.moo@alumno.unicep.edu.mx',
     rol: 'alumno',
+    idRol: roleByCode.get(ROLES.ALUMNO),
     password: defaultPassword,
   });
 
@@ -114,6 +236,7 @@ async function runSeed() {
     nombre: 'Daniel Alejandro Cetz Uicab',
     correo: 'daniel.cetz@alumno.unicep.edu.mx',
     rol: 'alumno',
+    idRol: roleByCode.get(ROLES.ALUMNO),
     password: defaultPassword,
   });
 
