@@ -1619,8 +1619,8 @@ async function evaluarPortafolio(req, res) {
   const portafolioEstado = normalizarPortafolioEstado(req.body.portafolio_estado, '');
   const portafolioFeedback = sanitizeText(req.body.portafolio_feedback) || null;
 
-  if (!['validado', 'rechazado', 'pendiente', 'no_entregado'].includes(portafolioEstado)) {
-    return res.status(400).json({ message: 'portafolio_estado invalido. Usa pendiente, validado, rechazado o no_entregado.' });
+  if (!['validado', 'rechazado'].includes(portafolioEstado)) {
+    return res.status(400).json({ message: 'portafolio_estado invalido. Usa validado o rechazado.' });
   }
 
   if (portafolioEstado === 'rechazado' && !portafolioFeedback) {

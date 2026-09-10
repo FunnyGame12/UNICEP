@@ -606,12 +606,13 @@ export default function DocentePage() {
     if (!evidencia?.id_evidencia_materia) return;
 
     const estadoActual = String(evidencia.portafolio_estado || evidencia.estado || 'pendiente').toLowerCase();
+    const estadoInicial = estadoActual === 'rechazado' ? 'rechazado' : 'validado';
     setEvaluacionModal({
       open: true,
       alumnoId: Number(row.id_alumno),
       evidenciaId: Number(evidencia.id_evidencia_materia),
       driveUrl: String(evidencia.drive_url || '').trim(),
-      estado: ['validado', 'rechazado', 'pendiente', 'no_entregado'].includes(estadoActual) ? estadoActual : 'pendiente',
+      estado: estadoInicial,
       feedback: String(evidencia.portafolio_feedback || '').trim(),
     });
   }
@@ -629,7 +630,8 @@ export default function DocentePage() {
 
   async function guardarEvaluacionPortafolio() {
     if (!evaluacionModal.evidenciaId) return;
-    if (evaluacionModal.estado === 'rechazado' && !String(evaluacionModal.feedback || '').trim()) {
+    const estadoFinal = evaluacionModal.estado === 'rechazado' ? 'rechazado' : 'validado';
+    if (estadoFinal === 'rechazado' && !String(evaluacionModal.feedback || '').trim()) {
       setError('Debes capturar retroalimentación cuando rechazas un portafolio.');
       return;
     }
@@ -638,8 +640,8 @@ export default function DocentePage() {
       setSending(true);
       setError('');
       const response = await api.patch(`/calificaciones/evaluar-portafolio/${evaluacionModal.evidenciaId}`, {
-        portafolio_estado: evaluacionModal.estado,
-        portafolio_feedback: evaluacionModal.estado === 'rechazado' ? evaluacionModal.feedback : '',
+        portafolio_estado: estadoFinal,
+        portafolio_feedback: estadoFinal === 'rechazado' ? evaluacionModal.feedback : '',
       });
 
       const evidenciaActualizada = response?.data || null;
