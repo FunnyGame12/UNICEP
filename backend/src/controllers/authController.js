@@ -39,18 +39,44 @@ async function login(req, res) {
     where.folio_matricula = folioNormalized;
   }
 
-  const user = await Usuario.findOne({
-    where,
-    attributes: [
-      'id_usuario',
-      'nombre_completo',
-      'correo',
-      'folio_matricula',
-      'password_hash',
-      'cuenta_activada',
-      'rol',
-    ],
-  });
+  let user;
+  try {
+    user = await Usuario.findOne({
+      where,
+      attributes: [
+        'id_usuario',
+        'nombre_completo',
+        'correo',
+        'folio_matricula',
+        'password_hash',
+        'cuenta_activada',
+        'rol',
+      ],
+    });
+  } catch (error) {
+    const sqlMessage = String(error?.original?.sqlMessage || error?.message || '');
+    const missingCuentaActivada = /Unknown column 'cuenta_activada'/i.test(sqlMessage);
+
+    if (!missingCuentaActivada) {
+      throw error;
+    }
+
+    user = await Usuario.findOne({
+      where,
+      attributes: [
+        'id_usuario',
+        'nombre_completo',
+        'correo',
+        'folio_matricula',
+        'password_hash',
+        'rol',
+      ],
+    });
+
+    if (user && user.cuenta_activada === undefined) {
+      user.setDataValue('cuenta_activada', true);
+    }
+  }
 
   if (!user) {
     return res.status(401).json({ message: 'Credenciales invalidas.' });
