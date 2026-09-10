@@ -365,6 +365,73 @@
   background: rgba(59, 130, 246, 0.22);
 }
 
+.coord-bulk-wrap {
+  display: grid;
+  gap: 0.9rem;
+  margin-bottom: 1.1rem;
+  padding: 0.95rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.coord-bulk-wrap h4 {
+  margin: 0;
+  font-size: 0.98rem;
+  color: #dbeafe;
+}
+
+.coord-bulk-people-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coord-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.coord-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  padding: 0.24rem 0.52rem;
+  font-size: 0.76rem;
+  background: rgba(34, 197, 94, 0.2);
+  color: #bbf7d0;
+}
+
+.coord-chip.coord-chip-danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fecaca;
+}
+
+.coord-chip-remove {
+  border: 0;
+  border-radius: 999px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  cursor: pointer;
+}
+
+.coord-chip-remove:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.coord-bulk-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .btn-danger-sm {
   border: 1px solid #ef4444;
   background: rgba(239, 68, 68, 0.2);
@@ -513,7 +580,8 @@
   .coord-grid-2,
   .coord-form-4,
   .coord-curricular-grid,
-  .coord-materia-grid {
+  .coord-materia-grid,
+  .coord-bulk-people-grid {
     grid-template-columns: 1fr;
   }
 

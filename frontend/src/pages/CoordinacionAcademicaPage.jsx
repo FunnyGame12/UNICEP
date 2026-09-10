@@ -235,6 +235,21 @@ export default function CoordinacionAcademicaPage() {
   const [alumnoGrupoMaterias, setAlumnoGrupoMaterias] = useState([]);
   const [alumnoGrupoGrupos, setAlumnoGrupoGrupos] = useState([]);
   const [alumnoGrupoGruposPorMateria, setAlumnoGrupoGruposPorMateria] = useState({});
+  const [alumnoGrupoCarreras, setAlumnoGrupoCarreras] = useState([]);
+  const [alumnoGrupoPrepas, setAlumnoGrupoPrepas] = useState([]);
+  const [grupoBaseMateriaId, setGrupoBaseMateriaId] = useState('');
+  const [grupoBaseCodigo, setGrupoBaseCodigo] = useState('');
+  const [grupoBaseTipo, setGrupoBaseTipo] = useState('carrera');
+  const [grupoBaseValor, setGrupoBaseValor] = useState('');
+  const [grupoBaseSending, setGrupoBaseSending] = useState(false);
+  const [grupoBaseIncludeQuery, setGrupoBaseIncludeQuery] = useState('');
+  const [grupoBaseIncludeSuggestions, setGrupoBaseIncludeSuggestions] = useState([]);
+  const [grupoBaseIncludeLoading, setGrupoBaseIncludeLoading] = useState(false);
+  const [grupoBaseIncludeSelected, setGrupoBaseIncludeSelected] = useState([]);
+  const [grupoBaseExcludeQuery, setGrupoBaseExcludeQuery] = useState('');
+  const [grupoBaseExcludeSuggestions, setGrupoBaseExcludeSuggestions] = useState([]);
+  const [grupoBaseExcludeLoading, setGrupoBaseExcludeLoading] = useState(false);
+  const [grupoBaseExcludeSelected, setGrupoBaseExcludeSelected] = useState([]);
 
   const [kpis, setKpis] = useState({
     grupos_sin_docente: 0,
@@ -358,6 +373,16 @@ export default function CoordinacionAcademicaPage() {
   const overrideGruposDisponibles = useMemo(
     () => grupos.filter((grupo) => String(grupo.materia_id) === String(overrideMateriaId)),
     [grupos, overrideMateriaId],
+  );
+
+  const grupoBaseGruposDisponibles = useMemo(
+    () => (grupoBaseMateriaId ? (alumnoGrupoGruposPorMateria[grupoBaseMateriaId] || []) : []),
+    [grupoBaseMateriaId, alumnoGrupoGruposPorMateria],
+  );
+
+  const grupoBaseValoresDisponibles = useMemo(
+    () => (grupoBaseTipo === 'prepa' ? alumnoGrupoPrepas : alumnoGrupoCarreras),
+    [grupoBaseTipo, alumnoGrupoCarreras, alumnoGrupoPrepas],
   );
 
   async function loadData() {
@@ -506,10 +531,14 @@ export default function CoordinacionAcademicaPage() {
         setAlumnoGrupoMaterias(response?.data?.materias || []);
         setAlumnoGrupoGrupos(response?.data?.grupos || []);
         setAlumnoGrupoGruposPorMateria(response?.data?.grupos_por_materia || {});
+        setAlumnoGrupoCarreras(response?.data?.carreras || []);
+        setAlumnoGrupoPrepas(response?.data?.prepas || []);
       } catch {
         setAlumnoGrupoMaterias([]);
         setAlumnoGrupoGrupos([]);
         setAlumnoGrupoGruposPorMateria({});
+        setAlumnoGrupoCarreras([]);
+        setAlumnoGrupoPrepas([]);
       } finally {
         setAlumnoGrupoCatalogLoading(false);
       }
@@ -583,6 +612,75 @@ export default function CoordinacionAcademicaPage() {
     }
   }, [alumnoGrupoSelectedMateria, alumnoGrupoGruposPorMateria, alumnoGrupoForm]);
 
+  useEffect(() => {
+    if (!grupoBaseMateriaId) return;
+    const exists = (alumnoGrupoGruposPorMateria[grupoBaseMateriaId] || [])
+      .some((item) => item.grupo === grupoBaseCodigo);
+    if (!exists) {
+      setGrupoBaseCodigo('');
+    }
+  }, [grupoBaseMateriaId, grupoBaseCodigo, alumnoGrupoGruposPorMateria]);
+
+  useEffect(() => {
+    setGrupoBaseValor('');
+  }, [grupoBaseTipo]);
+
+  useEffect(() => {
+    const trimmed = grupoBaseIncludeQuery.trim();
+    if (trimmed.length < 2) {
+      setGrupoBaseIncludeSuggestions([]);
+      return;
+    }
+
+    async function buscarIncluir() {
+      setGrupoBaseIncludeLoading(true);
+      try {
+        const response = await api.get('/admin/alumno-grupos/buscar-alumnos', {
+          params: { q: trimmed },
+        });
+        setGrupoBaseIncludeSuggestions(response?.data?.items || []);
+      } catch {
+        setGrupoBaseIncludeSuggestions([]);
+      } finally {
+        setGrupoBaseIncludeLoading(false);
+      }
+    }
+
+    const timeoutId = setTimeout(() => {
+      buscarIncluir();
+    }, 260);
+
+    return () => clearTimeout(timeoutId);
+  }, [grupoBaseIncludeQuery]);
+
+  useEffect(() => {
+    const trimmed = grupoBaseExcludeQuery.trim();
+    if (trimmed.length < 2) {
+      setGrupoBaseExcludeSuggestions([]);
+      return;
+    }
+
+    async function buscarExcluir() {
+      setGrupoBaseExcludeLoading(true);
+      try {
+        const response = await api.get('/admin/alumno-grupos/buscar-alumnos', {
+          params: { q: trimmed },
+        });
+        setGrupoBaseExcludeSuggestions(response?.data?.items || []);
+      } catch {
+        setGrupoBaseExcludeSuggestions([]);
+      } finally {
+        setGrupoBaseExcludeLoading(false);
+      }
+    }
+
+    const timeoutId = setTimeout(() => {
+      buscarExcluir();
+    }, 260);
+
+    return () => clearTimeout(timeoutId);
+  }, [grupoBaseExcludeQuery]);
+
   async function submitAlumnoGrupo(values) {
     setAlumnoGrupoSending(true);
     setError('');
@@ -625,6 +723,61 @@ export default function CoordinacionAcademicaPage() {
       setAlumnoGrupoItems(response?.data?.items || []);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo eliminar la asignacion alumno-grupo.');
+    }
+  }
+
+  function addAlumnoToCollection(collection, alumno) {
+    if (!alumno?.id_alumno) return collection;
+    if (collection.some((item) => Number(item.id_alumno) === Number(alumno.id_alumno))) {
+      return collection;
+    }
+    return [...collection, alumno];
+  }
+
+  function removeAlumnoFromCollection(collection, idAlumno) {
+    return collection.filter((item) => Number(item.id_alumno) !== Number(idAlumno));
+  }
+
+  async function submitSincronizacionGrupoBase() {
+    setError('');
+    setMessage('');
+
+    if (!grupoBaseMateriaId || !grupoBaseCodigo || !grupoBaseValor.trim()) {
+      setError('Selecciona materia, grupo y criterio base antes de sincronizar.');
+      return;
+    }
+
+    setGrupoBaseSending(true);
+    try {
+      const response = await api.post('/admin/alumno-grupos/sincronizar', {
+        id_materia: Number(grupoBaseMateriaId),
+        grupo: grupoBaseCodigo,
+        tipo_base: grupoBaseTipo,
+        valor_base: grupoBaseValor.trim(),
+        incluir_alumnos: grupoBaseIncludeSelected.map((item) => Number(item.id_alumno)),
+        excluir_alumnos: grupoBaseExcludeSelected.map((item) => Number(item.id_alumno)),
+      });
+
+      const resumen = response?.data?.resumen || {};
+      setMessage(
+        `Sincronizacion completada. Final: ${resumen.total_final || 0}, creados: ${resumen.creados || 0}, actualizados: ${resumen.actualizados || 0}, removidos: ${resumen.removidos || 0}.`,
+      );
+
+      setGrupoBaseIncludeQuery('');
+      setGrupoBaseIncludeSuggestions([]);
+      setGrupoBaseIncludeSelected([]);
+      setGrupoBaseExcludeQuery('');
+      setGrupoBaseExcludeSuggestions([]);
+      setGrupoBaseExcludeSelected([]);
+
+      const responseItems = await api.get('/admin/alumno-grupos', {
+        params: { q: alumnoGrupoSearch.trim() },
+      });
+      setAlumnoGrupoItems(responseItems?.data?.items || []);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo sincronizar el grupo base.');
+    } finally {
+      setGrupoBaseSending(false);
     }
   }
 
@@ -1317,6 +1470,178 @@ export default function CoordinacionAcademicaPage() {
 
           <article className="coord-card coord-span-2">
             <h3>Inscripcion y asignacion alumno a materia/grupo</h3>
+
+            <div className="coord-bulk-wrap">
+              <h4>Grupo base por carrera o prepa (inscripcion masiva)</h4>
+              <div className="form-grid coord-form-4">
+                <label htmlFor="coord-bulk-materia">Asignatura</label>
+                <select
+                  id="coord-bulk-materia"
+                  value={grupoBaseMateriaId}
+                  onChange={(event) => setGrupoBaseMateriaId(event.target.value)}
+                  disabled={alumnoGrupoCatalogLoading}
+                >
+                  <option value="">Selecciona asignatura activa</option>
+                  {alumnoGrupoMaterias.map((materia) => (
+                    <option key={`bulk-materia-${materia.id_materia}`} value={String(materia.id_materia)}>
+                      {`${materia.nombre_materia} (${materia.codigo_materia || 'SIN-CODIGO'})`}
+                    </option>
+                  ))}
+                </select>
+
+                <label htmlFor="coord-bulk-grupo">Grupo</label>
+                <select
+                  id="coord-bulk-grupo"
+                  value={grupoBaseCodigo}
+                  onChange={(event) => setGrupoBaseCodigo(event.target.value)}
+                  disabled={!grupoBaseMateriaId || grupoBaseGruposDisponibles.length === 0}
+                >
+                  <option value="">Selecciona grupo</option>
+                  {grupoBaseGruposDisponibles.map((item) => (
+                    <option key={`bulk-grupo-${grupoBaseMateriaId}-${item.grupo}`} value={item.grupo}>
+                      {item.grupo}
+                    </option>
+                  ))}
+                </select>
+
+                <label htmlFor="coord-bulk-tipo">Criterio base</label>
+                <select
+                  id="coord-bulk-tipo"
+                  value={grupoBaseTipo}
+                  onChange={(event) => setGrupoBaseTipo(event.target.value)}
+                >
+                  <option value="carrera">Carrera</option>
+                  <option value="prepa">Prepa</option>
+                </select>
+
+                <label htmlFor="coord-bulk-valor">Valor del criterio</label>
+                <select
+                  id="coord-bulk-valor"
+                  value={grupoBaseValor}
+                  onChange={(event) => setGrupoBaseValor(event.target.value)}
+                  disabled={grupoBaseValoresDisponibles.length === 0}
+                >
+                  <option value="">Selecciona valor</option>
+                  {grupoBaseValoresDisponibles.map((item) => (
+                    <option key={`bulk-valor-${item}`} value={item}>{item}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="coord-bulk-people-grid">
+                <div className="coord-combobox-wrap">
+                  <label htmlFor="coord-bulk-include">Incluir alumnos fuera de la base</label>
+                  <input
+                    id="coord-bulk-include"
+                    type="text"
+                    value={grupoBaseIncludeQuery}
+                    onChange={(event) => setGrupoBaseIncludeQuery(event.target.value)}
+                    placeholder="Buscar por matricula o nombre"
+                    autoComplete="off"
+                  />
+                  {grupoBaseIncludeLoading ? <small>Buscando alumnos...</small> : null}
+                  {grupoBaseIncludeSuggestions.length > 0 ? (
+                    <div className="coord-combobox-list" role="listbox" aria-label="Sugerencias de alumnos para incluir">
+                      {grupoBaseIncludeSuggestions.map((alumno) => (
+                        <button
+                          key={`bulk-include-${alumno.id_alumno}`}
+                          type="button"
+                          className="coord-combobox-option"
+                          onClick={() => {
+                            setGrupoBaseIncludeSelected((prev) => addAlumnoToCollection(prev, alumno));
+                            setGrupoBaseExcludeSelected((prev) => removeAlumnoFromCollection(prev, alumno.id_alumno));
+                            setGrupoBaseIncludeQuery('');
+                            setGrupoBaseIncludeSuggestions([]);
+                          }}
+                        >
+                          {alumno.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {grupoBaseIncludeSelected.length > 0 ? (
+                    <div className="coord-chip-list">
+                      {grupoBaseIncludeSelected.map((alumno) => (
+                        <span className="coord-chip" key={`bulk-include-chip-${alumno.id_alumno}`}>
+                          {alumno.label}
+                          <button
+                            type="button"
+                            className="coord-chip-remove"
+                            onClick={() => setGrupoBaseIncludeSelected((prev) => removeAlumnoFromCollection(prev, alumno.id_alumno))}
+                          >
+                            x
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <small>Sin alumnos adicionales.</small>
+                  )}
+                </div>
+
+                <div className="coord-combobox-wrap">
+                  <label htmlFor="coord-bulk-exclude">Excluir alumnos de la base</label>
+                  <input
+                    id="coord-bulk-exclude"
+                    type="text"
+                    value={grupoBaseExcludeQuery}
+                    onChange={(event) => setGrupoBaseExcludeQuery(event.target.value)}
+                    placeholder="Buscar por matricula o nombre"
+                    autoComplete="off"
+                  />
+                  {grupoBaseExcludeLoading ? <small>Buscando alumnos...</small> : null}
+                  {grupoBaseExcludeSuggestions.length > 0 ? (
+                    <div className="coord-combobox-list" role="listbox" aria-label="Sugerencias de alumnos para excluir">
+                      {grupoBaseExcludeSuggestions.map((alumno) => (
+                        <button
+                          key={`bulk-exclude-${alumno.id_alumno}`}
+                          type="button"
+                          className="coord-combobox-option"
+                          onClick={() => {
+                            setGrupoBaseExcludeSelected((prev) => addAlumnoToCollection(prev, alumno));
+                            setGrupoBaseIncludeSelected((prev) => removeAlumnoFromCollection(prev, alumno.id_alumno));
+                            setGrupoBaseExcludeQuery('');
+                            setGrupoBaseExcludeSuggestions([]);
+                          }}
+                        >
+                          {alumno.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {grupoBaseExcludeSelected.length > 0 ? (
+                    <div className="coord-chip-list">
+                      {grupoBaseExcludeSelected.map((alumno) => (
+                        <span className="coord-chip coord-chip-danger" key={`bulk-exclude-chip-${alumno.id_alumno}`}>
+                          {alumno.label}
+                          <button
+                            type="button"
+                            className="coord-chip-remove"
+                            onClick={() => setGrupoBaseExcludeSelected((prev) => removeAlumnoFromCollection(prev, alumno.id_alumno))}
+                          >
+                            x
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <small>Sin exclusiones.</small>
+                  )}
+                </div>
+              </div>
+
+              <div className="coord-bulk-actions">
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={submitSincronizacionGrupoBase}
+                  disabled={loading || alumnoGrupoCatalogLoading || grupoBaseSending}
+                >
+                  {grupoBaseSending ? 'Sincronizando...' : 'Sincronizar grupo base'}
+                </button>
+              </div>
+            </div>
+
             <form className="form-grid coord-form-4" onSubmit={alumnoGrupoForm.handleSubmit(submitAlumnoGrupo)}>
               <label htmlFor="coord-ag-alumno">Alumno</label>
               <div className="coord-combobox-wrap">

@@ -81,6 +81,17 @@ function normalizeText(value) {
   return String(value || '').trim();
 }
 
+function normalizeGroupCode(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function parseIdArray(values) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values
+    .map((item) => Number(item))
+    .filter((item) => Number.isInteger(item) && item > 0))];
+}
+
 function normalizeFolioInterno(value) {
   return String(value || '').trim().toUpperCase();
 }
@@ -1733,7 +1744,7 @@ async function listarAsignacionesAlumnoGrupo(req, res) {
 }
 
 async function catalogosAlumnoGrupo(req, res) {
-  const [materiasRows, asignacionesRows, periodoActivo] = await Promise.all([
+  const [materiasRows, asignacionesRows, periodoActivo, carrerasRows] = await Promise.all([
     Materia.findAll({
       attributes: ['id_materia', 'nombre_materia', 'codigo_materia', 'bimestre_pertenece'],
       order: [['nombre_materia', 'ASC']],
@@ -1750,6 +1761,12 @@ async function catalogosAlumnoGrupo(req, res) {
     PeriodoAcademico.findOne({
       where: { estatus: 'activo' },
       attributes: ['id_periodo', 'nombre', 'ciclo', 'bimestre'],
+    }),
+    AlumnoPerfil.findAll({
+      attributes: ['carrera'],
+      where: { carrera: { [Op.not]: null } },
+      group: ['carrera'],
+      raw: true,
     }),
   ]);
 
@@ -1802,10 +1819,20 @@ async function catalogosAlumnoGrupo(req, res) {
     return acc;
   }, {});
 
+  const carreras = [...new Set(
+    carrerasRows
+      .map((row) => normalizeText(row.carrera))
+      .filter(Boolean),
+  )].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+
+  const prepas = carreras.filter((item) => /prepa|preparatoria/i.test(item));
+
   return res.json({
     materias,
     grupos,
     grupos_por_materia: gruposPorMateria,
+    carreras,
+    prepas,
     periodo_activo: periodoActivo || null,
   });
 }
@@ -1969,6 +1996,156 @@ async function desasignarAlumnoDeGrupo(req, res) {
   return res.status(204).send();
 }
 
+async function sincronizarGrupoAlumnoMateria(req, res) {
+  const idMateria = Number(req.body.id_materia);
+  const grupo = normalizeGroupCode(req.body.grupo);
+  const tipoBase = normalizeText(req.body.tipo_base).toLowerCase();
+  const valorBase = normalizeText(req.body.valor_base);
+  const incluirAlumnos = parseIdArray(req.body.incluir_alumnos || []);
+  const excluirAlumnos = parseIdArray(req.body.excluir_alumnos || []);
+
+  if (!Number.isInteger(idMateria)) {
+    return res.status(400).json({ message: 'id_materia invalido.' });
+  }
+  if (!grupo) {
+    return res.status(400).json({ message: 'grupo es obligatorio.' });
+  }
+  if (!['carrera', 'prepa'].includes(tipoBase)) {
+    return res.status(400).json({ message: 'tipo_base invalido. Usa carrera o prepa.' });
+  }
+  if (!valorBase) {
+    return res.status(400).json({ message: 'valor_base es obligatorio.' });
+  }
+
+  const [materia, grupoDocente] = await Promise.all([
+    Materia.findByPk(idMateria),
+    AsignacionGrupo.findOne({ where: { id_materia: idMateria, grupo } }),
+  ]);
+
+  if (!materia) {
+    return res.status(404).json({ message: 'Materia no encontrada.' });
+  }
+  if (!grupoDocente) {
+    return res.status(400).json({
+      message: 'El grupo no existe para esa materia. Asigna primero el grupo al docente.',
+    });
+  }
+
+  const whereBase = {};
+  if (tipoBase === 'carrera') {
+    whereBase.carrera = valorBase;
+  } else {
+    whereBase.carrera = { [Op.like]: `%${valorBase}%` };
+  }
+
+  const baseRows = await AlumnoPerfil.findAll({
+    where: whereBase,
+    attributes: ['id_alumno'],
+    raw: true,
+  });
+
+  const baseIds = new Set(baseRows.map((row) => Number(row.id_alumno)).filter(Number.isInteger));
+  incluirAlumnos.forEach((id) => baseIds.add(id));
+  excluirAlumnos.forEach((id) => baseIds.delete(id));
+
+  const alumnosObjetivo = [...baseIds];
+  if (alumnosObjetivo.length === 0) {
+    return res.status(400).json({
+      message: 'No hay alumnos objetivo para sincronizar. Ajusta el filtro de carrera/prepa o las excepciones.',
+    });
+  }
+
+  const alumnosExistentes = await AlumnoPerfil.findAll({
+    where: { id_alumno: { [Op.in]: alumnosObjetivo } },
+    attributes: ['id_alumno'],
+    raw: true,
+  });
+  const alumnosValidos = new Set(alumnosExistentes.map((row) => Number(row.id_alumno)).filter(Number.isInteger));
+
+  const alumnosFinales = alumnosObjetivo.filter((id) => alumnosValidos.has(id));
+  if (alumnosFinales.length === 0) {
+    return res.status(400).json({ message: 'Ninguno de los alumnos objetivo existe en la base de datos.' });
+  }
+
+  const [asignacionesMateria, asignacionesGrupoActual] = await Promise.all([
+    AlumnoGrupo.findAll({ where: { id_materia: idMateria } }),
+    AlumnoGrupo.findAll({ where: { id_materia: idMateria, grupo } }),
+  ]);
+
+  const asignacionPorAlumno = new Map(asignacionesMateria.map((row) => [Number(row.id_alumno), row]));
+  const finalSet = new Set(alumnosFinales);
+
+  const toCreate = [];
+  const toUpdate = [];
+  alumnosFinales.forEach((idAlumno) => {
+    const existente = asignacionPorAlumno.get(idAlumno);
+    if (!existente) {
+      toCreate.push({
+        id_alumno: idAlumno,
+        id_materia: idMateria,
+        grupo,
+        fecha_alta: new Date(),
+      });
+      return;
+    }
+
+    if (String(existente.grupo) !== grupo) {
+      existente.grupo = grupo;
+      toUpdate.push(existente);
+    }
+  });
+
+  const toRemove = asignacionesGrupoActual.filter((row) => !finalSet.has(Number(row.id_alumno)));
+
+  if (toCreate.length > 0) {
+    await AlumnoGrupo.bulkCreate(toCreate);
+  }
+  if (toUpdate.length > 0) {
+    await Promise.all(toUpdate.map((row) => row.save()));
+  }
+  if (toRemove.length > 0) {
+    await AlumnoGrupo.destroy({
+      where: {
+        id_alumno_grupo: { [Op.in]: toRemove.map((row) => row.id_alumno_grupo) },
+      },
+    });
+  }
+
+  await registrarEventoAuditoria({
+    idUsuario: req.user.id_usuario,
+    rolActor: req.user.rol,
+    accion: 'sincronizar_grupo_alumno_materia',
+    modulo: 'admin',
+    entidad: 'alumno_grupos',
+    idEntidad: `${idMateria}:${grupo}`,
+    detalle: {
+      id_materia: idMateria,
+      grupo,
+      tipo_base: tipoBase,
+      valor_base: valorBase,
+      incluir_alumnos: incluirAlumnos,
+      excluir_alumnos: excluirAlumnos,
+      total_final: alumnosFinales.length,
+      creados: toCreate.length,
+      actualizados: toUpdate.length,
+      removidos: toRemove.length,
+    },
+  });
+
+  return res.json({
+    id_materia: idMateria,
+    grupo,
+    tipo_base: tipoBase,
+    valor_base: valorBase,
+    resumen: {
+      total_final: alumnosFinales.length,
+      creados: toCreate.length,
+      actualizados: toUpdate.length,
+      removidos: toRemove.length,
+    },
+  });
+}
+
 module.exports = {
   buscarUsuariosDirector,
   buscarAlumnosOverrideDirector,
@@ -2006,4 +2183,5 @@ module.exports = {
   buscarAlumnosAlumnoGrupo,
   asignarAlumnoAGrupo,
   desasignarAlumnoDeGrupo,
+  sincronizarGrupoAlumnoMateria,
 };
