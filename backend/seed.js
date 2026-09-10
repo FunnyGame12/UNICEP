@@ -136,6 +136,7 @@ async function createUser({ folio, nombre, correo, rol, idRol, password }) {
     correo: correo.toLowerCase(),
     password_hash: passwordHash,
     cuenta_activada: true,
+    cuenta_bloqueada: false,
     id_rol: idRol,
     rol,
     fecha_creacion: now,
