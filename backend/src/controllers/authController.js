@@ -7,6 +7,7 @@ const {
   Usuario,
   AlumnoPerfil,
   DocentePerfil,
+  PlanEstudio,
 } = require('../../models');
 const { resolveUserAuthorization } = require('../services/rbacService');
 
@@ -205,6 +206,37 @@ async function registroConFolio(req, res) {
     user.cuenta_activada = true;
   }
   await user.save();
+
+  try {
+    const esAlumno = normalizeLegacyRole(user.rol) === 'alumno' || Number(user.id_rol) === 5;
+    if (esAlumno) {
+      const [planActivo] = await PlanEstudio.findAll({
+        where: { activo: true },
+        attributes: ['id_plan_estudio', 'carrera'],
+        order: [['id_plan_estudio', 'ASC']],
+        limit: 1,
+      });
+
+      if (planActivo) {
+        await AlumnoPerfil.findOrCreate({
+          where: { id_alumno: user.id_usuario },
+          defaults: {
+            carrera: planActivo.carrera || 'General',
+            id_plan_estudio: planActivo.id_plan_estudio,
+            bimestre_actual: 1,
+            estado_academico: 'activo',
+            bloqueo_plataforma: false,
+            bloqueo_calificaciones: false,
+            estatus_financiero: 'al_dia',
+            modalidad_boleta: 'ONLINE',
+            campus_boleta: 'UNICEP MERIDA',
+          },
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error al crear el perfil base del alumno:', error);
+  }
 
   return res.status(200).json({
     message: 'Cuenta activada correctamente. Ya puedes iniciar sesion.',
