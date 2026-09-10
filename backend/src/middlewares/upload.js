@@ -4,7 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 
-const UPLOAD_ROOT = path.join(__dirname, '../../uploads');
+const DEFAULT_UPLOAD_ROOT = path.join(__dirname, '../../uploads');
+const UPLOAD_ROOT = path.resolve(process.env.UPLOAD_ROOT || DEFAULT_UPLOAD_ROOT);
 const PORTAFOLIO_DIR = path.join(UPLOAD_ROOT, 'portafolio');
 const INSTITUCIONAL_DIR = path.join(UPLOAD_ROOT, 'institucional');
 const TEMARIOS_DIR = path.join(UPLOAD_ROOT, 'temarios');

@@ -8,7 +8,10 @@ const env = require('./config/env');
 const apiRoutes = require('./routes');
 
 const app = express();
-const primaryUploadsPath = path.join(__dirname, '../uploads');
+const configuredUploadsPath = process.env.UPLOAD_ROOT
+  ? path.resolve(process.env.UPLOAD_ROOT)
+  : path.join(__dirname, '../uploads');
+const primaryUploadsPath = configuredUploadsPath;
 const legacyUploadsPath = path.join(__dirname, '../../uploads');
 
 fs.mkdirSync(primaryUploadsPath, { recursive: true });
