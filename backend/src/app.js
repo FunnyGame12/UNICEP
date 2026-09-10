@@ -12,11 +12,12 @@ const cspDirectives = {
   baseUri: ["'self'"],
   objectSrc: ["'none'"],
   frameAncestors: ["'self'"],
-  scriptSrc: env.cspScriptSrc,
-  styleSrc: env.cspStyleSrc,
-  imgSrc: env.cspImgSrc,
-  fontSrc: env.cspFontSrc,
-  connectSrc: env.cspConnectSrc,
+  // Reemplazamos env.cspScriptSrc por valores hardcodeados para evitar a dotenvx
+  scriptSrc: ["'self'", "'unsafe-eval'"],
+  styleSrc: ["'self'", "'unsafe-inline'"],
+  imgSrc: ["'self'", 'data:', 'https:'],
+  fontSrc: ["'self'", 'data:'],
+  connectSrc: ["'self'", 'https:', 'wss:'],
   frameSrc: ["'self'", 'blob:', 'https://docs.google.com'],
   formAction: ["'self'"],
 };
