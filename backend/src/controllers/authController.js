@@ -2,8 +2,42 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const env = require('../config/env');
-const { Usuario, AlumnoPerfil, DocentePerfil } = require('../../models');
+const {
+  sequelize,
+  Usuario,
+  AlumnoPerfil,
+  DocentePerfil,
+} = require('../../models');
 const { resolveUserAuthorization } = require('../services/rbacService');
+
+let usuariosColumnsCache = null;
+
+async function getUsuariosColumns() {
+  if (usuariosColumnsCache) {
+    return usuariosColumnsCache;
+  }
+
+  try {
+    const description = await sequelize.getQueryInterface().describeTable('usuarios');
+    usuariosColumnsCache = new Set(Object.keys(description || {}));
+  } catch (_error) {
+    usuariosColumnsCache = new Set([
+      'id_usuario',
+      'nombre_completo',
+      'correo',
+      'folio_matricula',
+      'password_hash',
+      'cuenta_activada',
+      'rol',
+    ]);
+  }
+
+  return usuariosColumnsCache;
+}
+
+function hasColumn(columns, name) {
+  return columns instanceof Set && columns.has(name);
+}
 
 function normalizeLegacyRole(role) {
   const raw = String(role || '').trim().toLowerCase();
@@ -15,71 +49,62 @@ function normalizeLegacyRole(role) {
 
 async function login(req, res) {
   const { correo, folio_matricula, password } = req.body;
+  const usuariosColumns = await getUsuariosColumns();
 
   const correoNormalized = (correo || '').trim().toLowerCase();
   const folioNormalized = (folio_matricula || '').trim();
 
-  const identity = correoNormalized || folioNormalized;
+  const canUseCorreo = hasColumn(usuariosColumns, 'correo');
+  const canUseFolio = hasColumn(usuariosColumns, 'folio_matricula');
+
+  const correoEnabled = canUseCorreo ? correoNormalized : '';
+  const folioEnabled = canUseFolio ? folioNormalized : '';
+
+  const identity = correoEnabled || folioEnabled;
   if (!identity) {
-    return res.status(400).json({ message: 'correo o folio_matricula es obligatorio.' });
+    return res.status(400).json({ message: 'correo o folio_matricula es obligatorio y debe existir en el esquema.' });
   }
   if (!password) {
     return res.status(400).json({ message: 'password es obligatorio.' });
   }
 
   const where = {};
-  if (correoNormalized && folioNormalized) {
+  if (correoEnabled && folioEnabled) {
     where[Op.or] = [
-      { correo: correoNormalized },
-      { folio_matricula: folioNormalized },
+      { correo: correoEnabled },
+      { folio_matricula: folioEnabled },
     ];
-  } else if (correoNormalized) {
-    where.correo = correoNormalized;
+  } else if (correoEnabled) {
+    where.correo = correoEnabled;
   } else {
-    where.folio_matricula = folioNormalized;
+    where.folio_matricula = folioEnabled;
   }
 
-  let user;
-  try {
-    user = await Usuario.findOne({
-      where,
-      attributes: [
-        'id_usuario',
-        'nombre_completo',
-        'correo',
-        'folio_matricula',
-        'password_hash',
-        'cuenta_activada',
-        'rol',
-      ],
-    });
-  } catch (error) {
-    const sqlMessage = String(error?.original?.sqlMessage || error?.message || '');
-    const missingCuentaActivada = /Unknown column 'cuenta_activada'/i.test(sqlMessage);
+  const attributes = [
+    'id_usuario',
+    'nombre_completo',
+    'correo',
+    'folio_matricula',
+    'password_hash',
+    'cuenta_activada',
+    'rol',
+  ].filter((column) => hasColumn(usuariosColumns, column));
 
-    if (!missingCuentaActivada) {
-      throw error;
-    }
+  const user = await Usuario.findOne({
+    where,
+    attributes,
+  });
 
-    user = await Usuario.findOne({
-      where,
-      attributes: [
-        'id_usuario',
-        'nombre_completo',
-        'correo',
-        'folio_matricula',
-        'password_hash',
-        'rol',
-      ],
-    });
-
-    if (user && user.cuenta_activada === undefined) {
-      user.setDataValue('cuenta_activada', true);
-    }
+  if (user && user.cuenta_activada === undefined) {
+    user.setDataValue('cuenta_activada', true);
   }
 
   if (!user) {
     return res.status(401).json({ message: 'Credenciales invalidas.' });
+  }
+
+  if (!hasColumn(usuariosColumns, 'password_hash')) {
+    return res.status(500).json({ message: 'Esquema de usuarios invalido: falta password_hash.' });
   }
 
   if (!user.cuenta_activada) {
@@ -140,6 +165,12 @@ async function login(req, res) {
 }
 
 async function registroConFolio(req, res) {
+  const usuariosColumns = await getUsuariosColumns();
+
+  if (!hasColumn(usuariosColumns, 'folio_matricula')) {
+    return res.status(500).json({ message: 'Esquema de usuarios invalido: falta folio_matricula.' });
+  }
+
   const folio = (req.body.folio_matricula || '').trim();
   const correo = (req.body.correo || '').trim().toLowerCase();
   const password = req.body.password || '';
@@ -155,7 +186,11 @@ async function registroConFolio(req, res) {
     return res.status(404).json({ message: 'Folio no encontrado. Solicita alta en control escolar.' });
   }
 
-  if (user.cuenta_activada) {
+  const cuentaActivada = hasColumn(usuariosColumns, 'cuenta_activada')
+    ? Boolean(user.cuenta_activada)
+    : true;
+
+  if (cuentaActivada) {
     return res.status(409).json({ message: 'La cuenta ya esta activada. Inicia sesion.' });
   }
 
@@ -166,7 +201,9 @@ async function registroConFolio(req, res) {
 
   user.correo = correo;
   user.password_hash = await bcrypt.hash(password, 10);
-  user.cuenta_activada = true;
+  if (hasColumn(usuariosColumns, 'cuenta_activada')) {
+    user.cuenta_activada = true;
+  }
   await user.save();
 
   return res.status(200).json({
