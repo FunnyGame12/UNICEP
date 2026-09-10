@@ -116,6 +116,21 @@ function buildAsistenciaKey(row) {
   return `${row.id_materia}::${row.id_alumno}::${row.fecha_iso}`;
 }
 
+function isSchemaMismatchError(error) {
+  const message = String(error?.original?.sqlMessage || error?.message || '').toLowerCase();
+  const code = String(error?.original?.code || error?.parent?.code || '').toUpperCase();
+
+  if (code === 'ER_NO_SUCH_TABLE' || code === 'ER_BAD_FIELD_ERROR' || code === 'ER_BAD_TABLE_ERROR') {
+    return true;
+  }
+
+  return (
+    message.includes("doesn't exist")
+    || message.includes('unknown column')
+    || message.includes('recursos_academicos')
+  );
+}
+
 async function prepararAsistenciaParaUpsert({ row, req, contexto }) {
   const materiaId = Number(row?.materia_id ?? row?.id_materia);
   const alumnoId = Number(row?.alumno_id ?? row?.id_alumno);
@@ -1710,18 +1725,26 @@ async function publicarRecursoAcademico(req, res) {
     }
   }
 
-  const recurso = await RecursoAcademico.create({
-    titulo,
-    tipo_recurso: tipoRecurso,
-    url_recurso: urlRecurso,
-    remitente_tipo: 'docente',
-    remitente_nombre: remitenteNombre,
-    id_docente: req.user.id_usuario,
-    id_materia: materiaId,
-    grupo_id: grupoId,
-    activo: true,
-    created_at: new Date(),
-  });
+  let recurso;
+  try {
+    recurso = await RecursoAcademico.create({
+      titulo,
+      tipo_recurso: tipoRecurso,
+      url_recurso: urlRecurso,
+      remitente_tipo: 'docente',
+      remitente_nombre: remitenteNombre,
+      id_docente: req.user.id_usuario,
+      id_materia: materiaId,
+      grupo_id: grupoId,
+      activo: true,
+      created_at: new Date(),
+    });
+  } catch (error) {
+    if (isSchemaMismatchError(error)) {
+      return res.status(503).json({ message: 'No se pudo guardar el material porque faltan migraciones de recursos academicos. Ejecuta npm run migrate en backend.' });
+    }
+    throw error;
+  }
 
   return res.status(201).json(recurso);
 }
@@ -1747,12 +1770,20 @@ async function eliminarRecursoAcademico(req, res) {
 }
 
 async function misRecursosAcademicos(req, res) {
-  const items = await RecursoAcademico.findAll({
-    where: { id_docente: req.user.id_usuario, activo: true },
-    include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia'] }],
-    order: [['created_at', 'DESC']],
-    limit: 200,
-  });
+  let items;
+  try {
+    items = await RecursoAcademico.findAll({
+      where: { id_docente: req.user.id_usuario, activo: true },
+      include: [{ model: Materia, as: 'materia', attributes: ['id_materia', 'nombre_materia'], required: false }],
+      order: [['created_at', 'DESC']],
+      limit: 200,
+    });
+  } catch (error) {
+    if (isSchemaMismatchError(error)) {
+      return res.json({ items: [] });
+    }
+    throw error;
+  }
 
   return res.json({ items });
 }
