@@ -41,15 +41,16 @@ async function login(req, res) {
 
   const user = await Usuario.findOne({
     where,
-    include: [
-      {
-        model: AlumnoPerfil,
-        as: 'perfil_alumno',
-      },
-      {
-        model: DocentePerfil,
-        as: 'perfil_docente',
-      },
+    attributes: [
+      'id_usuario',
+      'nombre_completo',
+      'correo',
+      'folio_matricula',
+      'password_hash',
+      'cuenta_activada',
+      'rol',
+      'id_rol',
+      'id_subrol',
     ],
   });
 
@@ -75,6 +76,18 @@ async function login(req, res) {
     authorization = null;
   }
 
+  let perfilAlumno = null;
+  let perfilDocente = null;
+  try {
+    [perfilAlumno, perfilDocente] = await Promise.all([
+      AlumnoPerfil.findByPk(user.id_usuario).catch(() => null),
+      DocentePerfil.findByPk(user.id_usuario).catch(() => null),
+    ]);
+  } catch (_error) {
+    perfilAlumno = null;
+    perfilDocente = null;
+  }
+
   const roleFallback = normalizeLegacyRole(user.rol);
 
   const normalizedUser = {
@@ -85,8 +98,8 @@ async function login(req, res) {
     permisos: authorization?.permisos || [],
     correo: user.correo,
     folio_matricula: user.folio_matricula,
-    perfil_alumno: user.perfil_alumno,
-    perfil_docente: user.perfil_docente,
+    perfil_alumno: perfilAlumno,
+    perfil_docente: perfilDocente,
   };
 
   const token = jwt.sign(
