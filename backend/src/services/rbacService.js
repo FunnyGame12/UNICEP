@@ -7,9 +7,37 @@ const {
   RolPermiso,
   SubrolPermiso,
 } = require('../../models');
+const { PERMISSIONS } = require('../constants/rbac');
 
 function uniq(values) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function fallbackPermissionsByRole(role) {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  const allPermissions = Object.values(PERMISSIONS);
+
+  if (normalizedRole === 'alumno') {
+    return allPermissions.filter((code) => code.startsWith('alumno.'));
+  }
+
+  if (normalizedRole === 'maestro' || normalizedRole === 'docente') {
+    return allPermissions.filter((code) => code.startsWith('maestro.'));
+  }
+
+  if (normalizedRole === 'coordinacion_academica' || normalizedRole === 'coordinacion_escolar') {
+    return allPermissions.filter((code) => code.startsWith('admin.') || code.startsWith('maestro.'));
+  }
+
+  if (normalizedRole === 'control_escolar' || normalizedRole === 'administrativo') {
+    return allPermissions.filter((code) => code.startsWith('admin.') || code.startsWith('alumno.'));
+  }
+
+  if (normalizedRole === 'director') {
+    return allPermissions;
+  }
+
+  return [];
 }
 
 async function resolveUserAuthorization(idUsuario) {
@@ -37,10 +65,11 @@ async function resolveUserAuthorization(idUsuario) {
   const idSubrol = usuario.id_subrol || usuario.subrol_configurado?.id_subrol || null;
 
   if (!idRol) {
+    const effectiveFallback = fallbackPermissionsByRole(usuario.rol);
     return {
       rol: usuario.rol,
       subrol: null,
-      permisos: [],
+      permisos: effectiveFallback,
     };
   }
 
