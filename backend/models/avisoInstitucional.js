@@ -44,6 +44,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(20),
         allowNull: true,
       },
+      id_publicado_por: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       activo: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
@@ -63,6 +67,14 @@ module.exports = (sequelize, DataTypes) => {
       timestamps: false,
     },
   );
+
+  AvisoInstitucional.associate = (models) => {
+    AvisoInstitucional.belongsTo(models.Usuario, {
+      foreignKey: 'id_publicado_por',
+      targetKey: 'id_usuario',
+      as: 'publicado_por_usuario',
+    });
+  };
 
   return AvisoInstitucional;
 };

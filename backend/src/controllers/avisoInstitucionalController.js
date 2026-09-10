@@ -1,5 +1,10 @@
 const { Op } = require('sequelize');
-const { AvisoInstitucional, AlumnoGrupo, AsignacionGrupo } = require('../../models');
+const {
+  AvisoInstitucional,
+  AlumnoGrupo,
+  AsignacionGrupo,
+  Usuario,
+} = require('../../models');
 
 const DESTINATARIOS_VALIDOS = new Set(['alumnos', 'docentes', 'general']);
 const TIPOS_ADJUNTO_VALIDOS = new Set(['ninguno', 'archivo_local', 'enlace_drive']);
@@ -35,6 +40,14 @@ function serializeAviso(item) {
     carrera_id: item.carrera_id,
     cuatrimestre_id: item.cuatrimestre_id,
     grupo_id: item.grupo_id,
+    id_publicado_por: item.id_publicado_por,
+    publicado_por: item.publicado_por_usuario
+      ? {
+          id_usuario: item.publicado_por_usuario.id_usuario,
+          nombre_completo: item.publicado_por_usuario.nombre_completo,
+          rol: item.publicado_por_usuario.rol,
+        }
+      : null,
     activo: Boolean(item.activo),
     created_at: item.created_at,
     updated_at: item.updated_at,
@@ -98,16 +111,34 @@ async function crearAviso(req, res) {
     carrera_id: carreraId,
     cuatrimestre_id: cuatrimestreId,
     grupo_id: grupoId,
+    id_publicado_por: Number(req.user?.id_usuario) || null,
     activo: true,
     created_at: now,
     updated_at: now,
   });
 
-  return res.status(201).json(serializeAviso(created));
+  const createdWithPublisher = await AvisoInstitucional.findByPk(created.id_aviso_institucional, {
+    include: [
+      {
+        model: Usuario,
+        as: 'publicado_por_usuario',
+        attributes: ['id_usuario', 'nombre_completo', 'rol'],
+      },
+    ],
+  });
+
+  return res.status(201).json(serializeAviso(createdWithPublisher || created));
 }
 
 async function listarAvisosCoordinacion(_req, res) {
   const items = await AvisoInstitucional.findAll({
+    include: [
+      {
+        model: Usuario,
+        as: 'publicado_por_usuario',
+        attributes: ['id_usuario', 'nombre_completo', 'rol'],
+      },
+    ],
     order: [['created_at', 'DESC'], ['id_aviso_institucional', 'DESC']],
     limit: 300,
   });
@@ -210,6 +241,13 @@ async function listarAvisosPublicosPorRol(req, res) {
 
   const items = await AvisoInstitucional.findAll({
     where,
+    include: [
+      {
+        model: Usuario,
+        as: 'publicado_por_usuario',
+        attributes: ['id_usuario', 'nombre_completo', 'rol'],
+      },
+    ],
     order: [['created_at', 'DESC'], ['id_aviso_institucional', 'DESC']],
     limit: 200,
   });
