@@ -1255,6 +1255,16 @@ async function alumnosPorGrupoMateria(req, res) {
       order: [['created_at', 'DESC'], ['id_evidencia_materia', 'DESC']],
     })
     : [];
+  const calificacionesFormativas = alumnosIds.length > 0
+    ? await CalificacionFormativaDocente.findAll({
+      where: {
+        id_materia: materiaId,
+        grupo_id: grupoId,
+        id_alumno: { [Op.in]: alumnosIds },
+      },
+      order: [['id_calificacion', 'DESC']],
+    })
+    : [];
 
   const evidenciaPorAlumno = new Map();
   evidencias.forEach((item) => {
@@ -1263,10 +1273,47 @@ async function alumnosPorGrupoMateria(req, res) {
     evidenciaPorAlumno.set(alumnoId, item);
   });
 
+  const calificacionesPorAlumno = new Map();
+  calificacionesFormativas.forEach((item) => {
+    const alumnoId = Number(item.id_alumno);
+    const formativaNumero = Number(item.formativa_numero);
+    if (!Number.isInteger(alumnoId) || ![1, 2, 3].includes(formativaNumero)) return;
+
+    if (!calificacionesPorAlumno.has(alumnoId)) {
+      calificacionesPorAlumno.set(alumnoId, {
+        formativa_1: '',
+        formativa_2: '',
+        proyecto_final: '',
+        definitiva: '',
+      });
+    }
+
+    const current = calificacionesPorAlumno.get(alumnoId);
+    const value = Number(item.calificacion);
+    if (formativaNumero === 1 && current.formativa_1 === '') current.formativa_1 = Number.isFinite(value) ? value : '';
+    if (formativaNumero === 2 && current.formativa_2 === '') current.formativa_2 = Number.isFinite(value) ? value : '';
+    if (formativaNumero === 3 && current.proyecto_final === '') current.proyecto_final = Number.isFinite(value) ? value : '';
+  });
+
+  calificacionesPorAlumno.forEach((value) => {
+    const parciales = [value.formativa_1, value.formativa_2, value.proyecto_final]
+      .filter((item) => item !== '' && Number.isFinite(Number(item)))
+      .map((item) => Number(item));
+    value.definitiva = parciales.length > 0
+      ? Number((parciales.reduce((acc, item) => acc + item, 0) / parciales.length).toFixed(1))
+      : '';
+  });
+
   const responseItems = items.map((row) => {
     const evidencia = evidenciaPorAlumno.get(Number(row.id_alumno)) || null;
     return {
       ...row.toJSON(),
+      calificaciones: calificacionesPorAlumno.get(Number(row.id_alumno)) || {
+        formativa_1: '',
+        formativa_2: '',
+        proyecto_final: '',
+        definitiva: '',
+      },
       portafolio_evidencia: evidencia
         ? {
           id_evidencia_materia: evidencia.id_evidencia_materia,
@@ -1607,7 +1654,35 @@ async function evaluarPortafolio(req, res) {
   evidencia.portafolio_feedback = portafolioEstado === 'rechazado' ? portafolioFeedback : null;
   evidencia.estado = legacyEstadoDesdePortafolioEstado(portafolioEstado);
   evidencia.fecha_actualizacion = new Date();
-  await evidencia.save();
+
+  try {
+    await evidencia.save();
+  } catch (error) {
+    const message = String(error?.original?.sqlMessage || error?.message || '').toLowerCase();
+    if (!message.includes('unknown column')) {
+      throw error;
+    }
+
+    // Compatibilidad temporal si la migracion de nuevos campos aun no se aplica.
+    evidencia.setDataValue('estado', legacyEstadoDesdePortafolioEstado(portafolioEstado));
+    evidencia.setDataValue('fecha_actualizacion', new Date());
+    await evidencia.save({ fields: ['estado', 'fecha_actualizacion'] });
+  }
+
+  await registrarEventoAuditoria({
+    idUsuario: req.user.id_usuario,
+    rolActor: req.user.rol,
+    accion: 'evaluar_portafolio_alumno',
+    modulo: 'docentes',
+    entidad: 'portafolio_materia_evidencias',
+    idEntidad: evidencia.id_evidencia_materia,
+    detalle: {
+      alumno_id: evidencia.alumno_id,
+      materia_id: evidencia.materia_id,
+      portafolio_estado: portafolioEstado,
+      portafolio_feedback: evidencia.portafolio_feedback,
+    },
+  });
 
   return res.json({
     id_evidencia_materia: evidencia.id_evidencia_materia,

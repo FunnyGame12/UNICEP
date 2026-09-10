@@ -267,26 +267,23 @@ export default function DocentePage() {
           return next;
         });
 
-        setCalificacionesPorAlumno((prev) => {
-          const next = { ...prev };
+        setCalificacionesPorAlumno(() => {
+          const next = {};
           alumnosItems.forEach((row) => {
-            if (!next[row.id_alumno]) {
-              next[row.id_alumno] = {
-                formativa_1: '',
-                formativa_2: '',
-                proyecto_final: '',
-                definitiva: '',
-              };
-            }
+            next[row.id_alumno] = {
+              formativa_1: row?.calificaciones?.formativa_1 ?? '',
+              formativa_2: row?.calificaciones?.formativa_2 ?? '',
+              proyecto_final: row?.calificaciones?.proyecto_final ?? '',
+              definitiva: row?.calificaciones?.definitiva ?? '',
+            };
           });
           return next;
         });
 
-        setPortafolioValidadoPorAlumno((prev) => {
-          const next = { ...prev };
+        setPortafolioValidadoPorAlumno(() => {
+          const next = {};
           alumnosItems.forEach((row) => {
-            if (next[row.id_alumno] !== undefined) return;
-            next[row.id_alumno] = row?.portafolio_evidencia?.estado === 'validado';
+            next[row.id_alumno] = String(row?.portafolio_evidencia?.portafolio_estado || row?.portafolio_evidencia?.estado || '') === 'validado';
           });
           return next;
         });

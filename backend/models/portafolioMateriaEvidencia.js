@@ -31,6 +31,15 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 'pendiente',
       },
+      portafolio_estado: {
+        type: DataTypes.ENUM('pendiente', 'validado', 'rechazado', 'no_entregado'),
+        allowNull: false,
+        defaultValue: 'no_entregado',
+      },
+      portafolio_feedback: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
       fecha_actualizacion: {
         type: DataTypes.DATE,
         allowNull: true,
