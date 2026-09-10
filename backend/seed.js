@@ -172,7 +172,7 @@ async function runSeed() {
     folio: 'COE-2026-0001',
     nombre: 'Ing Fernando Castro Ruiz',
     correo: 'fernando.castro@unicep.edu.mx',
-    rol: 'coordinacion_escolar',
+    rol: 'coordinacion_academica',
     idRol: roleByCode.get(ROLES.COORDINACION_ACADEMICA),
     password: defaultPassword,
   });

@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 const env = require('../config/env');
 const { Usuario, AlumnoPerfil, DocentePerfil } = require('../../models');
+const { resolveUserAuthorization } = require('../services/rbacService');
 
 async function login(req, res) {
   const { correo, folio_matricula, password } = req.body;
@@ -59,10 +60,14 @@ async function login(req, res) {
     return res.status(401).json({ message: 'Credenciales invalidas.' });
   }
 
+  const authorization = await resolveUserAuthorization(user.id_usuario);
+
   const normalizedUser = {
     id_usuario: user.id_usuario,
     nombre_completo: user.nombre_completo,
-    rol: user.rol,
+    rol: authorization?.rol || user.rol,
+    subrol: authorization?.subrol || null,
+    permisos: authorization?.permisos || [],
     correo: user.correo,
     folio_matricula: user.folio_matricula,
     perfil_alumno: user.perfil_alumno,
