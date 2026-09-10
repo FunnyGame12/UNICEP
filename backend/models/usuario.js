@@ -49,6 +49,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.ENUM(
           'director',
           'control_escolar',
+          'coordinacion_escolar',
           'coordinacion_academica',
           'maestro',
           'alumno',
