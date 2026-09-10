@@ -127,6 +127,22 @@ function esUrlValida(value) {
   }
 }
 
+function filenameFromContentDisposition(headerValue, fallback = 'material_unicep') {
+  const header = String(headerValue || '');
+  const utfMatch = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1]);
+    } catch (_error) {
+      return utfMatch[1];
+    }
+  }
+
+  const plainMatch = header.match(/filename="?([^";]+)"?/i);
+  if (plainMatch?.[1]) return plainMatch[1];
+  return fallback;
+}
+
 export default function AlumnoPage() {
   const [activeTab, setActiveTab] = useState('resumen');
   const [loading, setLoading] = useState(true);
@@ -152,6 +168,7 @@ export default function AlumnoPage() {
   const [pagoArchivo, setPagoArchivo] = useState(null);
   const [tramiteArchivo, setTramiteArchivo] = useState(null);
   const [descargandoBoleta, setDescargandoBoleta] = useState(false);
+  const [descargandoRecursoId, setDescargandoRecursoId] = useState(null);
 
   const pagoForm = useForm({
     resolver: zodResolver(pagoSchema),
@@ -440,6 +457,48 @@ export default function AlumnoPage() {
     }
   };
 
+  const handleDescargarRecurso = async (item) => {
+    const idRecurso = Number(item?.id_recurso || 0);
+    if (!Number.isInteger(idRecurso) || idRecurso <= 0) {
+      setError('No se pudo identificar el recurso a descargar.');
+      return;
+    }
+
+    setError('');
+    setMessage('');
+    setDescargandoRecursoId(idRecurso);
+
+    try {
+      const response = await api.get(`/alumno/recursos/${idRecurso}/descargar`, {
+        responseType: 'blob',
+      });
+
+      const headerName = response?.headers?.['content-disposition'];
+      const fallbackName = `${String(item?.titulo || 'material').replace(/\s+/g, '_')}.bin`;
+      const filename = filenameFromContentDisposition(headerName, fallbackName);
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (requestError) {
+      const status = requestError?.response?.status;
+      if (status === 401) {
+        setError('Tu sesión expiró. Inicia sesión nuevamente para descargar el archivo.');
+      } else if (status === 404) {
+        setError('El archivo ya no se encuentra disponible en servidor.');
+      } else {
+        setError('No se pudo descargar el recurso. Intenta nuevamente.');
+      }
+    } finally {
+      setDescargandoRecursoId(null);
+    }
+  };
+
   const bloqueadoTotal = Boolean(acceso?.bloqueo_plataforma);
 
   return (
@@ -619,9 +678,20 @@ export default function AlumnoPage() {
                         </small>
                         {item.remitente_nombre ? <small>Publico: {item.remitente_nombre}</small> : null}
                         {recursoUrl ? (
-                          <a href={recursoUrl} target="_blank" rel="noreferrer">
-                            {esEnlaceDrive ? 'Abrir enlace de Drive' : 'Descargar archivo'}
-                          </a>
+                          esEnlaceDrive ? (
+                            <a href={recursoUrl} target="_blank" rel="noreferrer">
+                              Abrir enlace de Drive
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-primary"
+                              onClick={() => handleDescargarRecurso(item)}
+                              disabled={descargandoRecursoId === Number(item.id_recurso)}
+                            >
+                              {descargandoRecursoId === Number(item.id_recurso) ? 'Descargando...' : 'Descargar archivo'}
+                            </button>
+                          )
                         ) : (
                           <p className="alumno-empty">Recurso sin enlace disponible.</p>
                         )}

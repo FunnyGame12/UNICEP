@@ -36,6 +36,22 @@ function esUrlValida(value) {
   }
 }
 
+function filenameFromContentDisposition(headerValue, fallback = 'material_unicep') {
+  const header = String(headerValue || '');
+  const utfMatch = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1]);
+    } catch (_error) {
+      return utfMatch[1];
+    }
+  }
+
+  const plainMatch = header.match(/filename="?([^";]+)"?/i);
+  if (plainMatch?.[1]) return plainMatch[1];
+  return fallback;
+}
+
 export default function PortafolioRecursosPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -45,6 +61,7 @@ export default function PortafolioRecursosPage() {
   const [recursosInstitucionales, setRecursosInstitucionales] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [savingMateriaId, setSavingMateriaId] = useState(null);
+  const [descargandoRecursoId, setDescargandoRecursoId] = useState(null);
 
   async function cargarPortafolio() {
     setLoading(true);
@@ -102,6 +119,48 @@ export default function PortafolioRecursosPage() {
       setError(requestError?.response?.data?.message || 'No se pudo guardar el enlace de Drive.');
     } finally {
       setSavingMateriaId(null);
+    }
+  }
+
+  async function handleDescargarRecurso(item) {
+    const idRecurso = Number(item?.id_recurso || 0);
+    if (!Number.isInteger(idRecurso) || idRecurso <= 0) {
+      setError('No se pudo identificar el recurso a descargar.');
+      return;
+    }
+
+    setError('');
+    setMessage('');
+    setDescargandoRecursoId(idRecurso);
+
+    try {
+      const response = await api.get(`/alumno/recursos/${idRecurso}/descargar`, {
+        responseType: 'blob',
+      });
+
+      const headerName = response?.headers?.['content-disposition'];
+      const fallbackName = `${String(item?.titulo || 'material').replace(/\s+/g, '_')}.bin`;
+      const filename = filenameFromContentDisposition(headerName, fallbackName);
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (requestError) {
+      const status = requestError?.response?.status;
+      if (status === 401) {
+        setError('Tu sesión expiró. Inicia sesión nuevamente para descargar el archivo.');
+      } else if (status === 404) {
+        setError('El archivo ya no se encuentra disponible en servidor.');
+      } else {
+        setError('No se pudo descargar el recurso. Intenta nuevamente.');
+      }
+    } finally {
+      setDescargandoRecursoId(null);
     }
   }
 
@@ -198,13 +257,14 @@ export default function PortafolioRecursosPage() {
                       Abrir en Drive 🔗
                     </a>
                   ) : (
-                    <a
+                    <button
                       className="btn-primary recurso-btn"
-                      href={archivoAbsoluto}
-                      download
+                      type="button"
+                      onClick={() => handleDescargarRecurso(item)}
+                      disabled={descargandoRecursoId === Number(item.id_recurso)}
                     >
-                      Descargar Archivo 📥
-                    </a>
+                      {descargandoRecursoId === Number(item.id_recurso) ? 'Descargando...' : 'Descargar Archivo 📥'}
+                    </button>
                   )}
                 </article>
               );
