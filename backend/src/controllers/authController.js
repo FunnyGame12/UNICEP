@@ -49,8 +49,6 @@ async function login(req, res) {
       'password_hash',
       'cuenta_activada',
       'rol',
-      'id_rol',
-      'id_subrol',
     ],
   });
 
