@@ -137,6 +137,45 @@ function localUploadExists(urlValue) {
   return candidatePaths.some((candidate) => fs.existsSync(candidate));
 }
 
+function resolveLocalUploadAbsolutePath(urlValue) {
+  const relativePath = extractUploadsRelativePath(urlValue);
+  if (!relativePath) return null;
+
+  const sanitized = relativePath.replace(/^\/+/, '');
+  const candidatePaths = [
+    path.join(__dirname, '../../uploads', sanitized),
+    path.join(__dirname, '../../../uploads', sanitized),
+  ];
+
+  return candidatePaths.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+function buildRecursoAlumnoFilters({ carreraAlumno, gruposAlumno, materiasIds }) {
+  return {
+    activo: true,
+    [Op.and]: [
+      {
+        [Op.or]: [
+          { carrera_id: null },
+          ...(carreraAlumno ? [{ carrera_id: carreraAlumno }] : []),
+        ],
+      },
+      {
+        [Op.or]: [
+          { grupo_id: null },
+          ...(gruposAlumno.length > 0 ? [{ grupo_id: { [Op.in]: gruposAlumno } }] : []),
+        ],
+      },
+      {
+        [Op.or]: [
+          { remitente_tipo: 'coordinacion' },
+          ...(materiasIds.length > 0 ? [{ [Op.and]: [{ remitente_tipo: 'docente' }, { id_materia: { [Op.in]: materiasIds } }] }] : []),
+        ],
+      },
+    ],
+  };
+}
+
 function getAuthenticatedAlumnoId(req) {
   const id = Number(req?.user?.id ?? req?.user?.id_usuario);
   return Number.isInteger(id) ? id : null;
@@ -1373,29 +1412,7 @@ async function portafolioRecursos(req, res) {
     };
   });
 
-  const filtrosRecurso = {
-    activo: true,
-    [Op.and]: [
-      {
-        [Op.or]: [
-          { carrera_id: null },
-          ...(carreraAlumno ? [{ carrera_id: carreraAlumno }] : []),
-        ],
-      },
-      {
-        [Op.or]: [
-          { grupo_id: null },
-          ...(gruposAlumno.length > 0 ? [{ grupo_id: { [Op.in]: gruposAlumno } }] : []),
-        ],
-      },
-      {
-        [Op.or]: [
-          { remitente_tipo: 'coordinacion' },
-          ...(materiasIds.length > 0 ? [{ [Op.and]: [{ remitente_tipo: 'docente' }, { id_materia: { [Op.in]: materiasIds } }] }] : []),
-        ],
-      },
-    ],
-  };
+  const filtrosRecurso = buildRecursoAlumnoFilters({ carreraAlumno, gruposAlumno, materiasIds });
 
   const recursos = await RecursoAcademico.findAll({
     where: filtrosRecurso,
@@ -1406,16 +1423,64 @@ async function portafolioRecursos(req, res) {
 
   const recursosInstitucionales = recursos
     .map((item) => ({
+      id_recurso: item.id_recurso,
       titulo: item.titulo,
       remitente_tipo: item.remitente_tipo,
       remitente_nombre: item.remitente_nombre,
       materia_nombre: item.materia?.nombre_materia || null,
       tipo_recurso: item.tipo_recurso,
-      url_recurso: normalizePublicUploadUrl(item.url_recurso),
+      url_recurso: item.tipo_recurso === 'archivo_local'
+        ? `/api/v1/alumno/recursos/${item.id_recurso}/descargar`
+        : normalizePublicUploadUrl(item.url_recurso),
     }))
-    .filter((item) => item.tipo_recurso !== 'archivo_local' || localUploadExists(item.url_recurso));
+    .filter((item, index) => item.tipo_recurso !== 'archivo_local' || localUploadExists(recursos[index]?.url_recurso));
 
   return res.json({ misEvidencias, recursosInstitucionales });
+}
+
+async function descargarRecursoAcademico(req, res) {
+  const validacion = await validarAccesoAlumno(req, { requiereAcademico: true });
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const recursoId = toNumber(req.params.recursoId);
+  if (!Number.isInteger(recursoId)) {
+    return res.status(400).json({ message: 'recursoId invalido.' });
+  }
+
+  const { grupos, materiasIds } = await obtenerContextoAcademicoAlumno(validacion.idAlumno);
+  const gruposAlumno = [...new Set(grupos.map((item) => String(item.grupo || '').trim()).filter(Boolean))];
+  const carreraAlumno = normalizeText(validacion.estado.perfil.carrera) || null;
+
+  const recurso = await RecursoAcademico.findOne({
+    where: {
+      id_recurso: recursoId,
+      ...buildRecursoAlumnoFilters({ carreraAlumno, gruposAlumno, materiasIds }),
+    },
+  });
+
+  if (!recurso) {
+    return res.status(404).json({ message: 'Recurso no disponible para este alumno.' });
+  }
+
+  if (recurso.tipo_recurso !== 'archivo_local') {
+    return res.status(400).json({ message: 'Este recurso no es un archivo descargable del servidor.' });
+  }
+
+  const absolutePath = resolveLocalUploadAbsolutePath(recurso.url_recurso);
+  if (!absolutePath) {
+    return res.status(404).json({ message: 'Archivo no encontrado en servidor.' });
+  }
+
+  const ext = path.extname(absolutePath);
+  const safeTitle = normalizeText(recurso.titulo)
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) || 'material';
+  const downloadName = `${safeTitle}${ext || ''}`;
+
+  return res.download(absolutePath, downloadName);
 }
 
 async function guardarPortafolioMateria(req, res) {
@@ -1642,4 +1707,5 @@ module.exports = {
   descartarAviso,
   recursosInstitucionales,
   tiposTramite,
+  descargarRecursoAcademico,
 };
