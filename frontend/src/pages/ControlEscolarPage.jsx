@@ -54,6 +54,9 @@ const tabs = [
   { id: 'institucional', label: 'Recursos Institucionales' },
 ];
 
+const DASHBOARD_LABEL_CLASS = 'block text-sm font-medium text-gray-400 mb-2';
+const DASHBOARD_FIELD_CLASS = 'w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors';
+
 function buildCajaReference() {
   const yearSuffix = String(new Date().getFullYear()).slice(-2);
   const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -137,6 +140,7 @@ export default function ControlEscolarPage() {
   const [catalogoCarreras, setCatalogoCarreras] = useState([]);
   const [catalogoSemestres, setCatalogoSemestres] = useState([]);
   const [catalogoGrupos, setCatalogoGrupos] = useState([]);
+  const [urlBiblioteca, setUrlBiblioteca] = useState('');
 
   const cobroForm = useForm({
     resolver: zodResolver(cobroCajaSchema),
@@ -408,6 +412,15 @@ export default function ControlEscolarPage() {
     }
   }
 
+  async function cargarConfiguracionBiblioteca() {
+    try {
+      const response = await api.get('/control-escolar/configuracion/biblioteca');
+      setUrlBiblioteca(response?.data?.valor || '');
+    } catch (_error) {
+      setUrlBiblioteca('');
+    }
+  }
+
   function limpiarFormularioRecursos() {
     setRecursoTitulo('');
     setRecursoArchivo(null);
@@ -484,6 +497,31 @@ export default function ControlEscolarPage() {
       setSending(false);
     }
   }
+
+  async function guardarEnlaceBiblioteca() {
+    setSending(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const valor = urlBiblioteca.trim();
+      if (!valor) {
+        setError('La URL de Biblioteca Virtual es obligatoria.');
+        return;
+      }
+
+      await api.put('/control-escolar/configuracion/biblioteca', { valor });
+      setMessage('Enlace de Biblioteca Virtual guardado correctamente.');
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo guardar el enlace de Biblioteca Virtual.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  useEffect(() => {
+    cargarConfiguracionBiblioteca();
+  }, []);
 
   useEffect(() => {
     if (activeTab !== 'institucional') return;
@@ -1136,175 +1174,213 @@ export default function ControlEscolarPage() {
       ) : null}
 
       {activeTab === 'institucional' ? (
-        <article className="ce-card ce-recursos-panel">
-          <h3>Gestor Documental Institucional</h3>
+        <div className="ce-recursos-stack">
+          <article className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6 ce-recursos-panel">
+            <h3 className="text-white text-lg font-semibold mb-4">Gestor Documental Institucional</h3>
 
-          <div className="ce-radio-row" role="radiogroup" aria-label="Tipo de asignación">
-            <label>
-              <input
-                type="radio"
-                name="tipo-asignacion"
-                value="masivo"
-                checked={tipoAsignacion === 'masivo'}
-                onChange={() => {
-                  setTipoAsignacion('masivo');
-                  setAlumnoSeleccionado(null);
-                  setBusquedaAlumno('');
-                  setResultadosBusqueda([]);
-                }}
-              />
-              Asignación por Grupo
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="tipo-asignacion"
-                value="individual"
-                checked={tipoAsignacion === 'individual'}
-                onChange={() => {
-                  setTipoAsignacion('individual');
-                  setCarreraSeleccionada('');
-                  setSemestreSeleccionado('');
-                  setGrupoSeleccionado('');
-                }}
-              />
-              Asignación a Alumno Específico
-            </label>
-          </div>
-
-          {tipoAsignacion === 'masivo' ? (
-            <div className="ce-recursos-grid">
-              <div>
-                <label htmlFor="ce-recursos-carrera">Licenciatura / Carrera</label>
-                <select
-                  id="ce-recursos-carrera"
-                  value={carreraSeleccionada}
-                  onChange={(event) => {
-                    setCarreraSeleccionada(event.target.value);
+            <div className="flex gap-6 mb-6 pb-4 border-b border-gray-800" role="radiogroup" aria-label="Tipo de asignación">
+              <label className="inline-flex items-center gap-2 text-gray-300 font-medium">
+                <input
+                  type="radio"
+                  name="tipo-asignacion"
+                  value="masivo"
+                  checked={tipoAsignacion === 'masivo'}
+                  onChange={() => {
+                    setTipoAsignacion('masivo');
+                    setAlumnoSeleccionado(null);
+                    setBusquedaAlumno('');
+                    setResultadosBusqueda([]);
+                  }}
+                />
+                Asignación por Grupo
+              </label>
+              <label className="inline-flex items-center gap-2 text-gray-300 font-medium">
+                <input
+                  type="radio"
+                  name="tipo-asignacion"
+                  value="individual"
+                  checked={tipoAsignacion === 'individual'}
+                  onChange={() => {
+                    setTipoAsignacion('individual');
+                    setCarreraSeleccionada('');
+                    setSemestreSeleccionado('');
                     setGrupoSeleccionado('');
                   }}
-                >
-                  <option value="">Selecciona carrera</option>
-                  {catalogoCarreras.map((item) => (
-                    <option key={item.value} value={item.value}>{item.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="ce-recursos-semestre">Semestre / Periodo</label>
-                <select
-                  id="ce-recursos-semestre"
-                  value={semestreSeleccionado}
-                  onChange={(event) => {
-                    setSemestreSeleccionado(event.target.value);
-                    setGrupoSeleccionado('');
-                  }}
-                >
-                  <option value="">Selecciona semestre</option>
-                  {catalogoSemestres.map((item) => (
-                    <option key={String(item.value)} value={String(item.value)}>{item.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="ce-recursos-grupo">Grupo</label>
-                <select
-                  id="ce-recursos-grupo"
-                  value={grupoSeleccionado}
-                  onChange={(event) => setGrupoSeleccionado(event.target.value)}
-                >
-                  <option value="">Selecciona grupo</option>
-                  {catalogoGrupos.map((item) => (
-                    <option key={item.value} value={item.value}>{item.label}</option>
-                  ))}
-                </select>
-              </div>
+                />
+                Asignación a Alumno Específico
+              </label>
             </div>
-          ) : (
-            <div className="ce-buscador-wrap">
-              <label htmlFor="ce-buscar-alumno">Buscar alumno por nombre o matrícula</label>
-              <input
-                id="ce-buscar-alumno"
-                type="text"
-                placeholder="Ej. Jafet o ALU-26-001"
-                value={busquedaAlumno}
-                onChange={(event) => {
-                  setBusquedaAlumno(event.target.value);
-                  setAlumnoSeleccionado(null);
-                }}
-              />
-              {busquedaAlumnoLoading ? <small>Buscando alumnos...</small> : null}
 
-              {resultadosBusqueda.length > 0 ? (
-                <div className="ce-buscador-resultados">
-                  {resultadosBusqueda.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="ce-result-item"
-                      onClick={() => {
-                        setAlumnoSeleccionado(item);
-                        setBusquedaAlumno(`${item.nombre || ''}`);
-                        setResultadosBusqueda([]);
-                      }}
-                    >
-                      <strong>{item.nombre || 'Alumno sin nombre'}</strong>
-                      <span>{item.matricula || 'SIN-MATRICULA'}</span>
-                    </button>
-                  ))}
+            {tipoAsignacion === 'masivo' ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div>
+                  <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-recursos-carrera">Licenciatura / Carrera</label>
+                  <select
+                    className={DASHBOARD_FIELD_CLASS}
+                    id="ce-recursos-carrera"
+                    value={carreraSeleccionada}
+                    onChange={(event) => {
+                      setCarreraSeleccionada(event.target.value);
+                      setGrupoSeleccionado('');
+                    }}
+                  >
+                    <option value="">Selecciona carrera</option>
+                    {catalogoCarreras.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
+                  </select>
                 </div>
-              ) : null}
 
-              {alumnoSeleccionado ? (
-                <p className="ce-selected-badge">
-                  Seleccionado: {alumnoSeleccionado.nombre} - {alumnoSeleccionado.matricula || 'SIN-MATRICULA'}
-                </p>
-              ) : null}
+                <div>
+                  <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-recursos-semestre">Semestre / Periodo</label>
+                  <select
+                    className={DASHBOARD_FIELD_CLASS}
+                    id="ce-recursos-semestre"
+                    value={semestreSeleccionado}
+                    onChange={(event) => {
+                      setSemestreSeleccionado(event.target.value);
+                      setGrupoSeleccionado('');
+                    }}
+                  >
+                    <option value="">Selecciona semestre</option>
+                    {catalogoSemestres.map((item) => (
+                      <option key={String(item.value)} value={String(item.value)}>{item.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-recursos-grupo">Grupo</label>
+                  <select
+                    className={DASHBOARD_FIELD_CLASS}
+                    id="ce-recursos-grupo"
+                    value={grupoSeleccionado}
+                    onChange={(event) => setGrupoSeleccionado(event.target.value)}
+                  >
+                    <option value="">Selecciona grupo</option>
+                    {catalogoGrupos.map((item) => (
+                      <option key={item.value} value={item.value}>{item.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div className="mb-6 ce-buscador-wrap">
+                <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-buscar-alumno">Buscar alumno por nombre o matrícula</label>
+                <input
+                  className={DASHBOARD_FIELD_CLASS}
+                  id="ce-buscar-alumno"
+                  type="text"
+                  placeholder="Ej. Jafet o ALU-26-001"
+                  value={busquedaAlumno}
+                  onChange={(event) => {
+                    setBusquedaAlumno(event.target.value);
+                    setAlumnoSeleccionado(null);
+                  }}
+                />
+                {busquedaAlumnoLoading ? <small className="text-gray-400">Buscando alumnos...</small> : null}
+
+                {resultadosBusqueda.length > 0 ? (
+                  <div className="ce-buscador-resultados">
+                    {resultadosBusqueda.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="ce-result-item"
+                        onClick={() => {
+                          setAlumnoSeleccionado(item);
+                          setBusquedaAlumno(`${item.nombre || ''}`);
+                          setResultadosBusqueda([]);
+                        }}
+                      >
+                        <strong>{item.nombre || 'Alumno sin nombre'}</strong>
+                        <span>{item.matricula || 'SIN-MATRICULA'}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                {alumnoSeleccionado ? (
+                  <p className="ce-selected-badge">
+                    Seleccionado: {alumnoSeleccionado.nombre} - {alumnoSeleccionado.matricula || 'SIN-MATRICULA'}
+                  </p>
+                ) : null}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-recurso-titulo">Título del recurso</label>
+                <input
+                  className={DASHBOARD_FIELD_CLASS}
+                  id="ce-recurso-titulo"
+                  type="text"
+                  placeholder="Manual de reglamento, formato de trámite, etc."
+                  value={recursoTitulo}
+                  onChange={(event) => setRecursoTitulo(event.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-recurso-archivo">Archivo</label>
+                <input
+                  className={DASHBOARD_FIELD_CLASS}
+                  id="ce-recurso-archivo"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
+                  onChange={(event) => setRecursoArchivo(event.target.files?.[0] || null)}
+                />
+              </div>
+
+              <div>
+                <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-recurso-url">O URL de Drive</label>
+                <input
+                  className={DASHBOARD_FIELD_CLASS}
+                  id="ce-recurso-url"
+                  type="url"
+                  placeholder="https://drive.google.com/..."
+                  value={recursoUrl}
+                  onChange={(event) => setRecursoUrl(event.target.value)}
+                />
+              </div>
             </div>
-          )}
 
-          <div className="ce-recursos-grid">
-            <div>
-              <label htmlFor="ce-recurso-titulo">Título del recurso</label>
-              <input
-                id="ce-recurso-titulo"
-                type="text"
-                placeholder="Manual de reglamento, formato de trámite, etc."
-                value={recursoTitulo}
-                onChange={(event) => setRecursoTitulo(event.target.value)}
-              />
+            <div className="ce-actions-row mt-6">
+              <button type="button" className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-6 py-2 transition-colors" disabled={sending} onClick={enviarRecursoInstitucional}>
+                {sending ? 'Enviando...' : 'Guardar / Enviar Recurso'}
+              </button>
             </div>
+          </article>
 
-            <div>
-              <label htmlFor="ce-recurso-archivo">Archivo</label>
-              <input
-                id="ce-recurso-archivo"
-                type="file"
-                accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
-                onChange={(event) => setRecursoArchivo(event.target.files?.[0] || null)}
-              />
+          <article className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+            <h3 className="text-white text-lg font-semibold mb-2">📚 Enlace de Biblioteca Virtual</h3>
+            <p className="text-sm text-gray-400 mb-4">Este enlace será visible para todos los alumnos en su panel institucional.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+              <div className="md:col-span-2">
+                <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-url-biblioteca">URL de Biblioteca Virtual</label>
+                <input
+                  className={DASHBOARD_FIELD_CLASS}
+                  id="ce-url-biblioteca"
+                  type="url"
+                  placeholder="https://www.unicepmerida.com/biblioteca-virtual"
+                  value={urlBiblioteca}
+                  onChange={(event) => setUrlBiblioteca(event.target.value)}
+                />
+              </div>
+              <div>
+                <button
+                  type="button"
+                  className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-6 py-2 transition-colors"
+                  disabled={sending}
+                  onClick={guardarEnlaceBiblioteca}
+                >
+                  Guardar Enlace
+                </button>
+              </div>
             </div>
-
-            <div>
-              <label htmlFor="ce-recurso-url">O URL de Drive</label>
-              <input
-                id="ce-recurso-url"
-                type="url"
-                placeholder="https://drive.google.com/..."
-                value={recursoUrl}
-                onChange={(event) => setRecursoUrl(event.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="ce-actions-row">
-            <button type="button" className="btn-primary" disabled={sending} onClick={enviarRecursoInstitucional}>
-              {sending ? 'Enviando...' : 'Guardar / Enviar Recurso'}
-            </button>
-          </div>
-        </article>
+          </article>
+        </div>
       ) : null}
     </section>
   );

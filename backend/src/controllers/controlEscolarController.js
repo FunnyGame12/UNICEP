@@ -31,6 +31,7 @@ const TRAMITE_STATUS_PERMITIDOS = new Set([
 const ESTATUS_FINANCIERO_PERMITIDO = new Set(['al_dia', 'deudor', 'suspendido']);
 const CONCEPTO_EXTRAORDINARIO_MATCH = /extraordinario/i;
 const CLAVE_BIBLIOTECA_VIRTUAL = 'biblioteca_virtual_url';
+const CLAVE_URL_BIBLIOTECA = 'url_biblioteca';
 const CLAVE_MANUAL_SERVICIO_SOCIAL = 'manual_servicio_social_url';
 const MODALIDADES_BOLETA_PERMITIDAS = new Set(['ONLINE', 'PRESENCIAL', 'MIXTA']);
 const TRAMITE_DECISION_PERMITIDA = new Set(['aprobar', 'rechazar']);
@@ -1218,6 +1219,34 @@ async function actualizarBibliotecaVirtual(req, res) {
   return res.json({ biblioteca_virtual_url: registro.valor });
 }
 
+async function obtenerConfiguracionBiblioteca(_req, res) {
+  const registro = await ConfiguracionInstitucional.findOne({
+    where: { clave: CLAVE_URL_BIBLIOTECA },
+    attributes: ['valor'],
+  });
+
+  return res.json({ valor: registro?.valor || '' });
+}
+
+async function actualizarConfiguracionBiblioteca(req, res) {
+  const valor = normalizeText(req.body.valor);
+  if (!valor || !esUrlValida(valor)) {
+    return res.status(400).json({ message: 'valor debe ser una URL valida.' });
+  }
+
+  const [registro] = await ConfiguracionInstitucional.findOrCreate({
+    where: { clave: CLAVE_URL_BIBLIOTECA },
+    defaults: { valor, fecha_actualizacion: new Date(), id_actualizado_por: req.user.id_usuario },
+  });
+
+  registro.valor = valor;
+  registro.fecha_actualizacion = new Date();
+  registro.id_actualizado_por = req.user.id_usuario;
+  await registro.save();
+
+  return res.json({ valor: registro.valor });
+}
+
 async function subirManualServicioSocial(req, res) {
   if (!req.file) {
     return res.status(400).json({ message: 'Selecciona un archivo PDF para el manual.' });
@@ -1284,6 +1313,8 @@ module.exports = {
   actualizarEstatusTramite,
   obtenerRecursosInstitucionales,
   actualizarBibliotecaVirtual,
+  obtenerConfiguracionBiblioteca,
+  actualizarConfiguracionBiblioteca,
   subirManualServicioSocial,
   publicarAviso,
 };

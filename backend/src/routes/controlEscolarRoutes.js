@@ -40,6 +40,8 @@ router.post('/avisos', controlEscolarController.publicarAviso);
 router.get('/recursos-institucionales', controlEscolarController.obtenerRecursosInstitucionales);
 router.get('/recursos/catalogos', controlEscolarController.catalogosRecursosInstitucionales);
 router.post('/recursos', handleRecursoInstitucionalUpload, controlEscolarController.crearRecursoInstitucional);
+router.get('/configuracion/biblioteca', controlEscolarController.obtenerConfiguracionBiblioteca);
+router.put('/configuracion/biblioteca', controlEscolarController.actualizarConfiguracionBiblioteca);
 router.put('/recursos-institucionales/biblioteca-virtual', controlEscolarController.actualizarBibliotecaVirtual);
 router.post(
   '/recursos-institucionales/manual-servicio-social',
