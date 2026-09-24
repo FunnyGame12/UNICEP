@@ -30,6 +30,7 @@ router.get('/horarios', requirePermission(PERMISSIONS.ALUMNO_DASHBOARD_READ), al
 router.get('/asistencias', requirePermission(PERMISSIONS.ALUMNO_CALIFICACIONES_READ), alumnoController.asistencias);
 router.get('/video-clases', requirePermission(PERMISSIONS.ALUMNO_MATERIALES_READ), alumnoController.videoClases);
 router.get('/recursos/:recursoId/descargar', requirePermission(PERMISSIONS.ALUMNO_MATERIALES_READ), alumnoController.descargarRecursoAcademico);
+router.get('/:id/recursos', requirePermission(PERMISSIONS.ALUMNO_MATERIALES_READ), alumnoController.recursosInstitucionalesPorAlumno);
 router.get('/portafolio', requirePermission(PERMISSIONS.ALUMNO_PORTAFOLIO_READ), alumnoController.portafolio);
 router.post('/portafolio/documentos', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), handlePortafolioUpload, alumnoController.subirDocumentoPortafolio);
 router.post('/portafolio', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), alumnoController.guardarPortafolioMateria);

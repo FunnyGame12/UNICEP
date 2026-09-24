@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const {
   sequelize,
   AlumnoPerfil,
+  AlumnoGrupo,
   Usuario,
   PagoEstatus,
   ConceptoPago,
@@ -12,6 +13,7 @@ const {
   DocentePerfil,
   ConfiguracionInstitucional,
   Aviso,
+  RecursoInstitucional,
 } = require('../../models');
 const { generarWorkbookBoleta } = require('../services/boletaService');
 const { TRAMITES_ESCOLARES } = require('../constants/tramites');
@@ -41,6 +43,15 @@ function toNumber(value) {
 function normalizeText(value) {
   const text = String(value || '').trim();
   return text || null;
+}
+
+function normalizeGrupo(value) {
+  const text = String(value || '').trim().toUpperCase();
+  return text || null;
+}
+
+function resolveLikeOperator() {
+  return sequelize.getDialect() === 'postgres' ? Op.iLike : Op.like;
 }
 
 function esConceptoExtraordinario(concepto) {
@@ -703,6 +714,167 @@ async function alumnosEstatus(req, res) {
   return res.json({ items: filtered });
 }
 
+async function buscarAlumnos(req, res) {
+  const q = String(req.query.q || '').trim();
+  if (!q) {
+    return res.json({ items: [] });
+  }
+
+  const likeOperator = resolveLikeOperator();
+  const pattern = `%${q}%`;
+
+  const perfiles = await AlumnoPerfil.findAll({
+    attributes: ['id_alumno'],
+    include: [{
+      model: Usuario,
+      as: 'usuario',
+      attributes: ['id_usuario', 'nombre_completo', 'folio_matricula'],
+      required: true,
+      where: {
+        [Op.or]: [
+          { nombre_completo: { [likeOperator]: pattern } },
+          { folio_matricula: { [likeOperator]: pattern } },
+        ],
+      },
+    }],
+    order: [[{ model: Usuario, as: 'usuario' }, 'nombre_completo', 'ASC']],
+    limit: 10,
+  });
+
+  return res.json(perfiles.map((item) => ({
+    id: item.id_alumno,
+    nombre: item.usuario?.nombre_completo || null,
+    matricula: item.usuario?.folio_matricula || null,
+  })));
+}
+
+async function catalogosRecursosInstitucionales(req, res) {
+  const carrera = normalizeText(req.query.carrera_id);
+  const semestre = toNumber(req.query.semestre);
+
+  const wherePerfil = {};
+  if (carrera) wherePerfil.carrera = carrera;
+  if (Number.isInteger(semestre) && semestre > 0) {
+    wherePerfil.bimestre_actual = semestre;
+  }
+
+  const [perfiles, gruposRows] = await Promise.all([
+    AlumnoPerfil.findAll({
+      attributes: ['carrera', 'bimestre_actual'],
+      where: wherePerfil,
+      raw: true,
+      limit: 5000,
+    }),
+    AlumnoGrupo.findAll({
+      attributes: [[sequelize.fn('UPPER', sequelize.col('grupo')), 'grupo']],
+      include: [{
+        model: AlumnoPerfil,
+        as: 'alumno',
+        attributes: [],
+        required: true,
+        where: wherePerfil,
+      }],
+      raw: true,
+      limit: 5000,
+    }),
+  ]);
+
+  const carreras = [...new Set(perfiles.map((item) => normalizeText(item.carrera)).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+    .map((value) => ({ value, label: value }));
+
+  const semestres = [...new Set(perfiles
+    .map((item) => Number(item.bimestre_actual))
+    .filter((value) => Number.isInteger(value) && value > 0))]
+    .sort((a, b) => a - b)
+    .map((value) => ({ value, label: `Semestre ${value}` }));
+
+  const grupos = [...new Set(gruposRows
+    .map((item) => normalizeGrupo(item.grupo))
+    .filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+    .map((value) => ({ value, label: value }));
+
+  return res.json({ carreras, semestres, grupos });
+}
+
+async function crearRecursoInstitucional(req, res) {
+  const titulo = normalizeText(req.body.titulo);
+  const tipoAsignacion = normalizeText(req.body.tipo_asignacion)?.toLowerCase();
+  const archivoUrlInput = normalizeText(req.body.archivo_url || req.body.link_drive);
+
+  if (!titulo) {
+    return res.status(400).json({ message: 'titulo es obligatorio.' });
+  }
+
+  if (!['masivo', 'individual'].includes(tipoAsignacion)) {
+    return res.status(400).json({ message: "tipo_asignacion invalido. Usa 'masivo' o 'individual'." });
+  }
+
+  let archivoUrl = null;
+  if (req.file) {
+    archivoUrl = `/uploads/institucional/${req.file.filename}`;
+  } else if (archivoUrlInput) {
+    if (!esUrlValida(archivoUrlInput)) {
+      return res.status(400).json({ message: 'archivo_url/link_drive debe ser una URL valida.' });
+    }
+    archivoUrl = archivoUrlInput;
+  }
+
+  if (!archivoUrl) {
+    return res.status(400).json({ message: 'Debes subir un archivo o proporcionar un link de Drive.' });
+  }
+
+  let carreraId = null;
+  let semestre = null;
+  let grupoId = null;
+  let alumnoId = null;
+
+  if (tipoAsignacion === 'masivo') {
+    carreraId = normalizeText(req.body.carrera_id);
+    semestre = toNumber(req.body.semestre);
+    grupoId = normalizeGrupo(req.body.grupo_id);
+
+    if (!carreraId || !Number.isInteger(semestre) || semestre <= 0 || !grupoId) {
+      return res.status(400).json({ message: 'Para asignacion masiva debes enviar carrera_id, semestre y grupo_id validos.' });
+    }
+  }
+
+  if (tipoAsignacion === 'individual') {
+    alumnoId = toNumber(req.body.alumno_id);
+    if (!Number.isInteger(alumnoId)) {
+      return res.status(400).json({ message: 'alumno_id invalido para asignacion individual.' });
+    }
+
+    const alumno = await AlumnoPerfil.findByPk(alumnoId);
+    if (!alumno) {
+      return res.status(404).json({ message: 'Alumno no encontrado.' });
+    }
+  }
+
+  const created = await RecursoInstitucional.create({
+    titulo,
+    archivo_url: archivoUrl,
+    tipo_asignacion: tipoAsignacion,
+    carrera_id: carreraId,
+    semestre: tipoAsignacion === 'masivo' ? semestre : null,
+    grupo_id: grupoId,
+    alumno_id: tipoAsignacion === 'individual' ? alumnoId : null,
+    created_at: new Date(),
+  });
+
+  return res.status(201).json({
+    id_recurso_institucional: created.id_recurso_institucional,
+    titulo: created.titulo,
+    archivo_url: created.archivo_url,
+    tipo_asignacion: created.tipo_asignacion,
+    carrera_id: created.carrera_id,
+    semestre: created.semestre,
+    grupo_id: created.grupo_id,
+    alumno_id: created.alumno_id,
+  });
+}
+
 async function actualizarAccesosAlumno(req, res) {
   const idAlumno = toNumber(req.params.alumnoId);
   if (!Number.isInteger(idAlumno)) {
@@ -1099,6 +1271,9 @@ module.exports = {
   validarComprobante,
   validarPagoTramite,
   alumnosEstatus,
+  buscarAlumnos,
+  catalogosRecursosInstitucionales,
+  crearRecursoInstitucional,
   actualizarAccesosAlumno,
   actualizarConfiguracionBoletaAlumno,
   descargarBoletaAlumno,

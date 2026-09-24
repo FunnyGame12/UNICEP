@@ -2,7 +2,12 @@ const express = require('express');
 const auth = require('../middlewares/auth');
 const { authorizeRoles } = require('../middlewares/auth');
 const controlEscolarController = require('../controllers/controlEscolarController');
-const { handlePortafolioUpload, handleManualServicioSocialUpload, handleTramiteRespuestaUpload } = require('../middlewares/upload');
+const {
+  handlePortafolioUpload,
+  handleManualServicioSocialUpload,
+  handleTramiteRespuestaUpload,
+  handleRecursoInstitucionalUpload,
+} = require('../middlewares/upload');
 
 const router = express.Router();
 
@@ -21,6 +26,7 @@ router.get('/alumnos-estatus', controlEscolarController.alumnosEstatus);
 router.put('/alumnos/:alumnoId/accesos', controlEscolarController.actualizarAccesosAlumno);
 router.put('/alumnos/:alumnoId/boleta-config', controlEscolarController.actualizarConfiguracionBoletaAlumno);
 router.get('/alumnos/:alumnoId/boleta', controlEscolarController.descargarBoletaAlumno);
+router.get('/alumnos/buscar', controlEscolarController.buscarAlumnos);
 
 router.get('/alumnos/:alumnoId/portafolio', controlEscolarController.portafolioAlumno);
 router.put('/alumnos/:alumnoId/drive-folder', controlEscolarController.actualizarDriveFolder);
@@ -32,6 +38,8 @@ router.put('/tramites/:tramiteId/estatus', handleTramiteRespuestaUpload, control
 router.post('/avisos', controlEscolarController.publicarAviso);
 
 router.get('/recursos-institucionales', controlEscolarController.obtenerRecursosInstitucionales);
+router.get('/recursos/catalogos', controlEscolarController.catalogosRecursosInstitucionales);
+router.post('/recursos', handleRecursoInstitucionalUpload, controlEscolarController.crearRecursoInstitucional);
 router.put('/recursos-institucionales/biblioteca-virtual', controlEscolarController.actualizarBibliotecaVirtual);
 router.post(
   '/recursos-institucionales/manual-servicio-social',

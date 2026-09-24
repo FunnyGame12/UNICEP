@@ -26,6 +26,7 @@ const {
   Aviso,
   AlumnoAvisoOculto,
   RecursoAcademico,
+  RecursoInstitucional,
   PortafolioMateriaEvidencia,
 } = require('../../models');
 const { generarWorkbookBoleta } = require('../services/boletaService');
@@ -1669,6 +1670,70 @@ async function recursosInstitucionales(_req, res) {
   });
 }
 
+async function recursosInstitucionalesPorAlumno(req, res) {
+  const alumnoId = toNumber(req.params.id);
+  if (!Number.isInteger(alumnoId)) {
+    return res.status(400).json({ message: 'id invalido.' });
+  }
+
+  const idAutenticado = getAuthenticatedAlumnoId(req);
+  if (idAutenticado !== alumnoId) {
+    return res.status(403).json({ message: 'No puedes consultar recursos de otro alumno.' });
+  }
+
+  const alumno = await AlumnoPerfil.findByPk(alumnoId, {
+    attributes: ['id_alumno', 'carrera', 'bimestre_actual'],
+  });
+
+  if (!alumno) {
+    return res.status(404).json({ message: 'Alumno no encontrado.' });
+  }
+
+  const gruposRows = await AlumnoGrupo.findAll({
+    where: { id_alumno: alumnoId },
+    attributes: ['grupo'],
+    raw: true,
+  });
+  const gruposAlumno = [...new Set(gruposRows.map((item) => normalizeText(item.grupo).toUpperCase()).filter(Boolean))];
+
+  const filtrosMasivo = {
+    tipo_asignacion: 'masivo',
+    carrera_id: normalizeText(alumno.carrera),
+    semestre: Number(alumno.bimestre_actual),
+  };
+
+  const recursos = await RecursoInstitucional.findAll({
+    where: {
+      [Op.or]: [
+        {
+          ...filtrosMasivo,
+          ...(gruposAlumno.length > 0 ? { grupo_id: { [Op.in]: gruposAlumno } } : { grupo_id: null }),
+        },
+        {
+          tipo_asignacion: 'individual',
+          alumno_id: alumnoId,
+        },
+      ],
+    },
+    order: [['created_at', 'DESC'], ['id_recurso_institucional', 'DESC']],
+    limit: 200,
+  });
+
+  return res.json({
+    items: recursos.map((item) => ({
+      id_recurso_institucional: item.id_recurso_institucional,
+      titulo: item.titulo,
+      archivo_url: normalizePublicUploadUrl(item.archivo_url),
+      tipo_asignacion: item.tipo_asignacion,
+      carrera_id: item.carrera_id,
+      semestre: item.semestre,
+      grupo_id: item.grupo_id,
+      alumno_id: item.alumno_id,
+      created_at: item.created_at,
+    })),
+  });
+}
+
 async function tiposTramite(_req, res) {
   return res.json({
     items: TRAMITES_ESCOLARES.map((tipo) => ({
@@ -1730,6 +1795,7 @@ module.exports = {
   listarAvisos,
   descartarAviso,
   recursosInstitucionales,
+  recursosInstitucionalesPorAlumno,
   tiposTramite,
   descargarRecursoAcademico,
 };

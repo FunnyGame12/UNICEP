@@ -37,10 +37,6 @@ const driveFolderSchema = z.object({
   drive_folder_url: z.string().trim().url('Ingresa una URL valida.').or(z.literal('')),
 });
 
-const bibliotecaVirtualSchema = z.object({
-  biblioteca_virtual_url: z.string().trim().url('Ingresa una URL valida.'),
-});
-
 const rechazoComprobanteSchema = z.object({
   motivo: z.string().trim().min(8, 'La justificación debe tener al menos 8 caracteres.'),
 });
@@ -127,11 +123,20 @@ export default function ControlEscolarPage() {
   const [portafolioArchivo, setPortafolioArchivo] = useState(null);
   const [documentoRespuestaTramite, setDocumentoRespuestaTramite] = useState(null);
 
-  const [recursosInstitucionales, setRecursosInstitucionales] = useState({
-    biblioteca_virtual_url: null,
-    manual_servicio_social_url: null,
-  });
-  const [manualServicioSocialArchivo, setManualServicioSocialArchivo] = useState(null);
+  const [tipoAsignacion, setTipoAsignacion] = useState('masivo');
+  const [recursoTitulo, setRecursoTitulo] = useState('');
+  const [recursoArchivo, setRecursoArchivo] = useState(null);
+  const [recursoUrl, setRecursoUrl] = useState('');
+  const [busquedaAlumno, setBusquedaAlumno] = useState('');
+  const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
+  const [alumnoSeleccionado, setAlumnoSeleccionado] = useState(null);
+  const [busquedaAlumnoLoading, setBusquedaAlumnoLoading] = useState(false);
+  const [carreraSeleccionada, setCarreraSeleccionada] = useState('');
+  const [semestreSeleccionado, setSemestreSeleccionado] = useState('');
+  const [grupoSeleccionado, setGrupoSeleccionado] = useState('');
+  const [catalogoCarreras, setCatalogoCarreras] = useState([]);
+  const [catalogoSemestres, setCatalogoSemestres] = useState([]);
+  const [catalogoGrupos, setCatalogoGrupos] = useState([]);
 
   const cobroForm = useForm({
     resolver: zodResolver(cobroCajaSchema),
@@ -151,11 +156,6 @@ export default function ControlEscolarPage() {
   const driveFolderForm = useForm({
     resolver: zodResolver(driveFolderSchema),
     defaultValues: { drive_folder_url: '' },
-  });
-
-  const bibliotecaForm = useForm({
-    resolver: zodResolver(bibliotecaVirtualSchema),
-    defaultValues: { biblioteca_virtual_url: '' },
   });
 
   const alumnoActualWatch = cobroForm.watch('alumno_id');
@@ -211,13 +211,12 @@ export default function ControlEscolarPage() {
     setError('');
 
     try {
-      const [alumnosResp, conceptosResp, catalogosExtraResp, comprobantesResp, tramitesResp, recursosResp] = await Promise.all([
+      const [alumnosResp, conceptosResp, catalogosExtraResp, comprobantesResp, tramitesResp] = await Promise.all([
         api.get('/control-escolar/alumnos-estatus'),
         api.get('/control-escolar/conceptos-activos'),
         api.get('/control-escolar/catalogos-extraordinario'),
         api.get('/control-escolar/comprobantes-pendientes'),
         api.get('/control-escolar/tramites'),
-        api.get('/control-escolar/recursos-institucionales'),
       ]);
 
       const alumnosItems = alumnosResp?.data?.items || [];
@@ -227,12 +226,6 @@ export default function ControlEscolarPage() {
       setDocentesCatalogo(catalogosExtraResp?.data?.docentes || []);
       setComprobantes(comprobantesResp?.data?.items || []);
       setTramites(tramitesResp?.data?.items || []);
-      setRecursosInstitucionales({
-        biblioteca_virtual_url: recursosResp?.data?.biblioteca_virtual_url || null,
-        manual_servicio_social_url: recursosResp?.data?.manual_servicio_social_url || null,
-      });
-      bibliotecaForm.reset({ biblioteca_virtual_url: recursosResp?.data?.biblioteca_virtual_url || '' });
-
       setDraftAccesos(
         alumnosItems.reduce((acc, item) => {
           acc[item.id_alumno] = {
@@ -397,53 +390,133 @@ export default function ControlEscolarPage() {
     }
   }
 
-  async function guardarBibliotecaVirtual(values) {
-    setSending(true);
-    setError('');
-    setMessage('');
-
+  async function cargarCatalogosRecursos({ carreraId = '', semestre = '' } = {}) {
     try {
-      const response = await api.put('/control-escolar/recursos-institucionales/biblioteca-virtual', {
-        biblioteca_virtual_url: values.biblioteca_virtual_url.trim(),
-      });
-      setRecursosInstitucionales((prev) => ({
-        ...prev,
-        biblioteca_virtual_url: response?.data?.biblioteca_virtual_url || null,
-      }));
-      setMessage('Enlace de Biblioteca Virtual actualizado correctamente.');
-    } catch (requestError) {
-      setError(requestError?.response?.data?.message || 'No se pudo actualizar el enlace de la Biblioteca Virtual.');
-    } finally {
-      setSending(false);
+      const params = new URLSearchParams();
+      if (carreraId) params.append('carrera_id', carreraId);
+      if (semestre) params.append('semestre', semestre);
+      const suffix = params.toString();
+      const response = await api.get(`/control-escolar/recursos/catalogos${suffix ? `?${suffix}` : ''}`);
+
+      setCatalogoCarreras(response?.data?.carreras || []);
+      setCatalogoSemestres(response?.data?.semestres || []);
+      setCatalogoGrupos(response?.data?.grupos || []);
+    } catch (_error) {
+      setCatalogoCarreras([]);
+      setCatalogoSemestres([]);
+      setCatalogoGrupos([]);
     }
   }
 
-  async function subirManualServicioSocial() {
-    if (!manualServicioSocialArchivo) {
-      setError('Selecciona el archivo PDF del manual de Servicio Social.');
-      return;
-    }
+  function limpiarFormularioRecursos() {
+    setRecursoTitulo('');
+    setRecursoArchivo(null);
+    setRecursoUrl('');
+    setBusquedaAlumno('');
+    setResultadosBusqueda([]);
+    setAlumnoSeleccionado(null);
+    setCarreraSeleccionada('');
+    setSemestreSeleccionado('');
+    setGrupoSeleccionado('');
+  }
 
+  async function enviarRecursoInstitucional() {
     setSending(true);
     setError('');
     setMessage('');
 
     try {
+      const titulo = recursoTitulo.trim();
+      const url = recursoUrl.trim();
+
+      if (!titulo) {
+        setError('El titulo del recurso es obligatorio.');
+        return;
+      }
+
+      if (!recursoArchivo && !url) {
+        setError('Debes seleccionar un archivo o capturar una URL.');
+        return;
+      }
+
+      if (tipoAsignacion === 'individual' && !alumnoSeleccionado?.id) {
+        setError('Selecciona un alumno para la asignacion individual.');
+        return;
+      }
+
+      if (tipoAsignacion === 'masivo') {
+        if (!carreraSeleccionada || !semestreSeleccionado || !grupoSeleccionado) {
+          setError('Para asignacion masiva debes seleccionar carrera, semestre y grupo.');
+          return;
+        }
+      }
+
       const formData = new FormData();
-      formData.append('archivo', manualServicioSocialArchivo);
-      const response = await api.post('/control-escolar/recursos-institucionales/manual-servicio-social', formData);
-      setRecursosInstitucionales((prev) => ({
-        ...prev,
-        manual_servicio_social_url: response?.data?.manual_servicio_social_url || null,
-      }));
-      setManualServicioSocialArchivo(null);
-      setMessage('Manual de Servicio Social actualizado correctamente.');
+      formData.append('titulo', titulo);
+      formData.append('tipo_asignacion', tipoAsignacion);
+
+      if (tipoAsignacion === 'masivo') {
+        formData.append('carrera_id', carreraSeleccionada);
+        formData.append('semestre', semestreSeleccionado);
+        formData.append('grupo_id', grupoSeleccionado);
+      } else {
+        formData.append('alumno_id', String(alumnoSeleccionado.id));
+      }
+
+      if (recursoArchivo) {
+        formData.append('archivo', recursoArchivo);
+      } else {
+        formData.append('archivo_url', url);
+      }
+
+      await api.post('/control-escolar/recursos', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      setMessage('Recurso institucional enviado correctamente.');
+      limpiarFormularioRecursos();
+      if (tipoAsignacion === 'masivo') {
+        await cargarCatalogosRecursos();
+      }
     } catch (requestError) {
-      setError(requestError?.response?.data?.message || 'No se pudo subir el manual de Servicio Social.');
+      setError(requestError?.response?.data?.message || 'No se pudo guardar el recurso institucional.');
     } finally {
       setSending(false);
     }
   }
+
+  useEffect(() => {
+    if (activeTab !== 'institucional') return;
+    if (tipoAsignacion !== 'masivo') return;
+    cargarCatalogosRecursos({ carreraId: carreraSeleccionada, semestre: semestreSeleccionado });
+  }, [activeTab, tipoAsignacion, carreraSeleccionada, semestreSeleccionado]);
+
+  useEffect(() => {
+    if (activeTab !== 'institucional') return;
+    if (tipoAsignacion !== 'individual') return;
+
+    const term = busquedaAlumno.trim();
+    if (term.length < 2) {
+      setResultadosBusqueda([]);
+      setBusquedaAlumnoLoading(false);
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      setBusquedaAlumnoLoading(true);
+      try {
+        const response = await api.get(`/control-escolar/alumnos/buscar?q=${encodeURIComponent(term)}`);
+        const items = Array.isArray(response?.data) ? response.data : (response?.data?.items || []);
+        setResultadosBusqueda(items);
+      } catch (_error) {
+        setResultadosBusqueda([]);
+      } finally {
+        setBusquedaAlumnoLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [activeTab, tipoAsignacion, busquedaAlumno]);
 
   async function aprobarComprobante(item) {
     const pagoId = item?.pago_relacionado?.id_pago;
@@ -1063,64 +1136,175 @@ export default function ControlEscolarPage() {
       ) : null}
 
       {activeTab === 'institucional' ? (
-        <div className="ce-grid-2">
-          <article className="ce-card">
-            <h3>Biblioteca Virtual</h3>
-            <p>Este enlace se muestra como acceso destacado en el panel del alumno.</p>
-            <form className="form-grid" onSubmit={bibliotecaForm.handleSubmit(guardarBibliotecaVirtual)}>
-              <label htmlFor="ce-biblioteca-url">URL de la Biblioteca Virtual</label>
+        <article className="ce-card ce-recursos-panel">
+          <h3>Gestor Documental Institucional</h3>
+
+          <div className="ce-radio-row" role="radiogroup" aria-label="Tipo de asignación">
+            <label>
               <input
-                id="ce-biblioteca-url"
-                type="url"
-                placeholder="https://www.unicepmerida.com/biblioteca-virtual"
-                {...bibliotecaForm.register('biblioteca_virtual_url')}
+                type="radio"
+                name="tipo-asignacion"
+                value="masivo"
+                checked={tipoAsignacion === 'masivo'}
+                onChange={() => {
+                  setTipoAsignacion('masivo');
+                  setAlumnoSeleccionado(null);
+                  setBusquedaAlumno('');
+                  setResultadosBusqueda([]);
+                }}
               />
-              {bibliotecaForm.formState.errors.biblioteca_virtual_url ? (
-                <small>{bibliotecaForm.formState.errors.biblioteca_virtual_url.message}</small>
+              Asignación por Grupo
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="tipo-asignacion"
+                value="individual"
+                checked={tipoAsignacion === 'individual'}
+                onChange={() => {
+                  setTipoAsignacion('individual');
+                  setCarreraSeleccionada('');
+                  setSemestreSeleccionado('');
+                  setGrupoSeleccionado('');
+                }}
+              />
+              Asignación a Alumno Específico
+            </label>
+          </div>
+
+          {tipoAsignacion === 'masivo' ? (
+            <div className="ce-recursos-grid">
+              <div>
+                <label htmlFor="ce-recursos-carrera">Licenciatura / Carrera</label>
+                <select
+                  id="ce-recursos-carrera"
+                  value={carreraSeleccionada}
+                  onChange={(event) => {
+                    setCarreraSeleccionada(event.target.value);
+                    setGrupoSeleccionado('');
+                  }}
+                >
+                  <option value="">Selecciona carrera</option>
+                  {catalogoCarreras.map((item) => (
+                    <option key={item.value} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="ce-recursos-semestre">Semestre / Periodo</label>
+                <select
+                  id="ce-recursos-semestre"
+                  value={semestreSeleccionado}
+                  onChange={(event) => {
+                    setSemestreSeleccionado(event.target.value);
+                    setGrupoSeleccionado('');
+                  }}
+                >
+                  <option value="">Selecciona semestre</option>
+                  {catalogoSemestres.map((item) => (
+                    <option key={String(item.value)} value={String(item.value)}>{item.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="ce-recursos-grupo">Grupo</label>
+                <select
+                  id="ce-recursos-grupo"
+                  value={grupoSeleccionado}
+                  onChange={(event) => setGrupoSeleccionado(event.target.value)}
+                >
+                  <option value="">Selecciona grupo</option>
+                  {catalogoGrupos.map((item) => (
+                    <option key={item.value} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <div className="ce-buscador-wrap">
+              <label htmlFor="ce-buscar-alumno">Buscar alumno por nombre o matrícula</label>
+              <input
+                id="ce-buscar-alumno"
+                type="text"
+                placeholder="Ej. Jafet o ALU-26-001"
+                value={busquedaAlumno}
+                onChange={(event) => {
+                  setBusquedaAlumno(event.target.value);
+                  setAlumnoSeleccionado(null);
+                }}
+              />
+              {busquedaAlumnoLoading ? <small>Buscando alumnos...</small> : null}
+
+              {resultadosBusqueda.length > 0 ? (
+                <div className="ce-buscador-resultados">
+                  {resultadosBusqueda.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="ce-result-item"
+                      onClick={() => {
+                        setAlumnoSeleccionado(item);
+                        setBusquedaAlumno(`${item.nombre || ''}`);
+                        setResultadosBusqueda([]);
+                      }}
+                    >
+                      <strong>{item.nombre || 'Alumno sin nombre'}</strong>
+                      <span>{item.matricula || 'SIN-MATRICULA'}</span>
+                    </button>
+                  ))}
+                </div>
               ) : null}
-              <button type="submit" className="btn-primary" disabled={sending}>Guardar enlace</button>
-            </form>
 
-            {recursosInstitucionales.biblioteca_virtual_url ? (
-              <p>
-                <strong>Enlace actual:</strong>{' '}
-                <a href={recursosInstitucionales.biblioteca_virtual_url} target="_blank" rel="noreferrer">
-                  {recursosInstitucionales.biblioteca_virtual_url}
-                </a>
-              </p>
-            ) : (
-              <p>Aun no se ha configurado un enlace de Biblioteca Virtual.</p>
-            )}
-          </article>
+              {alumnoSeleccionado ? (
+                <p className="ce-selected-badge">
+                  Seleccionado: {alumnoSeleccionado.nombre} - {alumnoSeleccionado.matricula || 'SIN-MATRICULA'}
+                </p>
+              ) : null}
+            </div>
+          )}
 
-          <article className="ce-card">
-            <h3>Manual de Servicio Social y Practicas</h3>
-            <p>El PDF cargado aqui se descarga desde la pestana "Servicio Social" del panel del alumno.</p>
-            <div className="ce-preview">
-              <label htmlFor="ce-manual-servicio-social">Archivo PDF del manual</label>
+          <div className="ce-recursos-grid">
+            <div>
+              <label htmlFor="ce-recurso-titulo">Título del recurso</label>
               <input
-                id="ce-manual-servicio-social"
-                type="file"
-                accept=".pdf"
-                onChange={(event) => setManualServicioSocialArchivo(event.target.files?.[0] || null)}
+                id="ce-recurso-titulo"
+                type="text"
+                placeholder="Manual de reglamento, formato de trámite, etc."
+                value={recursoTitulo}
+                onChange={(event) => setRecursoTitulo(event.target.value)}
               />
-              <button type="button" className="btn-primary" disabled={sending} onClick={subirManualServicioSocial}>
-                Subir manual
-              </button>
             </div>
 
-            {recursosInstitucionales.manual_servicio_social_url ? (
-              <p>
-                <strong>Manual actual:</strong>{' '}
-                <a href={recursosInstitucionales.manual_servicio_social_url} target="_blank" rel="noreferrer">
-                  Ver PDF vigente
-                </a>
-              </p>
-            ) : (
-              <p>Aun no se ha cargado el manual de Servicio Social.</p>
-            )}
-          </article>
-        </div>
+            <div>
+              <label htmlFor="ce-recurso-archivo">Archivo</label>
+              <input
+                id="ce-recurso-archivo"
+                type="file"
+                accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
+                onChange={(event) => setRecursoArchivo(event.target.files?.[0] || null)}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="ce-recurso-url">O URL de Drive</label>
+              <input
+                id="ce-recurso-url"
+                type="url"
+                placeholder="https://drive.google.com/..."
+                value={recursoUrl}
+                onChange={(event) => setRecursoUrl(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="ce-actions-row">
+            <button type="button" className="btn-primary" disabled={sending} onClick={enviarRecursoInstitucional}>
+              {sending ? 'Enviando...' : 'Guardar / Enviar Recurso'}
+            </button>
+          </div>
+        </article>
       ) : null}
     </section>
   );

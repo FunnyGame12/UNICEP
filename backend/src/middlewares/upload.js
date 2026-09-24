@@ -109,6 +109,34 @@ function handleManualServicioSocialUpload(req, res, next) {
   });
 }
 
+const uploadRecursoInstitucional = multer({
+  storage: institucionalStorage,
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      cb(new Error('Tipo de archivo no permitido. Usa PDF, imagen o documento de Word.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+function handleRecursoInstitucionalUpload(req, res, next) {
+  uploadRecursoInstitucional.single('archivo')(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({ message: 'El archivo excede el tamano maximo permitido (15MB).' });
+      return;
+    }
+
+    res.status(400).json({ message: error.message || 'No se pudo procesar el archivo.' });
+  });
+}
+
 function handleTramiteRespuestaUpload(req, res, next) {
   uploadPortafolio.fields([
     { name: 'documento_respuesta', maxCount: 1 },
@@ -190,6 +218,7 @@ module.exports = {
   uploadPortafolio,
   handlePortafolioUpload,
   handleManualServicioSocialUpload,
+  handleRecursoInstitucionalUpload,
   handleTramiteRespuestaUpload,
   handleMateriaSepUpload,
   PORTAFOLIO_DIR,
