@@ -1321,44 +1321,45 @@ export default function ControlEscolarPage() {
             ) : (
               <div className="mb-6 ce-buscador-wrap">
                 <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-buscar-alumno">Buscar alumno por nombre o matrícula</label>
-                <input
-                  className={DASHBOARD_FIELD_CLASS}
-                  id="ce-buscar-alumno"
-                  type="text"
-                  placeholder="Ej. Jafet o ALU-26-001"
-                  value={busquedaAlumno}
-                  onChange={(event) => {
-                    setBusquedaAlumno(event.target.value);
-                    setAlumnoSeleccionado(null);
-                  }}
-                  onFocus={() => {
-                    if (!busquedaAlumno.trim()) {
-                      cargarAlumnosInscritosRecientes();
-                    } else {
-                      setMostrarResultadosBusqueda(true);
-                    }
-                  }}
-                />
+                <div className="relative w-full">
+                  <input
+                    className={DASHBOARD_FIELD_CLASS}
+                    id="ce-buscar-alumno"
+                    type="text"
+                    placeholder="Ej. Jafet o ALU-26-001"
+                    value={busquedaAlumno}
+                    onChange={(event) => {
+                      setBusquedaAlumno(event.target.value);
+                      setAlumnoSeleccionado(null);
+                    }}
+                    onFocus={() => {
+                      if (!busquedaAlumno.trim()) {
+                        cargarAlumnosInscritosRecientes();
+                      } else {
+                        setMostrarResultadosBusqueda(true);
+                      }
+                    }}
+                  />
+                  {mostrarResultadosBusqueda && resultadosBusqueda.length > 0 ? (
+                    <ul className="absolute z-50 left-0 top-full mt-1 w-full bg-gray-800 border border-gray-700 rounded-md shadow-2xl max-h-60 overflow-y-auto list-none">
+                      {resultadosBusqueda.map((item) => (
+                        <li
+                          key={item.id}
+                          className="px-4 py-3 hover:bg-blue-600 cursor-pointer border-b border-gray-700 last:border-0 text-gray-200 hover:text-white transition-colors"
+                          onMouseDown={() => {
+                            setAlumnoSeleccionado(item);
+                            setBusquedaAlumno('');
+                            setResultadosBusqueda([]);
+                            setMostrarResultadosBusqueda(false);
+                          }}
+                        >
+                          {`${item.nombre || 'Alumno sin nombre'} (${item.matricula || 'SIN-MATRICULA'})`}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
                 {busquedaAlumnoLoading ? <small className="text-gray-400">Buscando alumnos...</small> : null}
-
-                {mostrarResultadosBusqueda && resultadosBusqueda.length > 0 ? (
-                  <ul className="absolute z-10 w-full bg-gray-800 border border-gray-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    {resultadosBusqueda.map((item) => (
-                      <li
-                        key={item.id}
-                        className="hover:bg-blue-600 cursor-pointer p-2 text-sm text-white"
-                        onMouseDown={() => {
-                          setAlumnoSeleccionado(item);
-                          setBusquedaAlumno('');
-                          setResultadosBusqueda([]);
-                          setMostrarResultadosBusqueda(false);
-                        }}
-                      >
-                        {`${item.nombre || 'Alumno sin nombre'} (${item.matricula || 'SIN-MATRICULA'})`}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
 
                 {alumnoSeleccionado ? (
                   <div className="ce-selected-badge-row">
