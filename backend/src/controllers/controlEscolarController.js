@@ -718,7 +718,23 @@ async function alumnosEstatus(req, res) {
 async function buscarAlumnos(req, res) {
   const q = String(req.query.q || '').trim();
   if (!q) {
-    return res.json({ items: [] });
+    const recientes = await AlumnoPerfil.findAll({
+      attributes: ['id_alumno'],
+      include: [{
+        model: Usuario,
+        as: 'usuario',
+        attributes: ['id_usuario', 'nombre_completo', 'folio_matricula'],
+        required: true,
+      }],
+      order: [['id_alumno', 'DESC']],
+      limit: 20,
+    });
+
+    return res.json(recientes.map((item) => ({
+      id: item.id_alumno,
+      nombre: item.usuario?.nombre_completo || null,
+      matricula: item.usuario?.folio_matricula || null,
+    })));
   }
 
   const likeOperator = resolveLikeOperator();

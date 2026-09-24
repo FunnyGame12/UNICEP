@@ -133,13 +133,14 @@ export default function ControlEscolarPage() {
   const [busquedaAlumno, setBusquedaAlumno] = useState('');
   const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
   const [alumnoSeleccionado, setAlumnoSeleccionado] = useState(null);
+  const [mostrarResultadosBusqueda, setMostrarResultadosBusqueda] = useState(false);
   const [busquedaAlumnoLoading, setBusquedaAlumnoLoading] = useState(false);
-  const [carreraSeleccionada, setCarreraSeleccionada] = useState('');
-  const [semestreSeleccionado, setSemestreSeleccionado] = useState('');
-  const [grupoSeleccionado, setGrupoSeleccionado] = useState('');
-  const [catalogoCarreras, setCatalogoCarreras] = useState([]);
-  const [catalogoSemestres, setCatalogoSemestres] = useState([]);
-  const [catalogoGrupos, setCatalogoGrupos] = useState([]);
+  const [carreraId, setCarreraId] = useState('');
+  const [semestreId, setSemestreId] = useState('');
+  const [grupoId, setGrupoId] = useState('');
+  const [listaCarreras, setListaCarreras] = useState([]);
+  const [listaSemestres, setListaSemestres] = useState([]);
+  const [listaGrupos, setListaGrupos] = useState([]);
   const [urlBiblioteca, setUrlBiblioteca] = useState('');
 
   const cobroForm = useForm({
@@ -394,21 +395,20 @@ export default function ControlEscolarPage() {
     }
   }
 
-  async function cargarCatalogosRecursos({ carreraId = '', semestre = '' } = {}) {
+  async function cargarCatalogosRecursos({ carreraParam = '', semestreParam = '' } = {}) {
     try {
       const params = new URLSearchParams();
-      if (carreraId) params.append('carrera_id', carreraId);
-      if (semestre) params.append('semestre', semestre);
+      if (carreraParam) params.append('carrera_id', carreraParam);
+      if (semestreParam) params.append('semestre', semestreParam);
       const suffix = params.toString();
       const response = await api.get(`/control-escolar/recursos/catalogos${suffix ? `?${suffix}` : ''}`);
-
-      setCatalogoCarreras(response?.data?.carreras || []);
-      setCatalogoSemestres(response?.data?.semestres || []);
-      setCatalogoGrupos(response?.data?.grupos || []);
+      return {
+        carreras: response?.data?.carreras || [],
+        semestres: response?.data?.semestres || [],
+        grupos: response?.data?.grupos || [],
+      };
     } catch (_error) {
-      setCatalogoCarreras([]);
-      setCatalogoSemestres([]);
-      setCatalogoGrupos([]);
+      return { carreras: [], semestres: [], grupos: [] };
     }
   }
 
@@ -427,10 +427,56 @@ export default function ControlEscolarPage() {
     setRecursoUrl('');
     setBusquedaAlumno('');
     setResultadosBusqueda([]);
+    setMostrarResultadosBusqueda(false);
     setAlumnoSeleccionado(null);
-    setCarreraSeleccionada('');
-    setSemestreSeleccionado('');
-    setGrupoSeleccionado('');
+    setCarreraId('');
+    setSemestreId('');
+    setGrupoId('');
+    setListaSemestres([]);
+    setListaGrupos([]);
+  }
+
+  async function cargarAlumnosInscritosRecientes() {
+    setBusquedaAlumnoLoading(true);
+    try {
+      const response = await api.get('/control-escolar/alumnos/buscar');
+      const items = Array.isArray(response?.data) ? response.data : (response?.data?.items || []);
+      setResultadosBusqueda(items);
+      setMostrarResultadosBusqueda(true);
+    } catch (_error) {
+      setResultadosBusqueda([]);
+      setMostrarResultadosBusqueda(false);
+    } finally {
+      setBusquedaAlumnoLoading(false);
+    }
+  }
+
+  async function handleChangeCarrera(id) {
+    setCarreraId(id);
+    setSemestreId('');
+    setGrupoId('');
+    setListaGrupos([]);
+
+    if (!id) {
+      setListaSemestres([]);
+      return;
+    }
+
+    const data = await cargarCatalogosRecursos({ carreraParam: id });
+    setListaSemestres(data.semestres || []);
+  }
+
+  async function handleChangeSemestre(id) {
+    setSemestreId(id);
+    setGrupoId('');
+
+    if (!id || !carreraId) {
+      setListaGrupos([]);
+      return;
+    }
+
+    const data = await cargarCatalogosRecursos({ carreraParam: carreraId, semestreParam: id });
+    setListaGrupos(data.grupos || []);
   }
 
   async function enviarRecursoInstitucional() {
@@ -458,7 +504,7 @@ export default function ControlEscolarPage() {
       }
 
       if (tipoAsignacion === 'masivo') {
-        if (!carreraSeleccionada || !semestreSeleccionado || !grupoSeleccionado) {
+        if (!carreraId || !semestreId || !grupoId) {
           setError('Para asignacion masiva debes seleccionar carrera, semestre y grupo.');
           return;
         }
@@ -469,9 +515,9 @@ export default function ControlEscolarPage() {
       formData.append('tipo_asignacion', tipoAsignacion);
 
       if (tipoAsignacion === 'masivo') {
-        formData.append('carrera_id', carreraSeleccionada);
-        formData.append('semestre', semestreSeleccionado);
-        formData.append('grupo_id', grupoSeleccionado);
+        formData.append('carrera_id', carreraId);
+        formData.append('semestre', semestreId);
+        formData.append('grupo_id', grupoId);
       } else {
         formData.append('alumno_id', String(alumnoSeleccionado.id));
       }
@@ -489,7 +535,8 @@ export default function ControlEscolarPage() {
       setMessage('Recurso institucional enviado correctamente.');
       limpiarFormularioRecursos();
       if (tipoAsignacion === 'masivo') {
-        await cargarCatalogosRecursos();
+        const data = await cargarCatalogosRecursos();
+        setListaCarreras(data.carreras || []);
       }
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo guardar el recurso institucional.');
@@ -526,8 +573,12 @@ export default function ControlEscolarPage() {
   useEffect(() => {
     if (activeTab !== 'institucional') return;
     if (tipoAsignacion !== 'masivo') return;
-    cargarCatalogosRecursos({ carreraId: carreraSeleccionada, semestre: semestreSeleccionado });
-  }, [activeTab, tipoAsignacion, carreraSeleccionada, semestreSeleccionado]);
+
+    (async () => {
+      const data = await cargarCatalogosRecursos();
+      setListaCarreras(data.carreras || []);
+    })();
+  }, [activeTab, tipoAsignacion]);
 
   useEffect(() => {
     if (activeTab !== 'institucional') return;
@@ -535,7 +586,9 @@ export default function ControlEscolarPage() {
 
     const term = busquedaAlumno.trim();
     if (term.length < 2) {
-      setResultadosBusqueda([]);
+      if (!term) {
+        setMostrarResultadosBusqueda(false);
+      }
       setBusquedaAlumnoLoading(false);
       return undefined;
     }
@@ -546,8 +599,10 @@ export default function ControlEscolarPage() {
         const response = await api.get(`/control-escolar/alumnos/buscar?q=${encodeURIComponent(term)}`);
         const items = Array.isArray(response?.data) ? response.data : (response?.data?.items || []);
         setResultadosBusqueda(items);
+        setMostrarResultadosBusqueda(true);
       } catch (_error) {
         setResultadosBusqueda([]);
+        setMostrarResultadosBusqueda(false);
       } finally {
         setBusquedaAlumnoLoading(false);
       }
@@ -1190,6 +1245,7 @@ export default function ControlEscolarPage() {
                     setAlumnoSeleccionado(null);
                     setBusquedaAlumno('');
                     setResultadosBusqueda([]);
+                    setMostrarResultadosBusqueda(false);
                   }}
                 />
                 Asignación por Grupo
@@ -1202,9 +1258,11 @@ export default function ControlEscolarPage() {
                   checked={tipoAsignacion === 'individual'}
                   onChange={() => {
                     setTipoAsignacion('individual');
-                    setCarreraSeleccionada('');
-                    setSemestreSeleccionado('');
-                    setGrupoSeleccionado('');
+                    setCarreraId('');
+                    setSemestreId('');
+                    setGrupoId('');
+                    setListaSemestres([]);
+                    setListaGrupos([]);
                   }}
                 />
                 Asignación a Alumno Específico
@@ -1216,16 +1274,13 @@ export default function ControlEscolarPage() {
                 <div>
                   <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-recursos-carrera">Licenciatura / Carrera</label>
                   <select
-                    className={DASHBOARD_FIELD_CLASS}
+                    className={`${DASHBOARD_FIELD_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`}
                     id="ce-recursos-carrera"
-                    value={carreraSeleccionada}
-                    onChange={(event) => {
-                      setCarreraSeleccionada(event.target.value);
-                      setGrupoSeleccionado('');
-                    }}
+                    value={carreraId}
+                    onChange={(event) => handleChangeCarrera(event.target.value)}
                   >
                     <option value="" disabled hidden>Selecciona carrera</option>
-                    {catalogoCarreras.map((item) => (
+                    {listaCarreras.map((item) => (
                       <option key={item.value} value={item.value}>{item.label}</option>
                     ))}
                   </select>
@@ -1234,16 +1289,14 @@ export default function ControlEscolarPage() {
                 <div>
                   <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-recursos-semestre">Semestre / Periodo</label>
                   <select
-                    className={DASHBOARD_FIELD_CLASS}
+                    className={`${DASHBOARD_FIELD_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`}
                     id="ce-recursos-semestre"
-                    value={semestreSeleccionado}
-                    onChange={(event) => {
-                      setSemestreSeleccionado(event.target.value);
-                      setGrupoSeleccionado('');
-                    }}
+                    value={semestreId}
+                    onChange={(event) => handleChangeSemestre(event.target.value)}
+                    disabled={!carreraId}
                   >
                     <option value="" disabled hidden>Selecciona semestre</option>
-                    {catalogoSemestres.map((item) => (
+                    {listaSemestres.map((item) => (
                       <option key={String(item.value)} value={String(item.value)}>{item.label}</option>
                     ))}
                   </select>
@@ -1252,13 +1305,14 @@ export default function ControlEscolarPage() {
                 <div>
                   <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-recursos-grupo">Grupo</label>
                   <select
-                    className={DASHBOARD_FIELD_CLASS}
+                    className={`${DASHBOARD_FIELD_CLASS} disabled:opacity-50 disabled:cursor-not-allowed`}
                     id="ce-recursos-grupo"
-                    value={grupoSeleccionado}
-                    onChange={(event) => setGrupoSeleccionado(event.target.value)}
+                    value={grupoId}
+                    onChange={(event) => setGrupoId(event.target.value)}
+                    disabled={!semestreId}
                   >
                     <option value="" disabled hidden>Selecciona grupo</option>
-                    {catalogoGrupos.map((item) => (
+                    {listaGrupos.map((item) => (
                       <option key={item.value} value={item.value}>{item.label}</option>
                     ))}
                   </select>
@@ -1277,33 +1331,49 @@ export default function ControlEscolarPage() {
                     setBusquedaAlumno(event.target.value);
                     setAlumnoSeleccionado(null);
                   }}
+                  onFocus={() => {
+                    if (!busquedaAlumno.trim()) {
+                      cargarAlumnosInscritosRecientes();
+                    } else {
+                      setMostrarResultadosBusqueda(true);
+                    }
+                  }}
                 />
                 {busquedaAlumnoLoading ? <small className="text-gray-400">Buscando alumnos...</small> : null}
 
-                {resultadosBusqueda.length > 0 ? (
-                  <div className="ce-buscador-resultados">
+                {mostrarResultadosBusqueda && resultadosBusqueda.length > 0 ? (
+                  <ul className="absolute z-10 w-full bg-gray-800 border border-gray-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
                     {resultadosBusqueda.map((item) => (
-                      <button
+                      <li
                         key={item.id}
-                        type="button"
-                        className="ce-result-item"
-                        onClick={() => {
+                        className="hover:bg-blue-600 cursor-pointer p-2 text-sm text-white"
+                        onMouseDown={() => {
                           setAlumnoSeleccionado(item);
-                          setBusquedaAlumno(`${item.nombre || ''}`);
+                          setBusquedaAlumno('');
                           setResultadosBusqueda([]);
+                          setMostrarResultadosBusqueda(false);
                         }}
                       >
-                        <strong>{item.nombre || 'Alumno sin nombre'}</strong>
-                        <span>{item.matricula || 'SIN-MATRICULA'}</span>
-                      </button>
+                        {`${item.nombre || 'Alumno sin nombre'} (${item.matricula || 'SIN-MATRICULA'})`}
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 ) : null}
 
                 {alumnoSeleccionado ? (
-                  <p className="ce-selected-badge">
-                    Seleccionado: {alumnoSeleccionado.nombre} - {alumnoSeleccionado.matricula || 'SIN-MATRICULA'}
-                  </p>
+                  <div className="ce-selected-badge-row">
+                    <p className="ce-selected-badge">
+                      Seleccionado: {alumnoSeleccionado.nombre} - {alumnoSeleccionado.matricula || 'SIN-MATRICULA'}
+                    </p>
+                    <button
+                      type="button"
+                      className="ce-selected-badge-remove"
+                      onClick={() => setAlumnoSeleccionado(null)}
+                      aria-label="Quitar alumno seleccionado"
+                    >
+                      X
+                    </button>
+                  </div>
                 ) : null}
               </div>
             )}
