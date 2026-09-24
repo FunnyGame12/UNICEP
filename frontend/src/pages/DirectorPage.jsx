@@ -774,7 +774,7 @@ export default function DirectorPage() {
             <input id="director-folio-nombre-destinatario" placeholder="Nombre del destinatario" {...folioUsuarioForm.register('nombre_destinatario')} />
             {folioUsuarioForm.formState.errors.nombre_destinatario ? <small className="director-field-error">{folioUsuarioForm.formState.errors.nombre_destinatario.message}</small> : null}
             <select id="director-folio-rol" {...folioUsuarioForm.register('rol')}>
-              <option value="">Rol asignado</option>
+              <option value="" disabled hidden>Rol asignado</option>
               {FOLIO_ROLE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
@@ -884,7 +884,7 @@ export default function DirectorPage() {
                 <>
                   <label htmlFor="director-concepto-padre">Concepto origen (base)</label>
                   <select id="director-concepto-padre" {...folioPagoForm.register('id_concepto_padre')}>
-                    <option value="">Concepto padre (base)</option>
+                    <option value="" disabled hidden>Concepto padre (base)</option>
                     {conceptosBaseActivos.map((base) => (
                       <option key={base.id_concepto_pago} value={String(base.id_concepto_pago)}>{base.nombre}</option>
                     ))}
@@ -1014,7 +1014,7 @@ export default function DirectorPage() {
                 {financieroForm.formState.errors.id_alumno ? <small className="director-field-error">{financieroForm.formState.errors.id_alumno.message}</small> : null}
                 <label htmlFor="director-financial-id">Folio de pago</label>
                 <select id="director-financial-id" value={financieroValues.id_pago} disabled={folioSelectorDisabled} onChange={(event) => financieroForm.setValue('id_pago', event.target.value, { shouldDirty: true, shouldValidate: true })}>
-                  <option value="">{folioPlaceholder}</option>
+                  <option value="" disabled hidden>{folioPlaceholder}</option>
                   {pagosAlumnoOverride.map((item) => (
                     <option key={item.id_pago} value={String(item.id_pago)}>{`${item.concepto} - ${item.folio_interno || `PAGO-${item.id_pago}`}`}</option>
                   ))}

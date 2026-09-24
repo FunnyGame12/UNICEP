@@ -727,7 +727,7 @@ export default function ControlEscolarPage() {
             <form className="form-grid" onSubmit={cobroForm.handleSubmit(submitCobro)}>
               <label htmlFor="ce-alumno">Alumno</label>
               <select id="ce-alumno" {...cobroForm.register('alumno_id')}>
-                <option value="">Selecciona un alumno</option>
+                <option value="" disabled hidden>Selecciona un alumno</option>
                 {alumnos.map((alumno) => (
                   <option key={alumno.id_alumno} value={String(alumno.id_alumno)}>
                     {`${alumno.folio_matricula || 'SIN-FOLIO'} · ${alumno.nombre_completo}`}
@@ -744,7 +744,7 @@ export default function ControlEscolarPage() {
 
               <label htmlFor="ce-concepto">Concepto de pago</label>
               <select id="ce-concepto" {...cobroForm.register('concepto_folio_id')}>
-                <option value="">Selecciona un concepto</option>
+                <option value="" disabled hidden>Selecciona un concepto</option>
                 {conceptos.map((concepto) => (
                   <option key={concepto.id_concepto_pago} value={String(concepto.id_concepto_pago)}>
                     {`${concepto.nombre} (${concepto.folio_interno})`}
@@ -791,7 +791,7 @@ export default function ControlEscolarPage() {
                     <div className="field-group">
                       <label htmlFor="ce-extra-materia">Materia a presentar</label>
                       <select id="ce-extra-materia" {...cobroForm.register('materia_id')}>
-                        <option value="">Selecciona materia...</option>
+                        <option value="" disabled hidden>Selecciona materia...</option>
                         {materiasCatalogo.map((materia) => (
                           <option key={materia.id_materia} value={String(materia.id_materia)}>
                             {materia.nombre_materia}
@@ -803,7 +803,7 @@ export default function ControlEscolarPage() {
                     <div className="field-group">
                       <label htmlFor="ce-extra-docente">Docente asignado</label>
                       <select id="ce-extra-docente" {...cobroForm.register('docente_id')}>
-                        <option value="">Selecciona docente...</option>
+                        <option value="" disabled hidden>Selecciona docente...</option>
                         {docentesCatalogo.map((docente) => (
                           <option key={docente.id_docente} value={String(docente.id_docente)}>
                             {docente.nombre_completo}
@@ -1224,7 +1224,7 @@ export default function ControlEscolarPage() {
                       setGrupoSeleccionado('');
                     }}
                   >
-                    <option value="">Selecciona carrera</option>
+                    <option value="" disabled hidden>Selecciona carrera</option>
                     {catalogoCarreras.map((item) => (
                       <option key={item.value} value={item.value}>{item.label}</option>
                     ))}
@@ -1242,7 +1242,7 @@ export default function ControlEscolarPage() {
                       setGrupoSeleccionado('');
                     }}
                   >
-                    <option value="">Selecciona semestre</option>
+                    <option value="" disabled hidden>Selecciona semestre</option>
                     {catalogoSemestres.map((item) => (
                       <option key={String(item.value)} value={String(item.value)}>{item.label}</option>
                     ))}
@@ -1257,7 +1257,7 @@ export default function ControlEscolarPage() {
                     value={grupoSeleccionado}
                     onChange={(event) => setGrupoSeleccionado(event.target.value)}
                   >
-                    <option value="">Selecciona grupo</option>
+                    <option value="" disabled hidden>Selecciona grupo</option>
                     {catalogoGrupos.map((item) => (
                       <option key={item.value} value={item.value}>{item.label}</option>
                     ))}

@@ -224,7 +224,7 @@ export default function AdminPage() {
         <label>
           Materia
           <select id="asignacion-id-materia" {...asignacionForm.register('id_materia')} disabled={catalogLoading}>
-            <option value="">Selecciona materia activa</option>
+            <option value="" disabled hidden>Selecciona materia activa</option>
             {materias.map((materia) => (
               <option key={materia.id_materia} value={String(materia.id_materia)}>
                 {`${materia.nombre_materia} (${materia.codigo_materia || 'SIN-CODIGO'})`}
@@ -237,7 +237,7 @@ export default function AdminPage() {
         <label>
           Grupo
           <select id="asignacion-grupo" {...asignacionForm.register('grupo')} disabled={catalogLoading || gruposDisponibles.length === 0}>
-            <option value="">Selecciona grupo</option>
+            <option value="" disabled hidden>Selecciona grupo</option>
             {gruposDisponibles.map((item) => (
               <option key={`${item.id_materia}-${item.grupo}`} value={item.grupo}>
                 {item.grupo}

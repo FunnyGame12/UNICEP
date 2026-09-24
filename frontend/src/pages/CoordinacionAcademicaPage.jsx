@@ -1442,7 +1442,7 @@ export default function CoordinacionAcademicaPage() {
                   value={selectedProgramaCargaId}
                   onChange={(event) => setSelectedProgramaCargaId(event.target.value)}
                 >
-                  <option value="">Selecciona programa</option>
+                  <option value="" disabled hidden>Selecciona programa</option>
                   {programasAcademicos.map((item) => (
                     <option key={`pc-${item.id}`} value={String(item.id)}>
                       {item.nombre}
@@ -1459,7 +1459,7 @@ export default function CoordinacionAcademicaPage() {
                   onChange={(event) => setSelectedPeriodoCarga(event.target.value)}
                   disabled={!selectedProgramaCargaId}
                 >
-                  <option value="">Selecciona periodo</option>
+                  <option value="" disabled hidden>Selecciona periodo</option>
                   {periodoOptionsCarga.map((item) => (
                     <option key={`pc-per-${item.value}`} value={item.value}>{item.label}</option>
                   ))}
@@ -1481,7 +1481,7 @@ export default function CoordinacionAcademicaPage() {
                   onChange={(event) => setGrupoBaseMateriaId(event.target.value)}
                   disabled={alumnoGrupoCatalogLoading}
                 >
-                  <option value="">Selecciona asignatura activa</option>
+                  <option value="" disabled hidden>Selecciona asignatura activa</option>
                   {alumnoGrupoMaterias.map((materia) => (
                     <option key={`bulk-materia-${materia.id_materia}`} value={String(materia.id_materia)}>
                       {`${materia.nombre_materia} (${materia.codigo_materia || 'SIN-CODIGO'})`}
@@ -1496,7 +1496,7 @@ export default function CoordinacionAcademicaPage() {
                   onChange={(event) => setGrupoBaseCodigo(event.target.value)}
                   disabled={!grupoBaseMateriaId || grupoBaseGruposDisponibles.length === 0}
                 >
-                  <option value="">Selecciona grupo</option>
+                  <option value="" disabled hidden>Selecciona grupo</option>
                   {grupoBaseGruposDisponibles.map((item) => (
                     <option key={`bulk-grupo-${grupoBaseMateriaId}-${item.grupo}`} value={item.grupo}>
                       {item.grupo}
@@ -1521,7 +1521,7 @@ export default function CoordinacionAcademicaPage() {
                   onChange={(event) => setGrupoBaseValor(event.target.value)}
                   disabled={grupoBaseValoresDisponibles.length === 0}
                 >
-                  <option value="">Selecciona valor</option>
+                  <option value="" disabled hidden>Selecciona valor</option>
                   {grupoBaseValoresDisponibles.map((item) => (
                     <option key={`bulk-valor-${item}`} value={item}>{item}</option>
                   ))}
@@ -1687,7 +1687,7 @@ export default function CoordinacionAcademicaPage() {
 
               <label htmlFor="coord-ag-materia">Asignatura</label>
               <select id="coord-ag-materia" {...alumnoGrupoForm.register('id_materia')} disabled={alumnoGrupoCatalogLoading}>
-                <option value="">Selecciona asignatura activa</option>
+                <option value="" disabled hidden>Selecciona asignatura activa</option>
                 {alumnoGrupoMaterias.map((materia) => (
                   <option key={materia.id_materia} value={String(materia.id_materia)}>
                     {`${materia.nombre_materia} (${materia.codigo_materia || 'SIN-CODIGO'})`}
@@ -1698,7 +1698,7 @@ export default function CoordinacionAcademicaPage() {
 
               <label htmlFor="coord-ag-grupo">Grupo</label>
               <select id="coord-ag-grupo" {...alumnoGrupoForm.register('grupo')} disabled={alumnoGrupoCatalogLoading || alumnoGrupoGruposDisponibles.length === 0}>
-                <option value="">Selecciona grupo</option>
+                <option value="" disabled hidden>Selecciona grupo</option>
                 {alumnoGrupoGruposDisponibles.map((item) => (
                   <option key={`${item.id_materia || alumnoGrupoSelectedMateria}-${item.grupo}`} value={item.grupo}>
                     {item.grupo}
@@ -1797,7 +1797,7 @@ export default function CoordinacionAcademicaPage() {
             <form className="form-grid" onSubmit={asignacionForm.handleSubmit(submitAsignacion)}>
               <label htmlFor="coord-docente">Docente</label>
               <select id="coord-docente" {...asignacionForm.register('docente_id')}>
-                <option value="">Selecciona docente</option>
+                <option value="" disabled hidden>Selecciona docente</option>
                 {listaDocentes.map((docente) => (
                   <option key={docente.id} value={String(docente.id)}>
                     {docente.nombre}
@@ -1808,7 +1808,7 @@ export default function CoordinacionAcademicaPage() {
 
               <label htmlFor="coord-materia">Materia</label>
               <select id="coord-materia" {...asignacionForm.register('materia_id')}>
-                <option value="">Selecciona materia</option>
+                <option value="" disabled hidden>Selecciona materia</option>
                 {listaMateriasCargaFiltradas.map((materia) => (
                   <option key={materia.id} value={String(materia.id)}>
                     {`${materia.codigo_materia || 'SIN-CODIGO'} - ${materia.nombre}`}
@@ -1819,7 +1819,7 @@ export default function CoordinacionAcademicaPage() {
 
               <label htmlFor="coord-grupo">Grupo</label>
               <select id="coord-grupo" {...asignacionForm.register('grupo_id')}>
-                <option value="">Selecciona grupo</option>
+                <option value="" disabled hidden>Selecciona grupo</option>
                 {listaGruposAsignacion.map((grupo) => (
                   <option key={`${grupo.materia_id}-${grupo.id}`} value={grupo.id}>
                     {grupo.nombre_grupo}
@@ -1843,7 +1843,7 @@ export default function CoordinacionAcademicaPage() {
             <form className="form-grid" onSubmit={horarioForm.handleSubmit(submitHorario)}>
               <label htmlFor="coord-h-grupo">Grupo</label>
               <select id="coord-h-grupo" {...horarioForm.register('grupo_id')}>
-                <option value="">Selecciona grupo</option>
+                <option value="" disabled hidden>Selecciona grupo</option>
                 {listaGruposHorario.map((grupo) => (
                   <option key={`h-${grupo.materia_id}-${grupo.id}`} value={grupo.id}>
                     {grupo.nombre_grupo}
@@ -1853,7 +1853,7 @@ export default function CoordinacionAcademicaPage() {
 
               <label htmlFor="coord-h-materia">Materia</label>
               <select id="coord-h-materia" {...horarioForm.register('materia_id')}>
-                <option value="">Selecciona materia</option>
+                <option value="" disabled hidden>Selecciona materia</option>
                 {listaMateriasCargaFiltradas.map((materia) => (
                   <option key={`h-m-${materia.id}`} value={String(materia.id)}>
                     {`${materia.codigo_materia || 'SIN-CODIGO'} - ${materia.nombre}`}
@@ -1863,7 +1863,7 @@ export default function CoordinacionAcademicaPage() {
 
               <label htmlFor="coord-h-docente">Docente</label>
               <select id="coord-h-docente" {...horarioForm.register('docente_id')}>
-                <option value="">Selecciona docente</option>
+                <option value="" disabled hidden>Selecciona docente</option>
                 {listaDocentes.map((docente) => (
                   <option key={`h-d-${docente.id}`} value={String(docente.id)}>
                     {docente.nombre}
@@ -1988,7 +1988,7 @@ export default function CoordinacionAcademicaPage() {
                   value={selectedProgramaCalifId}
                   onChange={(event) => setSelectedProgramaCalifId(event.target.value)}
                 >
-                  <option value="">Selecciona programa</option>
+                  <option value="" disabled hidden>Selecciona programa</option>
                   {programasAcademicos.map((item) => (
                     <option key={`pcal-${item.id}`} value={String(item.id)}>
                       {item.nombre}
@@ -2005,7 +2005,7 @@ export default function CoordinacionAcademicaPage() {
                   onChange={(event) => setSelectedPeriodoCalif(event.target.value)}
                   disabled={!selectedProgramaCalifId}
                 >
-                  <option value="">Selecciona periodo</option>
+                  <option value="" disabled hidden>Selecciona periodo</option>
                   {periodoOptionsCalif.map((item) => (
                     <option key={`pcal-per-${item.value}`} value={item.value}>{item.label}</option>
                   ))}
@@ -2061,7 +2061,7 @@ export default function CoordinacionAcademicaPage() {
             <form className="form-grid coord-form-4" onSubmit={extraordinarioForm.handleSubmit(submitExtraordinario)}>
               <label htmlFor="coord-ext-alumno">Alumno</label>
               <select id="coord-ext-alumno" {...extraordinarioForm.register('alumno_id')}>
-                <option value="">Selecciona alumno</option>
+                <option value="" disabled hidden>Selecciona alumno</option>
                 {alumnos.map((alumno) => (
                   <option key={alumno.id_alumno} value={String(alumno.id_alumno)}>
                     {`${alumno.folio_matricula || 'SIN-FOLIO'} · ${alumno.nombre_completo}`}
@@ -2072,7 +2072,7 @@ export default function CoordinacionAcademicaPage() {
 
               <label htmlFor="coord-ext-materia">Materia</label>
               <select id="coord-ext-materia" {...extraordinarioForm.register('materia_id')}>
-                <option value="">Selecciona materia</option>
+                <option value="" disabled hidden>Selecciona materia</option>
                 {materiasCalifFiltradas.map((materia) => (
                   <option key={`e-m-${materia.id_materia}`} value={String(materia.id_materia)}>
                     {materia.nombre_materia}
@@ -2083,7 +2083,7 @@ export default function CoordinacionAcademicaPage() {
 
               <label htmlFor="coord-ext-docente">Docente sinodal</label>
               <select id="coord-ext-docente" {...extraordinarioForm.register('docente_sinodal_id')}>
-                <option value="">Selecciona docente</option>
+                <option value="" disabled hidden>Selecciona docente</option>
                 {docentes.map((docente) => (
                   <option key={`e-d-${docente.id_docente}`} value={String(docente.id_docente)}>
                     {docente.nombre_completo}
@@ -2121,7 +2121,7 @@ export default function CoordinacionAcademicaPage() {
                     setOverrideGrupoId('');
                   }}
                 >
-                  <option value="">Selecciona materia</option>
+                  <option value="" disabled hidden>Selecciona materia</option>
                   {materiasCalifFiltradas.map((materia) => (
                     <option key={`ov-m-${materia.id_materia}`} value={String(materia.id_materia)}>
                       {materia.nombre_materia}
@@ -2138,7 +2138,7 @@ export default function CoordinacionAcademicaPage() {
                   onChange={(event) => setOverrideGrupoId(event.target.value)}
                   disabled={!overrideMateriaId}
                 >
-                  <option value="">Selecciona grupo</option>
+                  <option value="" disabled hidden>Selecciona grupo</option>
                   {overrideGruposDisponibles.map((grupo) => (
                     <option key={`ov-g-${grupo.materia_id}-${grupo.grupo_id}`} value={grupo.grupo_id}>
                       {grupo.etiqueta}
@@ -2335,7 +2335,7 @@ export default function CoordinacionAcademicaPage() {
                   setEditingMateriaPlanId(null);
                 }}
               >
-                <option value="">Selecciona programa</option>
+                <option value="" disabled hidden>Selecciona programa</option>
                 {programasAcademicos.map((item) => (
                   <option key={`po-${item.id}`} value={String(item.id)}>{item.nombre}</option>
                 ))}
@@ -2554,7 +2554,7 @@ export default function CoordinacionAcademicaPage() {
               <fieldset className="coord-fieldset" disabled={!selectedPrograma || loading || sending}>
                 <label htmlFor="coord-prg-exp">Expediente</label>
                 <select id="coord-prg-exp" {...programaForm.register('expediente_id')}>
-                  <option value="">Selecciona expediente</option>
+                  <option value="" disabled hidden>Selecciona expediente</option>
                   {programas.map((programa) => (
                     <option key={`p-${programa.id_programa}`} value={String(programa.id_programa)}>
                       {`#${programa.id_programa} · ${programa.alumno?.usuario?.nombre_completo || `Alumno ${programa.id_alumno}`}`}
@@ -2602,7 +2602,7 @@ export default function CoordinacionAcademicaPage() {
             <form className="form-grid" onSubmit={meritoForm.handleSubmit(submitMerito)}>
               <label htmlFor="coord-merito-alumno">Alumno</label>
               <select id="coord-merito-alumno" {...meritoForm.register('alumno_id')}>
-                <option value="">Selecciona alumno</option>
+                <option value="" disabled hidden>Selecciona alumno</option>
                 {alumnos.map((alumno) => (
                   <option key={`m-a-${alumno.id_alumno}`} value={String(alumno.id_alumno)}>
                     {`${alumno.folio_matricula || 'SIN-FOLIO'} · ${alumno.nombre_completo}`}

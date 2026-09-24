@@ -813,7 +813,7 @@ export default function AlumnoPage() {
             <form className="alumno-form" onSubmit={pagoForm.handleSubmit(submitComprobante)}>
               <label htmlFor="pago-concepto">Concepto</label>
               <select id="pago-concepto" {...pagoForm.register('id_concepto_pago')}>
-                <option value="">Selecciona concepto</option>
+                <option value="" disabled hidden>Selecciona concepto</option>
                 {conceptosPago.map((item) => (
                   <option key={item.id_concepto_pago} value={String(item.id_concepto_pago)}>
                     {item.nombre}
@@ -888,7 +888,7 @@ export default function AlumnoPage() {
             <form className="alumno-form" onSubmit={tramiteForm.handleSubmit(submitTramite)}>
               <label htmlFor="tramite-tipo">Tipo de tramite</label>
               <select id="tramite-tipo" {...tramiteForm.register('tipo')}>
-                <option value="">Selecciona un tipo</option>
+                <option value="" disabled hidden>Selecciona un tipo</option>
                 {tiposTramiteCatalogo.map((item) => (
                   <option key={item.value} value={item.value}>{item.label}</option>
                 ))}

@@ -738,14 +738,16 @@ export default function DocentePage() {
           id="docente-contexto"
           value={selectedAsignacionId}
           onChange={(event) => setSelectedAsignacionId(event.target.value)}
+          disabled={misMaterias.length === 0}
         >
-          {misMaterias.length === 0 ? <option value="">Sin materias asignadas</option> : null}
+          <option value="" disabled hidden>Selecciona materia y grupo</option>
           {misMaterias.map((item) => (
             <option key={item.id_asignacion} value={String(item.id_asignacion)}>
               [{item.materia?.carrera || 'Programa'}] {item.materia?.nombre_materia} · Grupo {item.grupo_id}
             </option>
           ))}
         </select>
+        {misMaterias.length === 0 ? <small>Sin materias asignadas.</small> : null}
       </article>
 
       <div className="docente-tabs" role="tablist" aria-label="Secciones operativas">
