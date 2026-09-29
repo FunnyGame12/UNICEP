@@ -55,6 +55,57 @@ function normalizeTipoDocumento(value) {
   return raw;
 }
 
+function cleanupTempUpload(req) {
+  const tempPath = String(req?.file?.path || '').trim();
+  if (!tempPath) return;
+
+  try {
+    if (fs.existsSync(tempPath)) {
+      fs.unlinkSync(tempPath);
+    }
+  } catch (_error) {
+    // Ignorar fallos de limpieza para no ocultar el error principal.
+  }
+}
+
+function resolveDriveUploadError(error) {
+  const rawCode = error?.code;
+  const code = Number(rawCode);
+
+  if (rawCode === 'DRIVE_NOT_CONFIGURED') {
+    return {
+      status: 503,
+      message: 'El servicio de Google Drive no esta configurado en el servidor. Contacta a Control Escolar.',
+    };
+  }
+
+  if (rawCode === 'DRIVE_FOLDER_REQUIRED' || rawCode === 'DRIVE_UPLOAD_INPUT_INVALID') {
+    return {
+      status: 400,
+      message: 'No se pudo preparar el archivo para Google Drive.',
+    };
+  }
+
+  if (code === 401 || code === 403) {
+    return {
+      status: 502,
+      message: 'Google Drive rechazo la operacion. Verifica permisos de la Service Account sobre la carpeta institucional.',
+    };
+  }
+
+  if (code === 404) {
+    return {
+      status: 502,
+      message: 'La carpeta de destino en Google Drive no fue encontrada. Contacta a Control Escolar.',
+    };
+  }
+
+  return {
+    status: 502,
+    message: 'No se pudo guardar el documento en Google Drive. Intenta nuevamente en unos minutos.',
+  };
+}
+
 function normalizeText(value) {
   return String(value || '').trim();
 }
@@ -1375,46 +1426,53 @@ async function subirDocumentoPortafolio(req, res) {
     return res.status(400).json({ message: 'Selecciona un archivo para subir.' });
   }
 
-  let folderId = normalizeText(validacion.estado?.perfil?.drive_folder_id) || null;
-  if (!folderId) {
-    const folderName = `${validacion.estado?.usuario?.folio_matricula || `ALU-${validacion.idAlumno}`} - ${validacion.estado?.usuario?.nombre_completo || `Alumno ${validacion.idAlumno}`}`;
-    const createdFolder = await crearCarpetaAlumno(folderName);
-    folderId = createdFolder.folderId;
+  try {
+    let folderId = normalizeText(validacion.estado?.perfil?.drive_folder_id) || null;
+    if (!folderId) {
+      const folderName = `${validacion.estado?.usuario?.folio_matricula || `ALU-${validacion.idAlumno}`} - ${validacion.estado?.usuario?.nombre_completo || `Alumno ${validacion.idAlumno}`}`;
+      const createdFolder = await crearCarpetaAlumno(folderName);
+      folderId = createdFolder.folderId;
 
-    await AlumnoPerfil.update(
-      {
-        drive_folder_id: createdFolder.folderId,
-        drive_folder_url: createdFolder.folderUrl,
-      },
-      { where: { id_alumno: validacion.idAlumno } },
-    );
+      await AlumnoPerfil.update(
+        {
+          drive_folder_id: createdFolder.folderId,
+          drive_folder_url: createdFolder.folderUrl,
+        },
+        { where: { id_alumno: validacion.idAlumno } },
+      );
+    }
+
+    const uploadResult = await subirArchivoDrive(req.file, folderId);
+    const archivoUrl = uploadResult.webViewLink || uploadResult.webContentLink;
+    if (!archivoUrl) {
+      return res.status(502).json({ message: 'Drive no devolvio una URL publica del archivo.' });
+    }
+
+    const evidencia = await PortafolioEvidencia.create({
+      id_alumno: validacion.idAlumno,
+      archivo_url: archivoUrl,
+      nombre_archivo: req.file.originalname,
+      tipo_documento: tipoDocumento,
+      origen: 'alumno',
+      id_subido_por: req.user.id_usuario,
+      fecha_creacion: new Date(),
+    });
+
+    return res.status(201).json({
+      id_evidencia: evidencia.id_evidencia,
+      archivo_url: evidencia.archivo_url,
+      url_drive: evidencia.archivo_url,
+      nombre_archivo: evidencia.nombre_archivo,
+      tipo_documento: evidencia.tipo_documento,
+      origen: evidencia.origen,
+      drive_folder_id: folderId,
+    });
+  } catch (error) {
+    cleanupTempUpload(req);
+    const handled = resolveDriveUploadError(error);
+    console.error('Error al subir documento de expediente del alumno:', error);
+    return res.status(handled.status).json({ message: handled.message });
   }
-
-  const uploadResult = await subirArchivoDrive(req.file, folderId);
-  const archivoUrl = uploadResult.webViewLink || uploadResult.webContentLink;
-  if (!archivoUrl) {
-    return res.status(502).json({ message: 'Drive no devolvio una URL publica del archivo.' });
-  }
-
-  const evidencia = await PortafolioEvidencia.create({
-    id_alumno: validacion.idAlumno,
-    archivo_url: archivoUrl,
-    nombre_archivo: req.file.originalname,
-    tipo_documento: tipoDocumento,
-    origen: 'alumno',
-    id_subido_por: req.user.id_usuario,
-    fecha_creacion: new Date(),
-  });
-
-  return res.status(201).json({
-    id_evidencia: evidencia.id_evidencia,
-    archivo_url: evidencia.archivo_url,
-    url_drive: evidencia.archivo_url,
-    nombre_archivo: evidencia.nombre_archivo,
-    tipo_documento: evidencia.tipo_documento,
-    origen: evidencia.origen,
-    drive_folder_id: folderId,
-  });
 }
 
 async function portafolioRecursos(req, res) {
