@@ -27,6 +27,25 @@ npm run migrate
 npm run dev
 ```
 
+### Integracion Google Drive (Service Account)
+
+1. Instalar dependencias en backend:
+
+```bash
+cd backend
+npm install googleapis multer
+```
+
+2. Colocar el archivo de Service Account en `backend/credentials.json`.
+3. Configurar variables en `backend/.env`:
+
+```env
+GOOGLE_DRIVE_CREDENTIALS_PATH=credentials.json
+GOOGLE_DRIVE_ALUMNOS_ROOT_FOLDER_ID=<ID_CARPETA_MAESTRA_UNICEP>
+```
+
+4. Compartir la carpeta maestra de Drive con el correo de la Service Account con permisos de editor.
+
 API base:
 - `GET /api/v1/health`
 - `POST /api/v1/auth/login`

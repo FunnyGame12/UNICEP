@@ -70,6 +70,33 @@ function handlePortafolioUpload(req, res, next) {
   });
 }
 
+function handleExpedienteUpload(req, res, next) {
+  uploadPortafolio.fields([
+    { name: 'documento', maxCount: 1 },
+    { name: 'archivo', maxCount: 1 },
+  ])(req, res, (error) => {
+    if (!error) {
+      const candidate = (req.files?.documento && req.files.documento[0])
+        || (req.files?.archivo && req.files.archivo[0])
+        || null;
+
+      if (candidate) {
+        req.file = candidate;
+      }
+
+      next();
+      return;
+    }
+
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({ message: 'El archivo excede el tamano maximo permitido (10MB).' });
+      return;
+    }
+
+    res.status(400).json({ message: error.message || 'No se pudo procesar el archivo.' });
+  });
+}
+
 const institucionalStorage = multer.diskStorage({
   destination(_req, _file, cb) {
     fs.mkdirSync(INSTITUCIONAL_DIR, { recursive: true });
@@ -217,6 +244,7 @@ function handleMateriaSepUpload(req, res, next) {
 module.exports = {
   uploadPortafolio,
   handlePortafolioUpload,
+  handleExpedienteUpload,
   handleManualServicioSocialUpload,
   handleRecursoInstitucionalUpload,
   handleTramiteRespuestaUpload,

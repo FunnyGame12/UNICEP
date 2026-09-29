@@ -10,6 +10,7 @@ const {
   PlanEstudio,
 } = require('../../models');
 const { resolveUserAuthorization } = require('../services/rbacService');
+const { crearCarpetaAlumno } = require('../services/driveService');
 
 let usuariosColumnsCache = null;
 
@@ -218,7 +219,7 @@ async function registroConFolio(req, res) {
       });
 
       if (planActivo) {
-        await AlumnoPerfil.findOrCreate({
+        const [perfilAlumno] = await AlumnoPerfil.findOrCreate({
           where: { id_alumno: user.id_usuario },
           defaults: {
             carrera: planActivo.carrera || 'General',
@@ -228,10 +229,24 @@ async function registroConFolio(req, res) {
             bloqueo_plataforma: false,
             bloqueo_calificaciones: false,
             estatus_financiero: 'al_dia',
+            drive_folder_id: null,
+            drive_folder_url: null,
             modalidad_boleta: 'ONLINE',
             campus_boleta: 'UNICEP MERIDA',
           },
         });
+
+        if (!perfilAlumno.drive_folder_id) {
+          try {
+            const folderName = `${user.folio_matricula} - ${user.nombre_completo}`;
+            const { folderId, folderUrl } = await crearCarpetaAlumno(folderName);
+            perfilAlumno.drive_folder_id = folderId;
+            perfilAlumno.drive_folder_url = folderUrl;
+            await perfilAlumno.save();
+          } catch (driveError) {
+            console.error('No se pudo crear carpeta de Drive para el alumno:', driveError.message);
+          }
+        }
       }
     }
   } catch (error) {

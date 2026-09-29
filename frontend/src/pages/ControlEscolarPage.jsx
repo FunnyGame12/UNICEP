@@ -87,6 +87,16 @@ const tramiteLabels = {
   papeleria_oficial: 'Papelería oficial',
 };
 
+const tiposDocumentoExpediente = [
+  { value: 'curp', label: 'CURP' },
+  { value: 'acta_nacimiento', label: 'Acta de nacimiento' },
+  { value: 'certificado_bachillerato', label: 'Certificado de bachillerato' },
+  { value: 'foto_oficial', label: 'Foto oficial' },
+  { value: 'constancia', label: 'Constancia' },
+  { value: 'comprobante_pago', label: 'Comprobante de pago' },
+  { value: 'otro', label: 'Otro documento' },
+];
+
 function formatCurrency(value) {
   const parsed = Number(value || 0);
   return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number.isNaN(parsed) ? 0 : parsed);
@@ -124,6 +134,7 @@ export default function ControlEscolarPage() {
   const [portafolioData, setPortafolioData] = useState(null);
   const [portafolioLoading, setPortafolioLoading] = useState(false);
   const [portafolioArchivo, setPortafolioArchivo] = useState(null);
+  const [portafolioTipoDocumento, setPortafolioTipoDocumento] = useState('curp');
   const [documentoRespuestaTramite, setDocumentoRespuestaTramite] = useState(null);
 
   const [tipoAsignacion, setTipoAsignacion] = useState('masivo');
@@ -383,8 +394,9 @@ export default function ControlEscolarPage() {
 
     try {
       const formData = new FormData();
-      formData.append('archivo', portafolioArchivo);
-      await api.post(`/control-escolar/alumnos/${selectedPortafolioAlumnoId}/portafolio`, formData);
+      formData.append('documento', portafolioArchivo);
+      formData.append('tipo_documento', portafolioTipoDocumento);
+      await api.post(`/control-escolar/alumnos/${selectedPortafolioAlumnoId}/documentos`, formData);
       setMessage('Archivo agregado al portafolio del alumno.');
       setPortafolioArchivo(null);
       await abrirPortafolioAlumno(selectedPortafolioAlumnoId);
@@ -1193,6 +1205,17 @@ export default function ControlEscolarPage() {
                 </form>
 
                 <div className="ce-preview">
+                  <label htmlFor="ce-portafolio-tipo">Tipo de documento</label>
+                  <select
+                    id="ce-portafolio-tipo"
+                    value={portafolioTipoDocumento}
+                    onChange={(event) => setPortafolioTipoDocumento(event.target.value)}
+                  >
+                    {tiposDocumentoExpediente.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+
                   <label htmlFor="ce-portafolio-archivo">Subir archivo al portafolio</label>
                   <input
                     id="ce-portafolio-archivo"
@@ -1217,6 +1240,7 @@ export default function ControlEscolarPage() {
                       rel="noreferrer"
                     >
                       <strong>{item.nombre_archivo || item.archivo_url}</strong>
+                      <span>{item.tipo_documento || 'sin_tipo'}</span>
                       <span>{item.materia || (item.origen === 'control_escolar' ? 'Control Escolar' : 'Docente')}</span>
                       <span>{formatDate(item.fecha_creacion)}</span>
                     </a>

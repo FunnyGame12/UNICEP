@@ -17,6 +17,12 @@ const {
 } = require('../../models');
 const { generarWorkbookBoleta } = require('../services/boletaService');
 const { TRAMITES_ESCOLARES } = require('../constants/tramites');
+const {
+  crearCarpetaAlumno,
+  subirArchivoDrive,
+  extractDriveFolderId,
+  buildDriveFolderUrl,
+} = require('../services/driveService');
 
 const TRAMITE_STATUS_PERMITIDOS = new Set([
   'en_revision',
@@ -35,6 +41,15 @@ const CLAVE_URL_BIBLIOTECA = 'url_biblioteca';
 const CLAVE_MANUAL_SERVICIO_SOCIAL = 'manual_servicio_social_url';
 const MODALIDADES_BOLETA_PERMITIDAS = new Set(['ONLINE', 'PRESENCIAL', 'MIXTA']);
 const TRAMITE_DECISION_PERMITIDA = new Set(['aprobar', 'rechazar']);
+const TIPOS_DOCUMENTO_EXPEDIENTE = new Set([
+  'curp',
+  'acta_nacimiento',
+  'certificado_bachillerato',
+  'foto_oficial',
+  'constancia',
+  'comprobante_pago',
+  'otro',
+]);
 
 function toNumber(value) {
   const parsed = Number(value);
@@ -1018,6 +1033,7 @@ async function portafolioAlumno(req, res) {
       folio_matricula: alumno.usuario?.folio_matricula || null,
       nombre_completo: alumno.usuario?.nombre_completo || null,
       correo: alumno.usuario?.correo || null,
+      drive_folder_id: alumno.drive_folder_id || null,
       drive_folder_url: alumno.drive_folder_url || null,
     },
     items: evidencias.map((item) => ({
@@ -1038,20 +1054,31 @@ async function actualizarDriveFolder(req, res) {
     return res.status(400).json({ message: 'alumnoId invalido.' });
   }
 
-  const driveFolderUrl = normalizeText(req.body.drive_folder_url);
-  if (driveFolderUrl && !esUrlValida(driveFolderUrl)) {
+  const driveFolderUrlInput = normalizeText(req.body.drive_folder_url);
+  const driveFolderIdInput = normalizeText(req.body.drive_folder_id);
+
+  if (driveFolderUrlInput && !esUrlValida(driveFolderUrlInput)) {
     return res.status(400).json({ message: 'drive_folder_url debe ser una URL valida.' });
   }
+
+  const extractedFromUrl = extractDriveFolderId(driveFolderUrlInput);
+  const folderId = driveFolderIdInput || extractedFromUrl || null;
+  const folderUrl = driveFolderUrlInput || (folderId ? buildDriveFolderUrl(folderId) : null);
 
   const alumno = await AlumnoPerfil.findByPk(idAlumno);
   if (!alumno) {
     return res.status(404).json({ message: 'Alumno no encontrado.' });
   }
 
-  alumno.drive_folder_url = driveFolderUrl;
+  alumno.drive_folder_id = folderId;
+  alumno.drive_folder_url = folderUrl;
   await alumno.save();
 
-  return res.json({ id_alumno: alumno.id_alumno, drive_folder_url: alumno.drive_folder_url });
+  return res.json({
+    id_alumno: alumno.id_alumno,
+    drive_folder_id: alumno.drive_folder_id,
+    drive_folder_url: alumno.drive_folder_url,
+  });
 }
 
 async function subirArchivoPortafolio(req, res) {
@@ -1063,15 +1090,43 @@ async function subirArchivoPortafolio(req, res) {
     return res.status(400).json({ message: 'Selecciona un archivo para subir.' });
   }
 
-  const alumno = await AlumnoPerfil.findByPk(idAlumno);
+  const tipoDocumento = String(req.body.tipo_documento || 'otro').trim().toLowerCase();
+  if (!TIPOS_DOCUMENTO_EXPEDIENTE.has(tipoDocumento)) {
+    return res.status(400).json({ message: 'tipo_documento invalido.' });
+  }
+
+  const alumno = await AlumnoPerfil.findByPk(idAlumno, {
+    include: [{
+      model: Usuario,
+      as: 'usuario',
+      attributes: ['id_usuario', 'folio_matricula', 'nombre_completo'],
+    }],
+  });
   if (!alumno) {
     return res.status(404).json({ message: 'Alumno no encontrado.' });
   }
 
+  let folderId = normalizeText(alumno.drive_folder_id);
+  if (!folderId) {
+    const folderName = `${alumno.usuario?.folio_matricula || `ALU-${alumno.id_alumno}`} - ${alumno.usuario?.nombre_completo || `Alumno ${alumno.id_alumno}`}`;
+    const createdFolder = await crearCarpetaAlumno(folderName);
+    folderId = createdFolder.folderId;
+    alumno.drive_folder_id = createdFolder.folderId;
+    alumno.drive_folder_url = createdFolder.folderUrl;
+    await alumno.save();
+  }
+
+  const uploadResult = await subirArchivoDrive(req.file, folderId);
+  const archivoUrl = uploadResult.webViewLink || uploadResult.webContentLink;
+  if (!archivoUrl) {
+    return res.status(502).json({ message: 'Drive no devolvio una URL publica del archivo.' });
+  }
+
   const evidencia = await PortafolioEvidencia.create({
     id_alumno: idAlumno,
-    archivo_url: `/uploads/portafolio/${req.file.filename}`,
+    archivo_url: archivoUrl,
     nombre_archivo: req.file.originalname,
+    tipo_documento: tipoDocumento,
     origen: 'control_escolar',
     id_subido_por: req.user.id_usuario,
     fecha_creacion: new Date(),
@@ -1080,7 +1135,10 @@ async function subirArchivoPortafolio(req, res) {
   return res.status(201).json({
     id_evidencia: evidencia.id_evidencia,
     archivo_url: evidencia.archivo_url,
+    url_drive: evidencia.archivo_url,
     nombre_archivo: evidencia.nombre_archivo,
+    tipo_documento: evidencia.tipo_documento,
+    drive_folder_id: alumno.drive_folder_id || folderId,
   });
 }
 

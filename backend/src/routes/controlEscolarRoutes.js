@@ -4,6 +4,7 @@ const { authorizeRoles } = require('../middlewares/auth');
 const controlEscolarController = require('../controllers/controlEscolarController');
 const {
   handlePortafolioUpload,
+  handleExpedienteUpload,
   handleManualServicioSocialUpload,
   handleTramiteRespuestaUpload,
   handleRecursoInstitucionalUpload,
@@ -30,6 +31,7 @@ router.get('/alumnos/buscar', controlEscolarController.buscarAlumnos);
 
 router.get('/alumnos/:alumnoId/portafolio', controlEscolarController.portafolioAlumno);
 router.put('/alumnos/:alumnoId/drive-folder', controlEscolarController.actualizarDriveFolder);
+router.post('/alumnos/:alumnoId/documentos', handleExpedienteUpload, controlEscolarController.subirArchivoPortafolio);
 router.post('/alumnos/:alumnoId/portafolio', handlePortafolioUpload, controlEscolarController.subirArchivoPortafolio);
 
 router.get('/tramites', controlEscolarController.listarTramites);
