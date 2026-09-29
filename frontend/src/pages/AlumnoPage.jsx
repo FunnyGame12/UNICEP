@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import toast from 'react-hot-toast';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import api from '../services/api';
@@ -45,6 +46,19 @@ const portafolioBadgeInfo = {
   rechazado: { label: 'Requiere correcciones', className: 'badge-danger' },
   no_entregado: { label: 'No entregado', className: 'badge-neutral' },
 };
+
+const tiposDocumentoExpediente = [
+  { value: 'curp', label: 'CURP' },
+  { value: 'acta_nacimiento', label: 'Acta de Nacimiento' },
+  { value: 'certificado_bachillerato', label: 'Certificado de Bachillerato' },
+  { value: 'identificacion_oficial_ine', label: 'Identificacion Oficial (INE)' },
+  { value: 'foto_tamano_infantil', label: 'Foto Tamano Infantil' },
+];
+
+const etiquetasTipoDocumento = tiposDocumentoExpediente.reduce((acc, item) => {
+  acc[item.value] = item.label;
+  return acc;
+}, {});
 
 const pagoSchema = z.object({
   id_concepto_pago: z.string().min(1, 'Selecciona un concepto de pago.'),
@@ -163,8 +177,12 @@ export default function AlumnoPage() {
   const [conceptosPago, setConceptosPago] = useState([]);
   const [misEvidencias, setMisEvidencias] = useState([]);
   const [recursosInstitucionales, setRecursosInstitucionales] = useState([]);
+  const [expedienteItems, setExpedienteItems] = useState([]);
   const [draftsPortafolio, setDraftsPortafolio] = useState({});
   const [savingMateriaId, setSavingMateriaId] = useState(null);
+  const [tipoDocumento, setTipoDocumento] = useState('');
+  const [archivoExpediente, setArchivoExpediente] = useState(null);
+  const [subiendoDoc, setSubiendoDoc] = useState(false);
 
   const [pagoArchivo, setPagoArchivo] = useState(null);
   const [tramiteArchivo, setTramiteArchivo] = useState(null);
@@ -318,6 +336,7 @@ export default function AlumnoPage() {
         setAvisos([]);
         setMisEvidencias([]);
         setRecursosInstitucionales([]);
+        setExpedienteItems([]);
         setDraftsPortafolio({});
         setCalificacionesBloqueadas(Boolean(estadoResp.data?.bloqueo_calificaciones));
         return;
@@ -325,7 +344,7 @@ export default function AlumnoPage() {
 
       const idAlumno = Number(estadoResp.data?.id_alumno || 0);
 
-      const [horarioResp, asistenciaResp, avisosResp, calificacionesResp, portafolioResp] = await Promise.all([
+      const [horarioResp, asistenciaResp, avisosResp, calificacionesResp, portafolioResp, expedienteResp] = await Promise.all([
         api.get('/alumno/horario-aulas'),
         api.get('/alumno/asistencia'),
         api.get('/avisos/alumnos').catch(() => ({ data: { items: [] } })),
@@ -339,6 +358,7 @@ export default function AlumnoPage() {
         idAlumno > 0
           ? api.get(`/alumno/${idAlumno}/portafolio-recursos`).catch(() => ({ data: { misEvidencias: [], recursosInstitucionales: [] } }))
           : Promise.resolve({ data: { misEvidencias: [], recursosInstitucionales: [] } }),
+        api.get('/alumno/portafolio').catch(() => ({ data: { items: [] } })),
       ]);
 
       setHorario(horarioResp.data?.items || []);
@@ -348,6 +368,7 @@ export default function AlumnoPage() {
       const evidencias = portafolioResp.data?.misEvidencias || [];
       setMisEvidencias(evidencias);
       setRecursosInstitucionales(portafolioResp.data?.recursosInstitucionales || []);
+      setExpedienteItems((expedienteResp.data?.items || []).filter((item) => String(item.origen || '').toLowerCase() === 'alumno'));
       setDraftsPortafolio((prev) => {
         const next = { ...prev };
         evidencias.forEach((item) => {
@@ -427,6 +448,45 @@ export default function AlumnoPage() {
       setError(requestError?.response?.data?.message || 'No se pudo registrar el tramite.');
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleSubirExpediente() {
+    if (!tipoDocumento) {
+      toast.error('Selecciona el tipo de documento que deseas subir.');
+      setError('Selecciona el tipo de documento que deseas subir.');
+      return;
+    }
+
+    if (!archivoExpediente) {
+      toast.error('Selecciona un archivo para tu expediente institucional.');
+      setError('Selecciona un archivo para tu expediente institucional.');
+      return;
+    }
+
+    setSubiendoDoc(true);
+    setError('');
+    setMessage('');
+
+    try {
+      const formData = new FormData();
+      formData.append('documento', archivoExpediente);
+      formData.append('tipo_documento', tipoDocumento);
+
+      await api.post('/alumno/portafolio/documentos', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      setTipoDocumento('');
+      setArchivoExpediente(null);
+      toast.success('Documento guardado en tu expediente.');
+      setMessage('Documento guardado en tu expediente.');
+      await loadBase();
+    } catch (requestError) {
+      toast.error(requestError?.response?.data?.message || 'No se pudo subir el documento al expediente.');
+      setError(requestError?.response?.data?.message || 'No se pudo subir el documento al expediente.');
+    } finally {
+      setSubiendoDoc(false);
     }
   }
 
@@ -612,6 +672,68 @@ export default function AlumnoPage() {
             <h3>Portafolio y Documentos</h3>
             <p>Captura tus evidencias por materia y descarga los recursos oficiales.</p>
           </div>
+
+          <article className="alumno-card full-width bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6">
+            <h4>📁 Mi Expediente Institucional</h4>
+            <p>Sube tus documentos oficiales. Estos se guardaran automaticamente en tu expediente digital de Control Escolar.</p>
+
+            <div className="alumno-form" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+              <div>
+                <label htmlFor="expediente-tipo">Tipo de documento</label>
+                <select
+                  id="expediente-tipo"
+                  value={tipoDocumento}
+                  onChange={(event) => setTipoDocumento(event.target.value)}
+                >
+                  <option value="" disabled hidden>Selecciona un tipo</option>
+                  {tiposDocumentoExpediente.map((item) => (
+                    <option key={item.value} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="expediente-archivo">Archivo</label>
+                <input
+                  id="expediente-archivo"
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(event) => setArchivoExpediente(event.target.files?.[0] || null)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'end' }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={subiendoDoc}
+                  onClick={handleSubirExpediente}
+                >
+                  {subiendoDoc ? 'Subiendo a la nube... ⏳' : 'Subir Documento'}
+                </button>
+              </div>
+            </div>
+
+            <h5 style={{ marginTop: '1rem' }}>Historial de expediente</h5>
+            {expedienteItems.length === 0 ? (
+              <p className="alumno-empty">Aun no has subido documentos institucionales.</p>
+            ) : (
+              <div className="alumno-list compact">
+                {expedienteItems.map((item) => (
+                  <article key={item.id_evidencia} className="alumno-list-item">
+                    <div className="alumno-list-head">
+                      <strong>{etiquetasTipoDocumento[item.tipo_documento] || item.tipo_documento}</strong>
+                      <small>{formatDate(item.fecha_creacion, true)}</small>
+                    </div>
+                    <p>{item.nombre_archivo || 'Documento sin nombre'}</p>
+                    {item.archivo_url ? (
+                      <a href={item.archivo_url} target="_blank" rel="noreferrer">Abrir en Google Drive</a>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            )}
+          </article>
 
           <div className="alumno-portafolio-grid full-width">
             <article className="alumno-card alumno-portafolio-column">

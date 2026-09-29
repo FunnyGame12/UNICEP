@@ -3,7 +3,7 @@ const auth = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/permissions');
 const alumnoController = require('../controllers/alumnoController');
 const { PERMISSIONS } = require('../constants/rbac');
-const { handlePortafolioUpload } = require('../middlewares/upload');
+const { handlePortafolioUpload, handleExpedienteUpload } = require('../middlewares/upload');
 
 const router = express.Router();
 
@@ -32,7 +32,7 @@ router.get('/video-clases', requirePermission(PERMISSIONS.ALUMNO_MATERIALES_READ
 router.get('/recursos/:recursoId/descargar', requirePermission(PERMISSIONS.ALUMNO_MATERIALES_READ), alumnoController.descargarRecursoAcademico);
 router.get('/:id/recursos', requirePermission(PERMISSIONS.ALUMNO_MATERIALES_READ), alumnoController.recursosInstitucionalesPorAlumno);
 router.get('/portafolio', requirePermission(PERMISSIONS.ALUMNO_PORTAFOLIO_READ), alumnoController.portafolio);
-router.post('/portafolio/documentos', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), handlePortafolioUpload, alumnoController.subirDocumentoPortafolio);
+router.post('/portafolio/documentos', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), handleExpedienteUpload, alumnoController.subirDocumentoPortafolio);
 router.post('/portafolio', requirePermission(PERMISSIONS.ALUMNO_TRAMITES_CREATE), alumnoController.guardarPortafolioMateria);
 router.get('/:id/portafolio-recursos', requirePermission(PERMISSIONS.ALUMNO_PORTAFOLIO_READ), alumnoController.portafolioRecursos);
 router.get('/meritos', requirePermission(PERMISSIONS.ALUMNO_MERITOS_READ), alumnoController.meritos);

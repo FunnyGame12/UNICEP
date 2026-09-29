@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import './index.css';
 import router from './router';
 import { AuthProvider } from './auth/AuthContext';
@@ -26,6 +27,17 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <AuthProvider>
       <RouterProvider router={router} />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 3500,
+          style: {
+            background: '#111827',
+            color: '#f3f4f6',
+            border: '1px solid #374151',
+          },
+        }}
+      />
     </AuthProvider>
   </StrictMode>,
 );

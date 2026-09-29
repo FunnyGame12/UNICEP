@@ -32,15 +32,28 @@ const {
 const { generarWorkbookBoleta } = require('../services/boletaService');
 const { registrarEventoAuditoria } = require('../services/auditService');
 const { TRAMITES_ESCOLARES, TRAMITES_ESCOLARES_LABELS } = require('../constants/tramites');
+const { crearCarpetaAlumno, subirArchivoDrive } = require('../services/driveService');
 
 const DOCUMENTOS_REQUERIDOS = [
   { clave: 'curp', nombre: 'CURP', detalle: 'Identificacion oficial' },
   { clave: 'acta_nacimiento', nombre: 'Acta de nacimiento', detalle: 'Documentacion de registro' },
   { clave: 'certificado_bachillerato', nombre: 'Certificado de bachillerato', detalle: 'Boleta de preparatoria' },
-  { clave: 'foto_oficial', nombre: 'Foto oficial', detalle: 'Formato escolar vigente' },
+  { clave: 'identificacion_oficial_ine', nombre: 'Identificacion oficial (INE)', detalle: 'Documento con fotografia vigente' },
+  { clave: 'foto_tamano_infantil', nombre: 'Foto tamano infantil', detalle: 'Formato escolar vigente' },
 ];
 
 const TIPOS_DOCUMENTO_PERMITIDOS = new Set(DOCUMENTOS_REQUERIDOS.map((item) => item.clave));
+
+function normalizeTipoDocumento(value) {
+  const raw = normalizeText(value).toLowerCase();
+  if (!raw) return raw;
+
+  if (raw === 'ine' || raw === 'identificacion_oficial' || raw === 'identificacion_oficial_(ine)') {
+    return 'identificacion_oficial_ine';
+  }
+  if (raw === 'foto_oficial') return 'foto_tamano_infantil';
+  return raw;
+}
 
 function normalizeText(value) {
   return String(value || '').trim();
@@ -202,7 +215,7 @@ async function obtenerEstadoAlumno(idAlumno) {
       attributes: ['id_usuario', 'nombre_completo', 'correo', 'folio_matricula', 'cuenta_activada', 'cuenta_bloqueada'],
     }),
     AlumnoPerfil.findByPk(idAlumno, {
-      attributes: ['id_alumno', 'carrera', 'bimestre_actual', 'estado_academico', 'bloqueo_plataforma', 'bloqueo_calificaciones', 'estatus_financiero', 'drive_folder_url'],
+      attributes: ['id_alumno', 'carrera', 'bimestre_actual', 'estado_academico', 'bloqueo_plataforma', 'bloqueo_calificaciones', 'estatus_financiero', 'drive_folder_id', 'drive_folder_url'],
     }),
   ]);
 
@@ -1315,7 +1328,7 @@ async function portafolio(_req, res) {
 
   const evidenciaPorDocumento = new Map();
   evidencias.forEach((item) => {
-    const tipo = String(item.tipo_documento || '').trim().toLowerCase();
+    const tipo = normalizeTipoDocumento(item.tipo_documento);
     if (!tipo || evidenciaPorDocumento.has(tipo)) return;
     evidenciaPorDocumento.set(tipo, item);
   });
@@ -1353,7 +1366,7 @@ async function subirDocumentoPortafolio(req, res) {
     return res.status(validacion.status).json(validacion.payload);
   }
 
-  const tipoDocumento = normalizeText(req.body.tipo_documento)?.toLowerCase() || null;
+  const tipoDocumento = normalizeTipoDocumento(req.body.tipo_documento) || null;
   if (!tipoDocumento || !TIPOS_DOCUMENTO_PERMITIDOS.has(tipoDocumento)) {
     return res.status(400).json({ message: 'tipo_documento invalido.' });
   }
@@ -1362,9 +1375,30 @@ async function subirDocumentoPortafolio(req, res) {
     return res.status(400).json({ message: 'Selecciona un archivo para subir.' });
   }
 
+  let folderId = normalizeText(validacion.estado?.perfil?.drive_folder_id) || null;
+  if (!folderId) {
+    const folderName = `${validacion.estado?.usuario?.folio_matricula || `ALU-${validacion.idAlumno}`} - ${validacion.estado?.usuario?.nombre_completo || `Alumno ${validacion.idAlumno}`}`;
+    const createdFolder = await crearCarpetaAlumno(folderName);
+    folderId = createdFolder.folderId;
+
+    await AlumnoPerfil.update(
+      {
+        drive_folder_id: createdFolder.folderId,
+        drive_folder_url: createdFolder.folderUrl,
+      },
+      { where: { id_alumno: validacion.idAlumno } },
+    );
+  }
+
+  const uploadResult = await subirArchivoDrive(req.file, folderId);
+  const archivoUrl = uploadResult.webViewLink || uploadResult.webContentLink;
+  if (!archivoUrl) {
+    return res.status(502).json({ message: 'Drive no devolvio una URL publica del archivo.' });
+  }
+
   const evidencia = await PortafolioEvidencia.create({
     id_alumno: validacion.idAlumno,
-    archivo_url: `/uploads/portafolio/${req.file.filename}`,
+    archivo_url: archivoUrl,
     nombre_archivo: req.file.originalname,
     tipo_documento: tipoDocumento,
     origen: 'alumno',
@@ -1375,9 +1409,11 @@ async function subirDocumentoPortafolio(req, res) {
   return res.status(201).json({
     id_evidencia: evidencia.id_evidencia,
     archivo_url: evidencia.archivo_url,
+    url_drive: evidencia.archivo_url,
     nombre_archivo: evidencia.nombre_archivo,
     tipo_documento: evidencia.tipo_documento,
     origen: evidencia.origen,
+    drive_folder_id: folderId,
   });
 }
 
