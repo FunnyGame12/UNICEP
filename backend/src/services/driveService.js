@@ -4,30 +4,21 @@ const fs = require('fs');
 const path = require('path');
 const { google } = require('googleapis');
 
-const DRIVE_SCOPE = ['https://www.googleapis.com/auth/drive'];
-const DEFAULT_CREDENTIALS_PATH = path.resolve(__dirname, '../../credentials.json');
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_DRIVE_CLIENT_ID,
+  process.env.GOOGLE_DRIVE_CLIENT_SECRET,
+  'https://developers.google.com/oauthplayground'
+);
+
+oauth2Client.setCredentials({
+  refresh_token: process.env.GOOGLE_DRIVE_REFRESH_TOKEN,
+});
+
+const drive = google.drive({ version: 'v3', auth: oauth2Client });
 const DRIVE_FOLDER_URL_PREFIX = 'https://drive.google.com/drive/folders/';
 
 function normalizeText(value) {
   return String(value || '').trim();
-}
-
-function resolveCredentialsPath() {
-  const configuredPath = normalizeText(process.env.GOOGLE_DRIVE_CREDENTIALS_PATH);
-  if (!configuredPath) return DEFAULT_CREDENTIALS_PATH;
-  if (path.isAbsolute(configuredPath)) return configuredPath;
-  return path.resolve(__dirname, '../../', configuredPath);
-}
-
-function ensureDriveConfig() {
-  const credentialsPath = resolveCredentialsPath();
-  if (!fs.existsSync(credentialsPath)) {
-    const error = new Error('No se encontro el archivo de credenciales de Google Drive.');
-    error.code = 'DRIVE_NOT_CONFIGURED';
-    throw error;
-  }
-
-  return { credentialsPath };
 }
 
 function buildDriveFolderUrl(folderId) {
@@ -59,19 +50,8 @@ function extractDriveFolderId(value) {
   return null;
 }
 
-async function getDriveClient() {
-  const { credentialsPath } = ensureDriveConfig();
-
-  const auth = new google.auth.GoogleAuth({
-    keyFile: credentialsPath,
-    scopes: DRIVE_SCOPE,
-  });
-
-  return google.drive({ version: 'v3', auth });
-}
 
 async function crearCarpetaAlumno(nombreCarpeta, carpetaPadreId) {
-  const drive = await getDriveClient();
   const nombre = normalizeText(nombreCarpeta) || `alumno-${Date.now()}`;
   const parentId = normalizeText(carpetaPadreId || process.env.GOOGLE_DRIVE_ALUMNOS_ROOT_FOLDER_ID);
 
@@ -92,14 +72,13 @@ async function crearCarpetaAlumno(nombreCarpeta, carpetaPadreId) {
   };
 }
 
-async function subirArchivoDrive(archivoMulter, folderId) {
+async function subirDocumentoAlumno(archivoMulter, folderId) {
   if (!archivoMulter?.path) {
     const error = new Error('No se encontro el archivo temporal para subir a Drive.');
     error.code = 'DRIVE_UPLOAD_INPUT_INVALID';
     throw error;
   }
 
-  const drive = await getDriveClient();
   const targetFolderId = normalizeText(folderId);
   if (!targetFolderId) {
     const error = new Error('No se proporciono folderId para la subida a Drive.');
@@ -138,8 +117,11 @@ async function subirArchivoDrive(archivoMulter, folderId) {
   }
 }
 
+const subirArchivoDrive = subirDocumentoAlumno;
+
 module.exports = {
   crearCarpetaAlumno,
+  subirDocumentoAlumno,
   subirArchivoDrive,
   extractDriveFolderId,
   buildDriveFolderUrl,
