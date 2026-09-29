@@ -128,6 +128,11 @@ function validateConceptoPayload(payload, { isEdit = false } = {}) {
     return { error: 'folio_interno es obligatorio y debe tener al menos 10 caracteres.' };
   }
 
+  // clave is persisted with max length 40 and mirrors folio_interno.
+  if (folioInterno && folioInterno.length > 40) {
+    return { error: 'folio_interno no puede exceder 40 caracteres.' };
+  }
+
   if (clasificacion === 'base') {
     if (precioBaseInicial === null || Number.isNaN(precioBaseInicial) || precioBaseInicial < 0) {
       return { error: 'precio_base_inicial es obligatorio para conceptos base y debe ser >= 0.' };
@@ -237,74 +242,82 @@ async function listConceptosPagoCatalog(req, res) {
 }
 
 async function createConceptoPagoCatalog(req, res) {
-  const validation = validateConceptoPayload(req.body, { isEdit: false });
-  if (validation.error) {
-    return res.status(400).json({ message: validation.error });
-  }
-
-  const payload = validation.data;
-
-  const existingFolio = await sequelize.query(
-    'SELECT id_concepto_pago FROM conceptos_pago WHERE folio_interno = :folio LIMIT 1',
-    { replacements: { folio: payload.folio_interno }, type: Sequelize.QueryTypes.SELECT },
-  );
-  if (existingFolio.length > 0) {
-    return res.status(409).json({ message: 'folio_interno ya existe.' });
-  }
-
-  if (payload.clasificacion === 'subrama') {
-    const parent = await sequelize.query(
-      'SELECT id_concepto_pago, clasificacion FROM conceptos_pago WHERE id_concepto_pago = :id LIMIT 1',
-      { replacements: { id: payload.id_concepto_padre }, type: Sequelize.QueryTypes.SELECT },
-    );
-    if (parent.length === 0 || parent[0].clasificacion !== 'base') {
-      return res.status(400).json({ message: 'id_concepto_padre debe apuntar a un concepto base existente.' });
+  try {
+    const validation = validateConceptoPayload(req.body, { isEdit: false });
+    if (validation.error) {
+      return res.status(400).json({ message: validation.error });
     }
+
+    const payload = validation.data;
+
+    const existingFolio = await sequelize.query(
+      'SELECT id_concepto_pago FROM conceptos_pago WHERE folio_interno = :folio LIMIT 1',
+      { replacements: { folio: payload.folio_interno }, type: Sequelize.QueryTypes.SELECT },
+    );
+    if (existingFolio.length > 0) {
+      return res.status(409).json({ message: 'folio_interno ya existe.' });
+    }
+
+    const existingClave = await sequelize.query(
+      'SELECT id_concepto_pago FROM conceptos_pago WHERE clave = :clave LIMIT 1',
+      { replacements: { clave: payload.folio_interno }, type: Sequelize.QueryTypes.SELECT },
+    );
+    if (existingClave.length > 0) {
+      return res.status(409).json({ message: 'clave interna ya existe para otro concepto. Usa un folio distinto.' });
+    }
+
+    if (payload.clasificacion === 'subrama') {
+      const parent = await sequelize.query(
+        'SELECT id_concepto_pago, clasificacion FROM conceptos_pago WHERE id_concepto_pago = :id LIMIT 1',
+        { replacements: { id: payload.id_concepto_padre }, type: Sequelize.QueryTypes.SELECT },
+      );
+      if (parent.length === 0 || parent[0].clasificacion !== 'base') {
+        return res.status(400).json({ message: 'id_concepto_padre debe apuntar a un concepto base existente.' });
+      }
+    }
+
+    const created = await ConceptoPago.create({
+      clave: payload.folio_interno,
+      nombre: payload.nombre,
+      descripcion: null,
+      categoria: 'otro',
+      periodicidad: 'unico',
+      carrera_objetivo: null,
+      activo: true,
+      fecha_creacion: new Date(),
+      clasificacion: payload.clasificacion,
+      precio_base_inicial: payload.precio_base_inicial,
+      id_concepto_padre: payload.id_concepto_padre,
+      naturaleza_ajuste: payload.naturaleza_ajuste,
+      modo_aplicacion: payload.modo_aplicacion,
+      valor_ajuste: payload.valor_ajuste,
+      folio_interno: payload.folio_interno,
+    });
+
+    try {
+      await registrarEventoAuditoria({
+        idUsuario: req.user.id_usuario,
+        rolActor: req.user.rol,
+        accion: 'crear_concepto_pago_jerarquico',
+        modulo: 'director',
+        entidad: 'conceptos_pago',
+        idEntidad: created.id_concepto_pago,
+        detalle: payload,
+      });
+    } catch (auditError) {
+      console.error('No se pudo registrar auditoria para crear_concepto_pago_jerarquico:', auditError?.message || auditError);
+    }
+
+    return res.status(201).json({ id_concepto_pago: created.id_concepto_pago });
+  } catch (error) {
+    if (error?.name === 'SequelizeUniqueConstraintError') {
+      return res.status(409).json({ message: 'Ya existe un concepto con ese folio/clave.' });
+    }
+    if (error?.name === 'SequelizeDatabaseError') {
+      return res.status(400).json({ message: 'Datos inválidos al crear concepto. Verifica folio, montos y clasificación.' });
+    }
+    throw error;
   }
-
-  const created = await ConceptoPago.create({
-    clave: payload.folio_interno,
-    nombre: payload.nombre,
-    descripcion: null,
-    categoria: 'otro',
-    periodicidad: 'unico',
-    carrera_objetivo: null,
-    activo: true,
-    fecha_creacion: new Date(),
-  });
-
-  await sequelize.query(
-    `
-      UPDATE conceptos_pago
-      SET
-        clasificacion = :clasificacion,
-        precio_base_inicial = :precio_base_inicial,
-        id_concepto_padre = :id_concepto_padre,
-        naturaleza_ajuste = :naturaleza_ajuste,
-        modo_aplicacion = :modo_aplicacion,
-        valor_ajuste = :valor_ajuste,
-        folio_interno = :folio_interno
-      WHERE id_concepto_pago = :id_concepto_pago
-    `,
-    {
-      replacements: {
-        ...payload,
-        id_concepto_pago: created.id_concepto_pago,
-      },
-    },
-  );
-
-  await registrarEventoAuditoria({
-    idUsuario: req.user.id_usuario,
-    rolActor: req.user.rol,
-    accion: 'crear_concepto_pago_jerarquico',
-    modulo: 'director',
-    entidad: 'conceptos_pago',
-    idEntidad: created.id_concepto_pago,
-    detalle: payload,
-  });
-
-  return res.status(201).json({ id_concepto_pago: created.id_concepto_pago });
 }
 
 async function updateConceptoPagoCatalog(req, res) {

@@ -48,7 +48,7 @@ const folioPagoSchema = z.object({
     },
     z.number().positive('El valor del ajuste debe ser positivo.').optional(),
   ),
-  folio_interno: z.string().trim().min(10, 'El folio debe tener al menos 10 caracteres.'),
+  folio_interno: z.string().trim().min(10, 'El folio debe tener al menos 10 caracteres.').max(40, 'El folio no puede exceder 40 caracteres.'),
 }).superRefine((value, ctx) => {
   if (value.clasificacion === 'base') {
     if (value.precio_base_inicial === undefined) {
@@ -915,7 +915,7 @@ export default function DirectorPage() {
               <input id="director-concepto-year-prefix" value={conceptYearPrefix} readOnly />
 
               <div className="director-folio-input-row">
-                <input id="director-folio-interno-concepto" placeholder="Folio interno (único e inmutable)" {...folioPagoForm.register('folio_interno')} disabled={Boolean(editingConceptoId)} />
+                <input id="director-folio-interno-concepto" placeholder="Folio interno (único e inmutable)" maxLength={40} {...folioPagoForm.register('folio_interno')} disabled={Boolean(editingConceptoId)} />
                 {!editingConceptoId ? (
                   <button className="btn-secondary" type="button" onClick={generarFolioAleatorioConcepto}>⚡ Generar Aleatorio</button>
                 ) : null}
