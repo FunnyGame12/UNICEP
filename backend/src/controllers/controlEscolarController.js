@@ -6,6 +6,9 @@ const {
   Usuario,
   PagoEstatus,
   ConceptoPago,
+  PlantillaPlan,
+  PlantillaDetalle,
+  CargoAlumno,
   TramiteSolicitud,
   PortafolioEvidencia,
   NotificacionAlumno,
@@ -110,6 +113,51 @@ function resolveMontoConcepto(concepto, montoOverride) {
   return NaN;
 }
 
+function resolveFechaVencimientoPlantilla(diaVencimiento, fechaExacta) {
+  const fechaDirecta = toDateOnly(fechaExacta);
+  if (fechaDirecta) return fechaDirecta;
+
+  const dia = Number(diaVencimiento);
+  if (!Number.isInteger(dia) || dia < 1 || dia > 31) {
+    return null;
+  }
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const lastDayCurrent = new Date(year, month + 1, 0).getDate();
+  const dayCurrent = Math.min(dia, lastDayCurrent);
+
+  let dueDate = new Date(year, month, dayCurrent);
+  dueDate.setHours(0, 0, 0, 0);
+
+  const today = new Date(year, month, now.getDate());
+  today.setHours(0, 0, 0, 0);
+  if (dueDate < today) {
+    const nextMonthDate = new Date(year, month + 1, 1);
+    const lastDayNext = new Date(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, 0).getDate();
+    dueDate = new Date(nextMonthDate.getFullYear(), nextMonthDate.getMonth(), Math.min(dia, lastDayNext));
+    dueDate.setHours(0, 0, 0, 0);
+  }
+
+  return dueDate.toISOString().slice(0, 10);
+}
+
+function normalizePlantillaDetalles(detalles) {
+  if (!Array.isArray(detalles)) return [];
+
+  return detalles
+    .map((item) => ({
+      concepto_id: toNumber(item?.concepto_id),
+      monto_sugerido: Number(item?.monto_sugerido),
+      dia_vencimiento: item?.dia_vencimiento === '' || item?.dia_vencimiento === null || item?.dia_vencimiento === undefined
+        ? null
+        : toNumber(item?.dia_vencimiento),
+      fecha_exacta: toDateOnly(item?.fecha_exacta) || null,
+    }))
+    .filter((item) => Number.isInteger(item.concepto_id) && Number.isFinite(item.monto_sugerido) && item.monto_sugerido > 0);
+}
+
 
 async function comprobantesPendientes(_req, res) {
   const comprobantes = await TramiteSolicitud.findAll({
@@ -189,6 +237,266 @@ async function conceptosActivos(_req, res) {
   });
 
   return res.json({ items });
+}
+
+async function listarPlantillasPago(_req, res) {
+  const plantillas = await PlantillaPlan.findAll({
+    include: [{
+      model: PlantillaDetalle,
+      as: 'detalles',
+      include: [{
+        model: ConceptoPago,
+        as: 'concepto',
+        attributes: ['id_concepto_pago', 'nombre', 'folio_interno'],
+      }],
+    }],
+    order: [['updated_at', 'DESC'], [{ model: PlantillaDetalle, as: 'detalles' }, 'id', 'ASC']],
+    limit: 500,
+  });
+
+  return res.json({
+    items: plantillas.map((plantilla) => ({
+      id: plantilla.id,
+      nombre_plan: plantilla.nombre_plan,
+      carrera: plantilla.carrera,
+      cuatrimestre: plantilla.cuatrimestre,
+      detalles: (plantilla.detalles || []).map((detalle) => ({
+        id: detalle.id,
+        concepto_id: detalle.concepto_id,
+        concepto_nombre: detalle.concepto?.nombre || null,
+        concepto_folio: detalle.concepto?.folio_interno || null,
+        monto_sugerido: Number(detalle.monto_sugerido),
+        dia_vencimiento: detalle.dia_vencimiento,
+        fecha_exacta: detalle.fecha_exacta,
+      })),
+      created_at: plantilla.created_at,
+      updated_at: plantilla.updated_at,
+    })),
+  });
+}
+
+async function crearPlantillaPago(req, res) {
+  const nombrePlan = normalizeText(req.body.nombre_plan);
+  const carrera = normalizeText(req.body.carrera);
+  const cuatrimestre = toNumber(req.body.cuatrimestre);
+  const detalles = normalizePlantillaDetalles(req.body.detalles);
+
+  if (!nombrePlan || nombrePlan.length < 3) {
+    return res.status(400).json({ message: 'nombre_plan debe tener al menos 3 caracteres.' });
+  }
+  if (!carrera) {
+    return res.status(400).json({ message: 'carrera es obligatoria.' });
+  }
+  if (!Number.isInteger(cuatrimestre) || cuatrimestre < 1) {
+    return res.status(400).json({ message: 'cuatrimestre invalido.' });
+  }
+  if (detalles.length === 0) {
+    return res.status(400).json({ message: 'Debes capturar al menos un concepto en la plantilla.' });
+  }
+
+  const conceptoIds = [...new Set(detalles.map((item) => item.concepto_id))];
+  const conceptosValidos = await ConceptoPago.findAll({
+    where: {
+      id_concepto_pago: { [Op.in]: conceptoIds },
+      activo: true,
+    },
+    attributes: ['id_concepto_pago'],
+  });
+  if (conceptosValidos.length !== conceptoIds.length) {
+    return res.status(400).json({ message: 'Al menos un concepto no existe o esta inactivo.' });
+  }
+
+  const hasInvalidDates = detalles.some((item) => {
+    const hasDia = Number.isInteger(item.dia_vencimiento) && item.dia_vencimiento >= 1 && item.dia_vencimiento <= 31;
+    return !hasDia && !item.fecha_exacta;
+  });
+  if (hasInvalidDates) {
+    return res.status(400).json({ message: 'Cada detalle requiere dia_vencimiento (1-31) o fecha_exacta.' });
+  }
+
+  const created = await sequelize.transaction(async (transaction) => {
+    const plantilla = await PlantillaPlan.create({
+      nombre_plan: nombrePlan,
+      carrera,
+      cuatrimestre,
+    }, { transaction });
+
+    await PlantillaDetalle.bulkCreate(
+      detalles.map((item) => ({
+        plantilla_id: plantilla.id,
+        concepto_id: item.concepto_id,
+        monto_sugerido: item.monto_sugerido,
+        dia_vencimiento: item.dia_vencimiento,
+        fecha_exacta: item.fecha_exacta,
+      })),
+      { transaction },
+    );
+
+    return plantilla;
+  });
+
+  return res.status(201).json({ id: created.id });
+}
+
+async function actualizarPlantillaPago(req, res) {
+  const plantillaId = toNumber(req.params.plantillaId);
+  if (!Number.isInteger(plantillaId)) {
+    return res.status(400).json({ message: 'plantillaId invalido.' });
+  }
+
+  const plantilla = await PlantillaPlan.findByPk(plantillaId);
+  if (!plantilla) {
+    return res.status(404).json({ message: 'Plantilla no encontrada.' });
+  }
+
+  const nombrePlan = normalizeText(req.body.nombre_plan);
+  const carrera = normalizeText(req.body.carrera);
+  const cuatrimestre = toNumber(req.body.cuatrimestre);
+  const detalles = normalizePlantillaDetalles(req.body.detalles);
+
+  if (!nombrePlan || !carrera || !Number.isInteger(cuatrimestre) || cuatrimestre < 1) {
+    return res.status(400).json({ message: 'nombre_plan, carrera y cuatrimestre son obligatorios.' });
+  }
+  if (detalles.length === 0) {
+    return res.status(400).json({ message: 'Debes capturar al menos un concepto en la plantilla.' });
+  }
+
+  const hasInvalidDates = detalles.some((item) => {
+    const hasDia = Number.isInteger(item.dia_vencimiento) && item.dia_vencimiento >= 1 && item.dia_vencimiento <= 31;
+    return !hasDia && !item.fecha_exacta;
+  });
+  if (hasInvalidDates) {
+    return res.status(400).json({ message: 'Cada detalle requiere dia_vencimiento (1-31) o fecha_exacta.' });
+  }
+
+  await sequelize.transaction(async (transaction) => {
+    plantilla.nombre_plan = nombrePlan;
+    plantilla.carrera = carrera;
+    plantilla.cuatrimestre = cuatrimestre;
+    await plantilla.save({ transaction });
+
+    await PlantillaDetalle.destroy({
+      where: { plantilla_id: plantillaId },
+      transaction,
+    });
+
+    await PlantillaDetalle.bulkCreate(
+      detalles.map((item) => ({
+        plantilla_id: plantillaId,
+        concepto_id: item.concepto_id,
+        monto_sugerido: item.monto_sugerido,
+        dia_vencimiento: item.dia_vencimiento,
+        fecha_exacta: item.fecha_exacta,
+      })),
+      { transaction },
+    );
+  });
+
+  return res.json({ id: plantillaId, actualizado: true });
+}
+
+async function previsualizarCargosMasivos(req, res) {
+  const plantillaId = toNumber(req.body.plantilla_id);
+  if (!Number.isInteger(plantillaId)) {
+    return res.status(400).json({ message: 'plantilla_id invalido.' });
+  }
+
+  const plantilla = await PlantillaPlan.findByPk(plantillaId, {
+    include: [{
+      model: PlantillaDetalle,
+      as: 'detalles',
+      include: [{ model: ConceptoPago, as: 'concepto', attributes: ['id_concepto_pago', 'nombre', 'folio_interno'] }],
+    }],
+  });
+  if (!plantilla) {
+    return res.status(404).json({ message: 'Plantilla no encontrada.' });
+  }
+
+  const alumnos = await AlumnoPerfil.findAll({
+    where: {
+      carrera: plantilla.carrera,
+      bimestre_actual: plantilla.cuatrimestre,
+      estado_academico: 'activo',
+    },
+    include: [{
+      model: Usuario,
+      as: 'usuario',
+      attributes: ['id_usuario', 'folio_matricula', 'nombre_completo'],
+    }],
+    order: [[{ model: Usuario, as: 'usuario' }, 'nombre_completo', 'ASC']],
+    limit: 5000,
+  });
+
+  const conceptos = (plantilla.detalles || []).map((detalle) => ({
+    detalle_id: detalle.id,
+    concepto_id: detalle.concepto_id,
+    concepto_nombre: detalle.concepto?.nombre || `Concepto ${detalle.concepto_id}`,
+    concepto_folio: detalle.concepto?.folio_interno || null,
+    monto_sugerido: Number(detalle.monto_sugerido),
+    dia_vencimiento: detalle.dia_vencimiento,
+    fecha_exacta: detalle.fecha_exacta,
+    fecha_vencimiento: resolveFechaVencimientoPlantilla(detalle.dia_vencimiento, detalle.fecha_exacta),
+  }));
+
+  return res.json({
+    plantilla: {
+      id: plantilla.id,
+      nombre_plan: plantilla.nombre_plan,
+      carrera: plantilla.carrera,
+      cuatrimestre: plantilla.cuatrimestre,
+    },
+    conceptos,
+    alumnos: alumnos.map((alumno) => ({
+      alumno_id: alumno.id_alumno,
+      folio_matricula: alumno.usuario?.folio_matricula || null,
+      nombre_completo: alumno.usuario?.nombre_completo || `Alumno ${alumno.id_alumno}`,
+      cargos: conceptos.map((concepto) => ({
+        alumno_id: alumno.id_alumno,
+        concepto_id: concepto.concepto_id,
+        monto_final: concepto.monto_sugerido,
+        fecha_vencimiento: concepto.fecha_vencimiento,
+        estado: 'pendiente',
+      })),
+    })),
+  });
+}
+
+async function confirmarCargosMasivos(req, res) {
+  const rawItems = Array.isArray(req.body) ? req.body : req.body.cargos;
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    return res.status(400).json({ message: 'Debes enviar un arreglo de cargos.' });
+  }
+
+  const payload = rawItems
+    .map((item) => ({
+      alumno_id: toNumber(item?.alumno_id),
+      concepto_id: toNumber(item?.concepto_id),
+      plantilla_id: item?.plantilla_id === undefined || item?.plantilla_id === null || item?.plantilla_id === ''
+        ? null
+        : toNumber(item?.plantilla_id),
+      monto_final: Number(item?.monto_final),
+      fecha_vencimiento: toDateOnly(item?.fecha_vencimiento),
+      estado: String(item?.estado || 'pendiente').trim().toLowerCase(),
+    }))
+    .filter((item) => Number.isInteger(item.alumno_id)
+      && Number.isInteger(item.concepto_id)
+      && Number.isFinite(item.monto_final)
+      && item.monto_final > 0
+      && item.fecha_vencimiento
+      && ['pendiente', 'pagado', 'cancelado'].includes(item.estado));
+
+  if (payload.length === 0) {
+    return res.status(400).json({ message: 'No hay cargos validos para guardar.' });
+  }
+
+  await sequelize.transaction(async (transaction) => {
+    await CargoAlumno.bulkCreate(payload, { transaction });
+  });
+
+  return res.status(201).json({
+    total_recibidos: rawItems.length,
+    total_creados: payload.length,
+  });
 }
 
 async function catalogosExtraordinario(_req, res) {
@@ -1366,6 +1674,11 @@ async function publicarAviso(req, res) {
 
 module.exports = {
   conceptosActivos,
+  listarPlantillasPago,
+  crearPlantillaPago,
+  actualizarPlantillaPago,
+  previsualizarCargosMasivos,
+  confirmarCargosMasivos,
   catalogosExtraordinario,
   comprobantesPendientes,
   generarPagosCuatrimestrales,

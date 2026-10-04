@@ -114,6 +114,7 @@ const folioPagoSchema = z.object({
 
 const tabs = [
   { id: 'tesoreria', label: 'Tesorería y Comprobantes' },
+  { id: 'planes_pago', label: 'Plantillas de Planes de Pago' },
   { id: 'accesos', label: 'Control de Accesos Financieros' },
   { id: 'tramites', label: 'Trámites Institucionales' },
   { id: 'portafolio', label: 'Portafolio de Alumnos' },
@@ -268,6 +269,24 @@ export default function ControlEscolarPage() {
   const [conceptoSort, setConceptoSort] = useState('az');
   const [editingConceptoId, setEditingConceptoId] = useState(null);
   const [catalogoBusy, setCatalogoBusy] = useState(false);
+  const [plantillasPago, setPlantillasPago] = useState([]);
+  const [plantillasLoading, setPlantillasLoading] = useState(false);
+  const [plantillaIdEditing, setPlantillaIdEditing] = useState(null);
+  const [plantillaNombre, setPlantillaNombre] = useState('');
+  const [plantillaCarrera, setPlantillaCarrera] = useState('');
+  const [plantillaCuatrimestre, setPlantillaCuatrimestre] = useState('1');
+  const [plantillaDetalles, setPlantillaDetalles] = useState([
+    {
+      concepto_id: '',
+      monto_sugerido: '',
+      dia_vencimiento: '',
+      fecha_exacta: '',
+    },
+  ]);
+  const [previewPlantillaId, setPreviewPlantillaId] = useState('');
+  const [previewCargos, setPreviewCargos] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [confirmandoCargos, setConfirmandoCargos] = useState(false);
 
   const cobroForm = useForm({
     resolver: zodResolver(cobroCajaSchema),
@@ -443,6 +462,184 @@ export default function ControlEscolarPage() {
     () => conceptosPagoCatalogo.filter((item) => item.clasificacion === 'base'),
     [conceptosPagoCatalogo],
   );
+
+  function resetPlantillaForm() {
+    setPlantillaIdEditing(null);
+    setPlantillaNombre('');
+    setPlantillaCarrera(carrerasBiblioteca[0] || '');
+    setPlantillaCuatrimestre('1');
+    setPlantillaDetalles([
+      {
+        concepto_id: '',
+        monto_sugerido: '',
+        dia_vencimiento: '',
+        fecha_exacta: '',
+      },
+    ]);
+  }
+
+  async function cargarPlantillasPago() {
+    setPlantillasLoading(true);
+    try {
+      const response = await api.get('/control-escolar/pagos/plantillas');
+      setPlantillasPago(response?.data?.items || []);
+    } catch (_error) {
+      setPlantillasPago([]);
+    } finally {
+      setPlantillasLoading(false);
+    }
+  }
+
+  function agregarDetallePlantilla() {
+    setPlantillaDetalles((prev) => ([
+      ...prev,
+      {
+        concepto_id: '',
+        monto_sugerido: '',
+        dia_vencimiento: '',
+        fecha_exacta: '',
+      },
+    ]));
+  }
+
+  function actualizarDetallePlantilla(index, field, value) {
+    setPlantillaDetalles((prev) => prev.map((item, idx) => (idx === index ? { ...item, [field]: value } : item)));
+  }
+
+  function eliminarDetallePlantilla(index) {
+    setPlantillaDetalles((prev) => {
+      if (prev.length === 1) return prev;
+      return prev.filter((_item, idx) => idx !== index);
+    });
+  }
+
+  function editarPlantilla(plantilla) {
+    setPlantillaIdEditing(plantilla.id);
+    setPlantillaNombre(plantilla.nombre_plan || '');
+    setPlantillaCarrera(plantilla.carrera || '');
+    setPlantillaCuatrimestre(String(plantilla.cuatrimestre || 1));
+    setPlantillaDetalles((plantilla.detalles || []).map((detalle) => ({
+      concepto_id: String(detalle.concepto_id || ''),
+      monto_sugerido: String(detalle.monto_sugerido || ''),
+      dia_vencimiento: detalle.dia_vencimiento ? String(detalle.dia_vencimiento) : '',
+      fecha_exacta: detalle.fecha_exacta || '',
+    })));
+  }
+
+  async function guardarPlantillaPago(event) {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+
+    const detalles = plantillaDetalles
+      .map((item) => ({
+        concepto_id: Number(item.concepto_id),
+        monto_sugerido: Number(item.monto_sugerido),
+        dia_vencimiento: item.dia_vencimiento ? Number(item.dia_vencimiento) : null,
+        fecha_exacta: item.fecha_exacta || null,
+      }))
+      .filter((item) => Number.isInteger(item.concepto_id) && Number.isFinite(item.monto_sugerido) && item.monto_sugerido > 0);
+
+    if (detalles.length === 0) {
+      setError('Agrega al menos un detalle válido para la plantilla.');
+      return;
+    }
+
+    try {
+      setSending(true);
+      const payload = {
+        nombre_plan: plantillaNombre.trim(),
+        carrera: plantillaCarrera.trim(),
+        cuatrimestre: Number(plantillaCuatrimestre),
+        detalles,
+      };
+
+      if (plantillaIdEditing) {
+        await api.put(`/control-escolar/pagos/plantillas/${plantillaIdEditing}`, payload);
+        setMessage('Plantilla actualizada correctamente.');
+      } else {
+        await api.post('/control-escolar/pagos/plantillas', payload);
+        setMessage('Plantilla creada correctamente.');
+      }
+
+      await cargarPlantillasPago();
+      resetPlantillaForm();
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo guardar la plantilla de pago.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function previsualizarAsignacionMasiva() {
+    if (!previewPlantillaId) {
+      setError('Selecciona una plantilla para previsualizar cargos.');
+      return;
+    }
+
+    setPreviewLoading(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await api.post('/control-escolar/pagos/previsualizar-masivo', {
+        plantilla_id: Number(previewPlantillaId),
+      });
+      setPreviewCargos(response?.data || null);
+    } catch (requestError) {
+      setPreviewCargos(null);
+      setError(requestError?.response?.data?.message || 'No se pudo previsualizar la asignación masiva.');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function actualizarCeldaCargo(alumnoId, conceptoId, field, value) {
+    setPreviewCargos((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        alumnos: (prev.alumnos || []).map((alumno) => {
+          if (alumno.alumno_id !== alumnoId) return alumno;
+          return {
+            ...alumno,
+            cargos: (alumno.cargos || []).map((cargo) => {
+              if (cargo.concepto_id !== conceptoId) return cargo;
+              return { ...cargo, [field]: value };
+            }),
+          };
+        }),
+      };
+    });
+  }
+
+  async function confirmarAsignacionMasiva() {
+    if (!previewCargos?.alumnos?.length) {
+      setError('No hay cargos previsualizados para confirmar.');
+      return;
+    }
+
+    const payload = previewCargos.alumnos.flatMap((alumno) => (alumno.cargos || []).map((cargo) => ({
+      alumno_id: alumno.alumno_id,
+      concepto_id: cargo.concepto_id,
+      plantilla_id: previewCargos?.plantilla?.id || null,
+      monto_final: Number(cargo.monto_final),
+      fecha_vencimiento: cargo.fecha_vencimiento,
+      estado: 'pendiente',
+    })));
+
+    setConfirmandoCargos(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await api.post('/control-escolar/pagos/confirmar-cargos', { cargos: payload });
+      setMessage(`Cargos creados: ${response?.data?.total_creados || 0}.`);
+      setPreviewCargos(null);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudieron confirmar los cargos.');
+    } finally {
+      setConfirmandoCargos(false);
+    }
+  }
 
   async function submitCobro(values) {
     setSending(true);
@@ -730,6 +927,17 @@ export default function ControlEscolarPage() {
       setBibliotecaCarrera(carrerasBiblioteca[0]);
     }
   }, [carrerasBiblioteca, bibliotecaCarrera]);
+
+  useEffect(() => {
+    if (!plantillaCarrera && carrerasBiblioteca.length > 0) {
+      setPlantillaCarrera(carrerasBiblioteca[0]);
+    }
+  }, [carrerasBiblioteca, plantillaCarrera]);
+
+  useEffect(() => {
+    if (activeTab !== 'planes_pago') return;
+    cargarPlantillasPago();
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab !== 'institucional') return;
@@ -1367,6 +1575,175 @@ export default function ControlEscolarPage() {
                 </table>
               ) : null}
             </div>
+          </article>
+        </div>
+      ) : null}
+
+      {activeTab === 'planes_pago' ? (
+        <div className="ce-grid-2 ce-planes-grid">
+          <article className="ce-card">
+            <h3>Gestor de Plantillas</h3>
+            <form className="form-grid" onSubmit={guardarPlantillaPago}>
+              <label htmlFor="ce-plantilla-nombre">Nombre del plan</label>
+              <input
+                id="ce-plantilla-nombre"
+                value={plantillaNombre}
+                onChange={(event) => setPlantillaNombre(event.target.value)}
+                placeholder="Plan Cuatrimestral Enfermería C2"
+              />
+
+              <label htmlFor="ce-plantilla-carrera">Carrera</label>
+              <select
+                id="ce-plantilla-carrera"
+                value={plantillaCarrera}
+                onChange={(event) => setPlantillaCarrera(event.target.value)}
+              >
+                <option value="" disabled hidden>Selecciona carrera</option>
+                {carrerasBiblioteca.map((carrera) => (
+                  <option key={carrera} value={carrera}>{carrera}</option>
+                ))}
+              </select>
+
+              <label htmlFor="ce-plantilla-cuatrimestre">Cuatrimestre</label>
+              <select
+                id="ce-plantilla-cuatrimestre"
+                value={plantillaCuatrimestre}
+                onChange={(event) => setPlantillaCuatrimestre(event.target.value)}
+              >
+                {CUATRIMESTRE_OPTIONS.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+
+              <div className="ce-plantilla-detalles-head">
+                <h4>Conceptos de cobro</h4>
+                <button type="button" className="btn-secondary" onClick={agregarDetallePlantilla}>+ Agregar concepto</button>
+              </div>
+
+              <div className="ce-plantilla-detalles-list">
+                {plantillaDetalles.map((detalle, index) => (
+                  <div className="ce-plantilla-detalle-row" key={`detalle-${index + 1}`}>
+                    <select
+                      value={detalle.concepto_id}
+                      onChange={(event) => actualizarDetallePlantilla(index, 'concepto_id', event.target.value)}
+                    >
+                      <option value="" disabled hidden>Concepto</option>
+                      {conceptos.map((concepto) => (
+                        <option key={concepto.id_concepto_pago} value={String(concepto.id_concepto_pago)}>{concepto.nombre}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      placeholder="Monto"
+                      value={detalle.monto_sugerido}
+                      onChange={(event) => actualizarDetallePlantilla(index, 'monto_sugerido', event.target.value)}
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      placeholder="Día venc."
+                      value={detalle.dia_vencimiento}
+                      onChange={(event) => actualizarDetallePlantilla(index, 'dia_vencimiento', event.target.value)}
+                    />
+                    <input
+                      type="date"
+                      value={detalle.fecha_exacta}
+                      onChange={(event) => actualizarDetallePlantilla(index, 'fecha_exacta', event.target.value)}
+                    />
+                    <button type="button" className="btn-secondary" onClick={() => eliminarDetallePlantilla(index)} disabled={plantillaDetalles.length === 1}>Quitar</button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="ce-actions-row">
+                <button type="submit" className="btn-primary" disabled={sending}>{sending ? 'Guardando...' : plantillaIdEditing ? 'Actualizar plantilla' : 'Crear plantilla'}</button>
+                {plantillaIdEditing ? <button type="button" className="btn-secondary" onClick={resetPlantillaForm}>Cancelar edición</button> : null}
+              </div>
+            </form>
+
+            <h4 className="ce-plantilla-list-title">Plantillas guardadas</h4>
+            {plantillasLoading ? <p>Cargando plantillas...</p> : null}
+            {!plantillasLoading && plantillasPago.length === 0 ? <p>Sin plantillas registradas.</p> : null}
+            <div className="ce-list">
+              {plantillasPago.map((plantilla) => (
+                <button key={plantilla.id} type="button" className="ce-list-item" onClick={() => editarPlantilla(plantilla)}>
+                  <strong>{plantilla.nombre_plan}</strong>
+                  <span>{`${plantilla.carrera} · Cuatrimestre ${plantilla.cuatrimestre}`}</span>
+                  <span>{`${(plantilla.detalles || []).length} conceptos`}</span>
+                </button>
+              ))}
+            </div>
+          </article>
+
+          <article className="ce-card">
+            <h3>Asignación Masiva (Previsualización Editable)</h3>
+            <div className="ce-filters">
+              <select value={previewPlantillaId} onChange={(event) => setPreviewPlantillaId(event.target.value)}>
+                <option value="" disabled hidden>Selecciona una plantilla</option>
+                {plantillasPago.map((plantilla) => (
+                  <option key={plantilla.id} value={String(plantilla.id)}>{`${plantilla.nombre_plan} · ${plantilla.carrera} C${plantilla.cuatrimestre}`}</option>
+                ))}
+              </select>
+              <button type="button" className="btn-secondary" onClick={previsualizarAsignacionMasiva} disabled={previewLoading}>{previewLoading ? 'Cargando...' : 'Previsualizar alumnos y cargos'}</button>
+            </div>
+
+            {previewCargos?.alumnos?.length ? (
+              <>
+                <p className="ce-selected-badge">{`${previewCargos.plantilla?.nombre_plan} · ${previewCargos.alumnos.length} alumnos`}</p>
+                <div className="table-wrap ce-table-wrap ce-spreadsheet-wrap">
+                  <table className="ce-spreadsheet-table">
+                    <thead>
+                      <tr>
+                        <th>Alumno</th>
+                        {(previewCargos.conceptos || []).map((concepto) => (
+                          <th key={`head-${concepto.concepto_id}`}>{concepto.concepto_nombre}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(previewCargos.alumnos || []).map((alumno) => (
+                        <tr key={`alumno-${alumno.alumno_id}`}>
+                          <td>
+                            <strong>{alumno.nombre_completo}</strong>
+                            <p>{alumno.folio_matricula || 'SIN-FOLIO'}</p>
+                          </td>
+                          {(previewCargos.conceptos || []).map((concepto) => {
+                            const cargo = (alumno.cargos || []).find((item) => item.concepto_id === concepto.concepto_id);
+                            return (
+                              <td key={`cell-${alumno.alumno_id}-${concepto.concepto_id}`}>
+                                <input
+                                  className="ce-cell-input"
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={cargo?.monto_final ?? ''}
+                                  onChange={(event) => actualizarCeldaCargo(alumno.alumno_id, concepto.concepto_id, 'monto_final', event.target.value)}
+                                />
+                                <input
+                                  className="ce-cell-input ce-cell-date"
+                                  type="date"
+                                  value={cargo?.fecha_vencimiento || ''}
+                                  onChange={(event) => actualizarCeldaCargo(alumno.alumno_id, concepto.concepto_id, 'fecha_vencimiento', event.target.value)}
+                                />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="ce-actions-row">
+                  <button type="button" className="btn-primary" onClick={confirmarAsignacionMasiva} disabled={confirmandoCargos}>{confirmandoCargos ? 'Confirmando...' : 'Confirmar cargos masivos'}</button>
+                </div>
+              </>
+            ) : (
+              <p>Selecciona una plantilla y genera la previsualización para editar montos y vencimientos.</p>
+            )}
           </article>
         </div>
       ) : null}

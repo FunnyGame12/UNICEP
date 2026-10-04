@@ -18,6 +18,7 @@ const {
   SalaVideoDocente,
   AsistenciaDocente,
   ConceptoPago,
+  CargoAlumno,
   AnuncioDocente,
   CalificacionFormativaDocente,
   NotificacionAlumno,
@@ -1361,6 +1362,44 @@ async function pagos(req, res) {
   });
 }
 
+async function cargosAlumno(req, res) {
+  const validacion = await validarAccesoAlumno(req);
+  if (!validacion.ok) {
+    return res.status(validacion.status).json(validacion.payload);
+  }
+
+  const items = await CargoAlumno.findAll({
+    where: { alumno_id: validacion.idAlumno },
+    include: [{
+      model: ConceptoPago,
+      as: 'concepto',
+      attributes: ['id_concepto_pago', 'nombre', 'folio_interno'],
+    }],
+    order: [['fecha_vencimiento', 'ASC'], ['id', 'ASC']],
+  });
+
+  const totalPendiente = items
+    .filter((item) => item.estado === 'pendiente')
+    .reduce((acc, item) => acc + Number(item.monto_final || 0), 0);
+
+  return res.json({
+    items: items.map((item) => ({
+      id: item.id,
+      alumno_id: item.alumno_id,
+      concepto_id: item.concepto_id,
+      concepto: item.concepto?.nombre || 'Concepto',
+      folio_interno: item.concepto?.folio_interno || null,
+      monto_final: Number(item.monto_final || 0),
+      fecha_vencimiento: item.fecha_vencimiento,
+      estado: item.estado,
+    })),
+    resumen: {
+      total_pendiente: totalPendiente,
+      total_cargos: items.length,
+    },
+  });
+}
+
 async function materiales(req, res) {
   return materialesClase(req, res);
 }
@@ -1919,6 +1958,7 @@ module.exports = {
   tareas,
   asistencias,
   pagos,
+  cargosAlumno,
   portafolio,
   subirDocumentoPortafolio,
   portafolioRecursos,

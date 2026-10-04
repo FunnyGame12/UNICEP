@@ -20,6 +20,11 @@ router.get('/catalogos-extraordinario', controlEscolarController.catalogosExtrao
 router.get('/comprobantes-pendientes', controlEscolarController.comprobantesPendientes);
 router.post('/pagos/generar-cuatrimestrales', controlEscolarController.generarPagosCuatrimestrales);
 router.post('/pagos/adicional', controlEscolarController.crearPagoAdicional);
+router.get('/pagos/plantillas', controlEscolarController.listarPlantillasPago);
+router.post('/pagos/plantillas', controlEscolarController.crearPlantillaPago);
+router.put('/pagos/plantillas/:plantillaId', controlEscolarController.actualizarPlantillaPago);
+router.post('/pagos/previsualizar-masivo', controlEscolarController.previsualizarCargosMasivos);
+router.post('/pagos/confirmar-cargos', controlEscolarController.confirmarCargosMasivos);
 router.post('/registrar-cobro-caja', controlEscolarController.registrarCobroCaja);
 router.put('/validar-comprobante/:pagoId', controlEscolarController.validarComprobante);
 

@@ -28,18 +28,6 @@ const rolLabels = {
   director: 'Dirección',
 };
 
-const pagoEstatusLabels = {
-  pendiente: 'Pendiente',
-  en_revision: 'En revisión',
-  aprobado: 'Aprobado',
-};
-
-const pagoEstatusBadgeClass = {
-  pendiente: 'badge-neutral',
-  en_revision: 'badge-warn',
-  aprobado: 'badge-success',
-};
-
 const portafolioBadgeInfo = {
   validado: { label: 'Validado para Boleta', className: 'badge-success' },
   pendiente: { label: 'Pendiente de revision', className: 'badge-warn' },
@@ -174,6 +162,7 @@ export default function AlumnoPage() {
   const [tiposTramiteCatalogo, setTiposTramiteCatalogo] = useState([]);
   const [avisos, setAvisos] = useState([]);
   const [pagos, setPagos] = useState({ items: [], resumen: null });
+  const [cargos, setCargos] = useState({ items: [], resumen: null });
   const [conceptosPago, setConceptosPago] = useState([]);
   const [misEvidencias, setMisEvidencias] = useState([]);
   const [recursosInstitucionales, setRecursosInstitucionales] = useState([]);
@@ -314,13 +303,24 @@ export default function AlumnoPage() {
       setAcceso(estadoResp.data);
       setPagos(pagosResp.data || { items: [], resumen: null });
 
+      const idAlumno = Number(estadoResp.data?.id_alumno || 0);
+      const cargosResp = idAlumno > 0
+        ? await api.get(`/alumno/${idAlumno}/cargos`).catch(() => ({ data: { items: [], resumen: null } }))
+        : { data: { items: [], resumen: null } };
+      setCargos(cargosResp.data || { items: [], resumen: null });
+
       const conceptosUnicos = [];
       const seen = new Set();
-      (pagosResp.data?.items || []).forEach((item) => {
-        if (!item.id_concepto_pago || seen.has(item.id_concepto_pago)) return;
-        seen.add(item.id_concepto_pago);
+      const fuenteConceptos = (cargosResp.data?.items || []).length > 0
+        ? cargosResp.data.items.map((item) => ({ id_concepto_pago: item.concepto_id, concepto: item.concepto }))
+        : (pagosResp.data?.items || []);
+
+      fuenteConceptos.forEach((item) => {
+        const conceptoId = Number(item.id_concepto_pago);
+        if (!conceptoId || seen.has(conceptoId)) return;
+        seen.add(conceptoId);
         conceptosUnicos.push({
-          id_concepto_pago: item.id_concepto_pago,
+          id_concepto_pago: conceptoId,
           nombre: item.concepto,
         });
       });
@@ -347,8 +347,6 @@ export default function AlumnoPage() {
         setCalificacionesBloqueadas(Boolean(estadoResp.data?.bloqueo_calificaciones));
         return;
       }
-
-      const idAlumno = Number(estadoResp.data?.id_alumno || 0);
 
       const [horarioResp, asistenciaResp, avisosResp, calificacionesResp, portafolioResp, expedienteResp, bibliotecaResp] = await Promise.all([
         api.get('/alumno/horario-aulas'),
@@ -1006,7 +1004,7 @@ export default function AlumnoPage() {
 
           <article className="alumno-card full-width">
             <h3>Estado de Pagos del Cuatrimestre</h3>
-            {pagos.items.length === 0 ? (
+            {(cargos.items || []).length === 0 ? (
               <p className="alumno-empty">No hay pagos registrados.</p>
             ) : (
               <div className="table-wrap dark-table">
@@ -1020,14 +1018,14 @@ export default function AlumnoPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {pagos.items.map((item) => (
-                      <tr key={item.id_pago || `${item.concepto}-${item.fecha_limite}`}>
+                    {(cargos.items || []).map((item) => (
+                      <tr key={item.id || `${item.concepto}-${item.fecha_vencimiento}`}>
                         <td>{item.concepto || 'Pago'}</td>
-                        <td>{Number(item.monto || 0).toFixed(2)} MXN</td>
-                        <td>{formatDate(item.fecha_limite, false)}</td>
+                        <td>{Number(item.monto_final || 0).toFixed(2)} MXN</td>
+                        <td>{formatDate(item.fecha_vencimiento, false)}</td>
                         <td>
-                          <span className={`status-badge ${pagoEstatusBadgeClass[item.estatus_visible] || 'badge-neutral'}`}>
-                            {pagoEstatusLabels[item.estatus_visible] || item.estatus_visible}
+                          <span className={`status-badge ${item.estado === 'pagado' ? 'badge-success' : item.estado === 'cancelado' ? 'badge-danger' : 'badge-neutral'}`}>
+                            {item.estado === 'pagado' ? 'Pagado' : item.estado === 'cancelado' ? 'Cancelado' : 'Pendiente'}
                           </span>
                         </td>
                       </tr>
