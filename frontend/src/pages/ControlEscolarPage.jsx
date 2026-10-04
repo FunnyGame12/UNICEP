@@ -56,6 +56,7 @@ const tabs = [
 
 const DASHBOARD_LABEL_CLASS = 'block text-sm font-medium text-gray-400 mb-2';
 const DASHBOARD_FIELD_CLASS = 'w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors';
+const CUATRIMESTRE_OPTIONS = Array.from({ length: 10 }, (_item, index) => String(index + 1));
 
 function buildCajaReference() {
   const yearSuffix = String(new Date().getFullYear()).slice(-2);
@@ -153,6 +154,8 @@ export default function ControlEscolarPage() {
   const [listaSemestres, setListaSemestres] = useState([]);
   const [listaGrupos, setListaGrupos] = useState([]);
   const [urlBiblioteca, setUrlBiblioteca] = useState('');
+  const [bibliotecaCarrera, setBibliotecaCarrera] = useState('');
+  const [bibliotecaCuatrimestre, setBibliotecaCuatrimestre] = useState('1');
 
   const cobroForm = useForm({
     resolver: zodResolver(cobroCajaSchema),
@@ -190,6 +193,19 @@ export default function ControlEscolarPage() {
   const esExtraordinarioCobro = Boolean(
     conceptoSeleccionadoCobro && /extraordinario/i.test(conceptoSeleccionadoCobro.nombre || ''),
   );
+
+  const carrerasBiblioteca = useMemo(() => {
+    const seen = new Set();
+    return alumnos
+      .map((item) => String(item?.carrera || '').trim())
+      .filter((item) => {
+        if (!item) return false;
+        if (seen.has(item)) return false;
+        seen.add(item);
+        return true;
+      })
+      .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+  }, [alumnos]);
 
   function regenerateCajaReference() {
     const newFolio = buildCajaReference();
@@ -424,15 +440,6 @@ export default function ControlEscolarPage() {
     }
   }
 
-  async function cargarConfiguracionBiblioteca() {
-    try {
-      const response = await api.get('/control-escolar/configuracion/biblioteca');
-      setUrlBiblioteca(response?.data?.valor || '');
-    } catch (_error) {
-      setUrlBiblioteca('');
-    }
-  }
-
   function limpiarFormularioRecursos() {
     setRecursoTitulo('');
     setRecursoArchivo(null);
@@ -563,13 +570,30 @@ export default function ControlEscolarPage() {
     setMessage('');
 
     try {
-      const valor = urlBiblioteca.trim();
-      if (!valor) {
+      const carrera = bibliotecaCarrera.trim();
+      const cuatrimestre = Number(bibliotecaCuatrimestre);
+      const url = urlBiblioteca.trim();
+
+      if (!carrera) {
+        setError('Selecciona una carrera.');
+        return;
+      }
+
+      if (!Number.isInteger(cuatrimestre) || cuatrimestre <= 0) {
+        setError('Selecciona un cuatrimestre valido.');
+        return;
+      }
+
+      if (!url) {
         setError('La URL de Biblioteca Virtual es obligatoria.');
         return;
       }
 
-      await api.put('/control-escolar/configuracion/biblioteca', { valor });
+      await api.post('/admin/biblioteca', {
+        carrera,
+        cuatrimestre,
+        url_biblioteca: url,
+      });
       setMessage('Enlace de Biblioteca Virtual guardado correctamente.');
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo guardar el enlace de Biblioteca Virtual.');
@@ -579,8 +603,10 @@ export default function ControlEscolarPage() {
   }
 
   useEffect(() => {
-    cargarConfiguracionBiblioteca();
-  }, []);
+    if (!bibliotecaCarrera && carrerasBiblioteca.length > 0) {
+      setBibliotecaCarrera(carrerasBiblioteca[0]);
+    }
+  }, [carrerasBiblioteca, bibliotecaCarrera]);
 
   useEffect(() => {
     if (activeTab !== 'institucional') return;
@@ -1449,9 +1475,38 @@ export default function ControlEscolarPage() {
 
           <article className="bg-gray-900 border border-gray-800 rounded-xl p-6">
             <h3 className="text-white text-lg font-semibold mb-2">📚 Enlace de Biblioteca Virtual</h3>
-            <p className="text-sm text-gray-400 mb-4">Este enlace será visible para todos los alumnos en su panel institucional.</p>
+            <p className="text-sm text-gray-400 mb-4">Configura la URL por carrera y cuatrimestre para asignación dinámica en el portal estudiantil.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+              <div>
+                <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-biblioteca-carrera">Licenciatura / Carrera</label>
+                <select
+                  className={DASHBOARD_FIELD_CLASS}
+                  id="ce-biblioteca-carrera"
+                  value={bibliotecaCarrera}
+                  onChange={(event) => setBibliotecaCarrera(event.target.value)}
+                >
+                  <option value="" disabled hidden>Selecciona carrera</option>
+                  {carrerasBiblioteca.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-biblioteca-cuatrimestre">Cuatrimestre</label>
+                <select
+                  className={DASHBOARD_FIELD_CLASS}
+                  id="ce-biblioteca-cuatrimestre"
+                  value={bibliotecaCuatrimestre}
+                  onChange={(event) => setBibliotecaCuatrimestre(event.target.value)}
+                >
+                  {CUATRIMESTRE_OPTIONS.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="md:col-span-2">
                 <label className={DASHBOARD_LABEL_CLASS} htmlFor="ce-url-biblioteca">URL de Biblioteca Virtual</label>
                 <input
@@ -1463,7 +1518,8 @@ export default function ControlEscolarPage() {
                   onChange={(event) => setUrlBiblioteca(event.target.value)}
                 />
               </div>
-              <div>
+
+              <div className="md:col-span-2">
                 <button
                   type="button"
                   className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-6 py-2 transition-colors"

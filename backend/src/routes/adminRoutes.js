@@ -30,6 +30,7 @@ router.patch('/usuarios/:id_usuario/cuenta', requirePermission(PERMISSIONS.ADMIN
 
 router.post('/materias', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_MATERIAS_CREATE), adminController.crearMateria);
 router.post('/docente-grupos', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_DOCENTE_GRUPOS_CREATE), adminController.asignarDocenteAGrupo);
+router.post('/biblioteca', requirePermission(PERMISSIONS.ADMIN_DASHBOARD_READ), adminController.guardarBibliotecaConfig);
 
 router.get('/reportes/financieros', requirePermission(PERMISSIONS.ADMIN_REPORTES_FINANCIEROS_READ), adminController.reporteFinanciero);
 router.get('/respaldo', requirePermission(PERMISSIONS.ADMIN_RESPALDO_READ), adminController.respaldoMetadatos);

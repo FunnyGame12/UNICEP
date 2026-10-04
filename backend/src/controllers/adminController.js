@@ -7,6 +7,7 @@ const {
   sequelize,
   Sequelize,
   Usuario,
+  BibliotecaConfig,
   ConceptoPago,
   PagoEstatus,
   PeriodoAcademico,
@@ -79,6 +80,16 @@ function normalizeRoleForTable(value) {
 
 function normalizeText(value) {
   return String(value || '').trim();
+}
+
+function esUrlValida(value) {
+  try {
+    // eslint-disable-next-line no-new
+    new URL(value);
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 function normalizeGroupCode(value) {
@@ -2159,6 +2170,43 @@ async function sincronizarGrupoAlumnoMateria(req, res) {
   });
 }
 
+async function guardarBibliotecaConfig(req, res) {
+  const carrera = normalizeText(req.body.carrera);
+  const cuatrimestre = Number(req.body.cuatrimestre);
+  const urlBiblioteca = normalizeText(req.body.url_biblioteca);
+
+  if (!carrera) {
+    return res.status(400).json({ message: 'carrera es obligatoria.' });
+  }
+
+  if (!Number.isInteger(cuatrimestre) || cuatrimestre <= 0) {
+    return res.status(400).json({ message: 'cuatrimestre debe ser un entero mayor a 0.' });
+  }
+
+  if (!urlBiblioteca || !esUrlValida(urlBiblioteca)) {
+    return res.status(400).json({ message: 'url_biblioteca debe ser una URL valida.' });
+  }
+
+  await BibliotecaConfig.upsert({
+    carrera,
+    cuatrimestre,
+    url_biblioteca: urlBiblioteca,
+  });
+
+  const registro = await BibliotecaConfig.findOne({
+    where: { carrera, cuatrimestre },
+    attributes: ['id', 'carrera', 'cuatrimestre', 'url_biblioteca', 'updated_at'],
+  });
+
+  return res.status(201).json({
+    id: registro?.id || null,
+    carrera,
+    cuatrimestre,
+    url_biblioteca: registro?.url_biblioteca || urlBiblioteca,
+    updated_at: registro?.updated_at || null,
+  });
+}
+
 module.exports = {
   buscarUsuariosDirector,
   buscarAlumnosOverrideDirector,
@@ -2197,4 +2245,5 @@ module.exports = {
   asignarAlumnoAGrupo,
   desasignarAlumnoDeGrupo,
   sincronizarGrupoAlumnoMateria,
+  guardarBibliotecaConfig,
 };

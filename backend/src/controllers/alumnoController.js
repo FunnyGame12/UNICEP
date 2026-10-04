@@ -28,6 +28,7 @@ const {
   RecursoAcademico,
   RecursoInstitucional,
   PortafolioMateriaEvidencia,
+  BibliotecaConfig,
 } = require('../../models');
 const { generarWorkbookBoleta } = require('../services/boletaService');
 const { registrarEventoAuditoria } = require('../services/auditService');
@@ -1828,6 +1829,48 @@ async function recursosInstitucionalesPorAlumno(req, res) {
   });
 }
 
+async function obtenerBibliotecaAlumno(req, res) {
+  const alumnoId = toNumber(req.params.id);
+  if (!Number.isInteger(alumnoId)) {
+    return res.status(400).json({ message: 'id invalido.' });
+  }
+
+  const idAutenticado = getAuthenticatedAlumnoId(req);
+  if (idAutenticado !== alumnoId) {
+    return res.status(403).json({ message: 'No puedes consultar recursos de otro alumno.' });
+  }
+
+  const alumno = await AlumnoPerfil.findByPk(alumnoId, {
+    attributes: ['id_alumno', 'carrera', 'bimestre_actual'],
+  });
+
+  if (!alumno) {
+    return res.status(404).json({ message: 'Alumno no encontrado.' });
+  }
+
+  const carrera = normalizeText(alumno.carrera);
+  const cuatrimestre = Number(alumno.bimestre_actual);
+
+  if (!carrera || !Number.isInteger(cuatrimestre) || cuatrimestre <= 0) {
+    return res.json({
+      carrera: carrera || null,
+      cuatrimestre: Number.isInteger(cuatrimestre) ? cuatrimestre : null,
+      url_biblioteca: null,
+    });
+  }
+
+  const config = await BibliotecaConfig.findOne({
+    where: { carrera, cuatrimestre },
+    attributes: ['url_biblioteca'],
+  });
+
+  return res.json({
+    carrera,
+    cuatrimestre,
+    url_biblioteca: config?.url_biblioteca || null,
+  });
+}
+
 async function tiposTramite(_req, res) {
   return res.json({
     items: TRAMITES_ESCOLARES.map((tipo) => ({
@@ -1890,6 +1933,7 @@ module.exports = {
   descartarAviso,
   recursosInstitucionales,
   recursosInstitucionalesPorAlumno,
+  obtenerBibliotecaAlumno,
   tiposTramite,
   descargarRecursoAcademico,
 };

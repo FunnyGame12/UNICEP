@@ -177,6 +177,11 @@ export default function AlumnoPage() {
   const [conceptosPago, setConceptosPago] = useState([]);
   const [misEvidencias, setMisEvidencias] = useState([]);
   const [recursosInstitucionales, setRecursosInstitucionales] = useState([]);
+  const [bibliotecaVirtual, setBibliotecaVirtual] = useState({
+    carrera: null,
+    cuatrimestre: null,
+    url_biblioteca: null,
+  });
   const [expedienteItems, setExpedienteItems] = useState([]);
   const [draftsPortafolio, setDraftsPortafolio] = useState({});
   const [savingMateriaId, setSavingMateriaId] = useState(null);
@@ -336,6 +341,7 @@ export default function AlumnoPage() {
         setAvisos([]);
         setMisEvidencias([]);
         setRecursosInstitucionales([]);
+        setBibliotecaVirtual({ carrera: null, cuatrimestre: null, url_biblioteca: null });
         setExpedienteItems([]);
         setDraftsPortafolio({});
         setCalificacionesBloqueadas(Boolean(estadoResp.data?.bloqueo_calificaciones));
@@ -344,7 +350,7 @@ export default function AlumnoPage() {
 
       const idAlumno = Number(estadoResp.data?.id_alumno || 0);
 
-      const [horarioResp, asistenciaResp, avisosResp, calificacionesResp, portafolioResp, expedienteResp] = await Promise.all([
+      const [horarioResp, asistenciaResp, avisosResp, calificacionesResp, portafolioResp, expedienteResp, bibliotecaResp] = await Promise.all([
         api.get('/alumno/horario-aulas'),
         api.get('/alumno/asistencia'),
         api.get('/avisos/alumnos').catch(() => ({ data: { items: [] } })),
@@ -359,6 +365,9 @@ export default function AlumnoPage() {
           ? api.get(`/alumno/${idAlumno}/portafolio-recursos`).catch(() => ({ data: { misEvidencias: [], recursosInstitucionales: [] } }))
           : Promise.resolve({ data: { misEvidencias: [], recursosInstitucionales: [] } }),
         api.get('/alumno/portafolio').catch(() => ({ data: { items: [] } })),
+        idAlumno > 0
+          ? api.get(`/alumno/${idAlumno}/biblioteca`).catch(() => ({ data: { carrera: null, cuatrimestre: null, url_biblioteca: null } }))
+          : Promise.resolve({ data: { carrera: null, cuatrimestre: null, url_biblioteca: null } }),
       ]);
 
       setHorario(horarioResp.data?.items || []);
@@ -368,6 +377,11 @@ export default function AlumnoPage() {
       const evidencias = portafolioResp.data?.misEvidencias || [];
       setMisEvidencias(evidencias);
       setRecursosInstitucionales(portafolioResp.data?.recursosInstitucionales || []);
+      setBibliotecaVirtual({
+        carrera: bibliotecaResp.data?.carrera || null,
+        cuatrimestre: bibliotecaResp.data?.cuatrimestre || null,
+        url_biblioteca: bibliotecaResp.data?.url_biblioteca || null,
+      });
       setExpedienteItems((expedienteResp.data?.items || []).filter((item) => String(item.origen || '').toLowerCase() === 'alumno'));
       setDraftsPortafolio((prev) => {
         const next = { ...prev };
@@ -612,6 +626,29 @@ export default function AlumnoPage() {
 
       {activeTab === 'resumen' ? (
         <div className="alumno-section-grid">
+          <article className="alumno-card full-width">
+            <h3>📚 Biblioteca Virtual</h3>
+            <p>
+              {bibliotecaVirtual?.url_biblioteca
+                ? `Enlace asignado para ${bibliotecaVirtual.carrera || 'tu carrera'} · Cuatrimestre ${bibliotecaVirtual.cuatrimestre || 'N/A'}.`
+                : 'Aun no hay enlace de biblioteca configurado para tu cuatrimestre actual.'}
+            </p>
+            {bibliotecaVirtual?.url_biblioteca ? (
+              <a
+                href={bibliotecaVirtual.url_biblioteca}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-primary"
+              >
+                Abrir Biblioteca Virtual
+              </a>
+            ) : (
+              <button type="button" className="btn-primary" disabled>
+                Biblioteca no disponible
+              </button>
+            )}
+          </article>
+
           <article className="alumno-card full-width">
             <h3>📢 Avisos y Comunicados Oficiales</h3>
             {avisos.length === 0 ? (
