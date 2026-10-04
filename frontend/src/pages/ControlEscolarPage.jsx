@@ -1220,12 +1220,28 @@ export default function ControlEscolarPage() {
 
                 <form className="form-grid" onSubmit={driveFolderForm.handleSubmit(guardarDriveFolder)}>
                   <label htmlFor="ce-drive-folder">URL de carpeta de Google Drive</label>
-                  <input
-                    id="ce-drive-folder"
-                    type="url"
-                    placeholder="https://drive.google.com/drive/folders/..."
-                    {...driveFolderForm.register('drive_folder_url')}
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="w-full"
+                      id="ce-drive-folder"
+                      type="url"
+                      placeholder="https://drive.google.com/drive/folders/..."
+                      {...driveFolderForm.register('drive_folder_url')}
+                    />
+                    {portafolioData.alumno?.drive_folder_url ? (
+                      <a
+                        href={portafolioData.alumno.drive_folder_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2 whitespace-nowrap"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                        Abrir
+                      </a>
+                    ) : null}
+                  </div>
                   {driveFolderForm.formState.errors.drive_folder_url ? <small>{driveFolderForm.formState.errors.drive_folder_url.message}</small> : null}
                   <button type="submit" className="btn-secondary" disabled={sending}>Guardar carpeta de Drive</button>
                 </form>
