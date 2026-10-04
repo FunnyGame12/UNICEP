@@ -463,10 +463,16 @@ export default function ControlEscolarPage() {
     [conceptosPagoCatalogo],
   );
 
+  const carrerasPlantillas = useMemo(() => {
+    const fromCatalogo = (listaCarreras || []).map((item) => item?.value).filter(Boolean);
+    if (fromCatalogo.length > 0) return fromCatalogo;
+    return carrerasBiblioteca;
+  }, [listaCarreras, carrerasBiblioteca]);
+
   function resetPlantillaForm() {
     setPlantillaIdEditing(null);
     setPlantillaNombre('');
-    setPlantillaCarrera(carrerasBiblioteca[0] || '');
+    setPlantillaCarrera(carrerasPlantillas[0] || '');
     setPlantillaCuatrimestre('1');
     setPlantillaDetalles([
       {
@@ -488,6 +494,11 @@ export default function ControlEscolarPage() {
     } finally {
       setPlantillasLoading(false);
     }
+  }
+
+  async function cargarCarrerasCatalogo() {
+    const data = await cargarCatalogosRecursos();
+    setListaCarreras(data.carreras || []);
   }
 
   function agregarDetallePlantilla() {
@@ -929,14 +940,20 @@ export default function ControlEscolarPage() {
   }, [carrerasBiblioteca, bibliotecaCarrera]);
 
   useEffect(() => {
-    if (!plantillaCarrera && carrerasBiblioteca.length > 0) {
-      setPlantillaCarrera(carrerasBiblioteca[0]);
+    if (!plantillaCarrera && carrerasPlantillas.length > 0) {
+      setPlantillaCarrera(carrerasPlantillas[0]);
     }
-  }, [carrerasBiblioteca, plantillaCarrera]);
+  }, [carrerasPlantillas, plantillaCarrera]);
+
+  useEffect(() => {
+    cargarCarrerasCatalogo();
+  }, []);
 
   useEffect(() => {
     if (activeTab !== 'planes_pago') return;
-    cargarPlantillasPago();
+    (async () => {
+      await Promise.all([cargarPlantillasPago(), cargarCarrerasCatalogo()]);
+    })();
   }, [activeTab]);
 
   useEffect(() => {
@@ -1583,9 +1600,10 @@ export default function ControlEscolarPage() {
         <div className="ce-grid-2 ce-planes-grid">
           <article className="ce-card">
             <h3>Gestor de Plantillas</h3>
-            <form className="form-grid" onSubmit={guardarPlantillaPago}>
+            <form className="form-grid ce-plantillas-form" onSubmit={guardarPlantillaPago}>
               <label htmlFor="ce-plantilla-nombre">Nombre del plan</label>
               <input
+                className="ce-control-field"
                 id="ce-plantilla-nombre"
                 value={plantillaNombre}
                 onChange={(event) => setPlantillaNombre(event.target.value)}
@@ -1594,18 +1612,20 @@ export default function ControlEscolarPage() {
 
               <label htmlFor="ce-plantilla-carrera">Carrera</label>
               <select
+                className="ce-control-field"
                 id="ce-plantilla-carrera"
                 value={plantillaCarrera}
                 onChange={(event) => setPlantillaCarrera(event.target.value)}
               >
-                <option value="" disabled hidden>Selecciona carrera</option>
-                {carrerasBiblioteca.map((carrera) => (
+                <option value="">Selecciona carrera</option>
+                {carrerasPlantillas.map((carrera) => (
                   <option key={carrera} value={carrera}>{carrera}</option>
                 ))}
               </select>
 
               <label htmlFor="ce-plantilla-cuatrimestre">Cuatrimestre</label>
               <select
+                className="ce-control-field"
                 id="ce-plantilla-cuatrimestre"
                 value={plantillaCuatrimestre}
                 onChange={(event) => setPlantillaCuatrimestre(event.target.value)}
@@ -1617,13 +1637,14 @@ export default function ControlEscolarPage() {
 
               <div className="ce-plantilla-detalles-head">
                 <h4>Conceptos de cobro</h4>
-                <button type="button" className="btn-secondary" onClick={agregarDetallePlantilla}>+ Agregar concepto</button>
+                <button type="button" className="btn-secondary ce-btn-add-concepto" onClick={agregarDetallePlantilla}>+ Agregar concepto</button>
               </div>
 
               <div className="ce-plantilla-detalles-list">
                 {plantillaDetalles.map((detalle, index) => (
                   <div className="ce-plantilla-detalle-row" key={`detalle-${index + 1}`}>
                     <select
+                      className="ce-control-field"
                       value={detalle.concepto_id}
                       onChange={(event) => actualizarDetallePlantilla(index, 'concepto_id', event.target.value)}
                     >
@@ -1633,6 +1654,7 @@ export default function ControlEscolarPage() {
                       ))}
                     </select>
                     <input
+                      className="ce-control-field"
                       type="number"
                       min="0.01"
                       step="0.01"
@@ -1641,6 +1663,7 @@ export default function ControlEscolarPage() {
                       onChange={(event) => actualizarDetallePlantilla(index, 'monto_sugerido', event.target.value)}
                     />
                     <input
+                      className="ce-control-field"
                       type="number"
                       min="1"
                       max="31"
@@ -1649,17 +1672,18 @@ export default function ControlEscolarPage() {
                       onChange={(event) => actualizarDetallePlantilla(index, 'dia_vencimiento', event.target.value)}
                     />
                     <input
+                      className="ce-control-field"
                       type="date"
                       value={detalle.fecha_exacta}
                       onChange={(event) => actualizarDetallePlantilla(index, 'fecha_exacta', event.target.value)}
                     />
-                    <button type="button" className="btn-secondary" onClick={() => eliminarDetallePlantilla(index)} disabled={plantillaDetalles.length === 1}>Quitar</button>
+                    <button type="button" className="btn-secondary ce-btn-remove-concepto" onClick={() => eliminarDetallePlantilla(index)} disabled={plantillaDetalles.length === 1}>Quitar</button>
                   </div>
                 ))}
               </div>
 
-              <div className="ce-actions-row">
-                <button type="submit" className="btn-primary" disabled={sending}>{sending ? 'Guardando...' : plantillaIdEditing ? 'Actualizar plantilla' : 'Crear plantilla'}</button>
+              <div className="ce-actions-row ce-plantilla-actions-row">
+                <button type="submit" className="btn-primary ce-btn-submit-plantilla" disabled={sending}>{sending ? 'Guardando...' : plantillaIdEditing ? 'Actualizar plantilla' : 'Crear plantilla'}</button>
                 {plantillaIdEditing ? <button type="button" className="btn-secondary" onClick={resetPlantillaForm}>Cancelar edición</button> : null}
               </div>
             </form>

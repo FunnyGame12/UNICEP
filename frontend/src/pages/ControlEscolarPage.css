@@ -663,14 +663,57 @@
 
 .ce-plantilla-detalles-list {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.9rem;
+  margin-top: 0.5rem;
 }
 
 .ce-plantilla-detalle-row {
   display: grid;
-  gap: 0.45rem;
-  grid-template-columns: 2fr 1fr 1fr 1.2fr auto;
+  gap: 1rem;
+  grid-template-columns: 2fr 1fr 1fr 2fr auto;
   align-items: center;
+  padding: 0.6rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ce-plantillas-form .ce-control-field {
+  width: 100%;
+  height: 42px;
+  min-height: 42px;
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+  border: 1px solid #374151;
+  background-color: #111827;
+  color: #f9fafb;
+  font: inherit;
+}
+
+.ce-plantillas-form .ce-control-field:focus {
+  outline: 2px solid rgba(79, 140, 255, 0.35);
+  border-color: rgba(79, 140, 255, 0.4);
+}
+
+.ce-btn-add-concepto {
+  background: transparent;
+  border-color: #4f8cff;
+  color: #bfdbfe;
+}
+
+.ce-btn-remove-concepto {
+  background: rgba(127, 29, 29, 0.3);
+  border-color: rgba(248, 113, 113, 0.5);
+  color: #fecaca;
+}
+
+.ce-plantilla-actions-row {
+  margin-top: 1.5rem;
+}
+
+.ce-btn-submit-plantilla {
+  background: #2563eb;
+  border-color: #2563eb;
 }
 
 .ce-spreadsheet-wrap {
