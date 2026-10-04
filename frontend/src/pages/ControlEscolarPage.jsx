@@ -1654,7 +1654,7 @@ export default function ControlEscolarPage() {
                       ))}
                     </select>
                     <input
-                      className="ce-control-field"
+                      className="ce-control-field ce-control-field-short"
                       type="number"
                       min="0.01"
                       step="0.01"
@@ -1663,7 +1663,7 @@ export default function ControlEscolarPage() {
                       onChange={(event) => actualizarDetallePlantilla(index, 'monto_sugerido', event.target.value)}
                     />
                     <input
-                      className="ce-control-field"
+                      className="ce-control-field ce-control-field-short"
                       type="number"
                       min="1"
                       max="31"
