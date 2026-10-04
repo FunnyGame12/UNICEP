@@ -1,5 +1,6 @@
 const { PermisoTemporal } = require('../../models');
 const { getPermisoTemporalActivo } = require('../services/permisoTemporalService');
+const { ROLES } = require('../constants/rbac');
 
 function normalizeText(value) {
   return String(value || '').trim().toLowerCase();
@@ -7,7 +8,9 @@ function normalizeText(value) {
 
 async function verificarPermisoTemporal(req, res) {
   const modulo = normalizeText(req.params.modulo);
-  const rol = normalizeText(req.user?.rol);
+  const rolSesion = normalizeText(req.user?.rol);
+  const rolParam = normalizeText(req.query.rol);
+  const rol = rolParam && rolSesion === ROLES.DIRECTOR ? rolParam : rolSesion;
 
   if (!modulo) {
     return res.status(400).json({ message: 'modulo es obligatorio.' });
