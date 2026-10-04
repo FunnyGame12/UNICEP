@@ -900,23 +900,23 @@ export default function DirectorPage() {
         <section className="director-section director-action-card">
           <h3>Catálogo jerárquico de folios de pago</h3>
           <p>Administra conceptos base y subramas con reglas de descuento/penalización y trazabilidad de folio inmutable.</p>
-          <article className="bg-gray-800/50 border border-indigo-500/30 rounded-xl p-5 mb-6">
-            <h4 className="text-white text-lg font-semibold flex items-center gap-2">
-              <span aria-hidden="true">🔒</span>
+          <article className="delegacion-card">
+            <h4 className="delegacion-title">
+              <span className="delegacion-icon" aria-hidden="true">🔒</span>
               Delegar Acceso a Catálogo de Pagos
             </h4>
-            <p className="text-gray-300 text-sm mt-1">Habilita temporalmente a Control Escolar para crear/editar conceptos del catálogo.</p>
+            <p className="delegacion-description">Habilita temporalmente a Control Escolar para crear/editar conceptos del catálogo.</p>
 
             {permisoCatalogoEstado.activo && permisoCatalogoTexto ? (
-              <div className="mt-3 px-3 py-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 text-sm">
+              <div className="badge-activo">
                 ✅ Acceso actualmente otorgado a Control Escolar. Expira en: {permisoCatalogoTexto}
               </div>
             ) : null}
 
-            <div className="flex flex-col sm:flex-row items-end gap-4 mt-4">
-              <div className="w-full sm:w-1/3">
-                <label className="block text-sm text-gray-400 mb-1" htmlFor="director-horas-habilitacion">Tiempo de habilitación (Horas)</label>
-                <div className="relative">
+            <div className="delegacion-controls">
+              <div className="input-horas-container">
+                <label className="input-horas-label" htmlFor="director-horas-habilitacion">Tiempo de habilitación (Horas)</label>
+                <div className="input-horas-field-wrap">
                   <input
                     id="director-horas-habilitacion"
                     type="number"
@@ -924,19 +924,19 @@ export default function DirectorPage() {
                     max="72"
                     value={horasHabilitacion}
                     onChange={(event) => setHorasHabilitacion(event.target.value)}
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg py-2 pl-4 pr-10 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    className="input-horas-field"
                     placeholder="Ej: 2"
                   />
-                  <span className="absolute right-3 top-2.5 text-gray-500 text-sm">hrs</span>
+                  <span className="input-horas-suffix">hrs</span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={handleHabilitarPermiso}
-                className="w-full sm:w-auto px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                className="btn-seguridad"
                 disabled={actionLoading}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <svg className="btn-seguridad-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a3 3 0 10-6 0v3H7a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2h-2V7z" />
                 </svg>
                 Otorgar Acceso Temporal
