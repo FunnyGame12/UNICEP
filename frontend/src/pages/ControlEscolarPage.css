@@ -674,7 +674,7 @@
 .concepto-card {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
-  gap: 12px;
+  gap: 15px;
   background-color: #1f2937;
   padding: 15px;
   border-radius: 8px;
@@ -691,18 +691,15 @@
   grid-column: 3;
 }
 
-.campo-dia {
-  grid-column: 1;
-}
-
 .campo-fecha {
-  grid-column: 2;
+  grid-column: 1 / span 2;
 }
 
 .btn-quitar-container {
   grid-column: 3;
   display: flex;
   align-items: flex-end;
+  justify-content: flex-end;
 }
 
 .ce-plantillas-form .ce-control-field {
@@ -786,7 +783,6 @@
 
   .campo-concepto,
   .campo-monto,
-  .campo-dia,
   .campo-fecha,
   .btn-quitar-container {
     grid-column: 1;

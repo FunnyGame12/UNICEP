@@ -279,8 +279,7 @@ export default function ControlEscolarPage() {
     {
       concepto_id: '',
       monto_sugerido: '',
-      dia_vencimiento: '',
-      fecha_exacta: '',
+      fecha_vencimiento: '',
     },
   ]);
   const [previewPlantillaId, setPreviewPlantillaId] = useState('');
@@ -478,8 +477,7 @@ export default function ControlEscolarPage() {
       {
         concepto_id: '',
         monto_sugerido: '',
-        dia_vencimiento: '',
-        fecha_exacta: '',
+        fecha_vencimiento: '',
       },
     ]);
   }
@@ -507,8 +505,7 @@ export default function ControlEscolarPage() {
       {
         concepto_id: '',
         monto_sugerido: '',
-        dia_vencimiento: '',
-        fecha_exacta: '',
+        fecha_vencimiento: '',
       },
     ]));
   }
@@ -532,8 +529,7 @@ export default function ControlEscolarPage() {
     setPlantillaDetalles((plantilla.detalles || []).map((detalle) => ({
       concepto_id: String(detalle.concepto_id || ''),
       monto_sugerido: String(detalle.monto_sugerido || ''),
-      dia_vencimiento: detalle.dia_vencimiento ? String(detalle.dia_vencimiento) : '',
-      fecha_exacta: detalle.fecha_exacta || '',
+      fecha_vencimiento: detalle.fecha_exacta || '',
     })));
   }
 
@@ -546,8 +542,7 @@ export default function ControlEscolarPage() {
       .map((item) => ({
         concepto_id: Number(item.concepto_id),
         monto_sugerido: Number(item.monto_sugerido),
-        dia_vencimiento: item.dia_vencimiento ? Number(item.dia_vencimiento) : null,
-        fecha_exacta: item.fecha_exacta || null,
+        fecha_exacta: item.fecha_vencimiento || null,
       }))
       .filter((item) => Number.isInteger(item.concepto_id) && Number.isFinite(item.monto_sugerido) && item.monto_sugerido > 0);
 
@@ -1666,23 +1661,12 @@ export default function ControlEscolarPage() {
                         onChange={(event) => actualizarDetallePlantilla(index, 'monto_sugerido', event.target.value)}
                       />
                     </div>
-                    <div className="campo-dia">
-                      <input
-                        className="ce-control-field ce-control-field-short"
-                        type="number"
-                        min="1"
-                        max="31"
-                        placeholder="Día venc."
-                        value={detalle.dia_vencimiento}
-                        onChange={(event) => actualizarDetallePlantilla(index, 'dia_vencimiento', event.target.value)}
-                      />
-                    </div>
                     <div className="campo-fecha">
                       <input
                         className="ce-control-field"
                         type="date"
-                        value={detalle.fecha_exacta}
-                        onChange={(event) => actualizarDetallePlantilla(index, 'fecha_exacta', event.target.value)}
+                        value={detalle.fecha_vencimiento}
+                        onChange={(event) => actualizarDetallePlantilla(index, 'fecha_vencimiento', event.target.value)}
                       />
                     </div>
                     <div className="btn-quitar-container">
