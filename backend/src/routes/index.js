@@ -10,6 +10,10 @@ const { requirePermission } = require('../middlewares/permissions');
 const docenteController = require('../controllers/docenteController');
 const alumnoController = require('../controllers/alumnoController');
 const avisoInstitucionalController = require('../controllers/avisoInstitucionalController');
+const adminController = require('../controllers/adminController');
+const permisoTemporalController = require('../controllers/permisoTemporalController');
+const { requireTemporalAccessForControlEscolar } = require('../middlewares/temporaryPermission');
+const { ROLES } = require('../constants/rbac');
 const { handlePortafolioUpload } = require('../middlewares/upload');
 const { PERMISSIONS } = require('../constants/rbac');
 
@@ -41,5 +45,11 @@ router.use('/maestro', docenteRoutes);
 router.use('/admin', adminRoutes);
 router.use('/control-escolar', controlEscolarRoutes);
 router.use('/coordinacion', coordinacionRoutes);
+
+router.get('/permisos-temporales/verificar/:modulo', auth(), permisoTemporalController.verificarPermisoTemporal);
+router.get('/conceptos-pago', auth([ROLES.DIRECTOR, ROLES.CONTROL_ESCOLAR]), adminController.listConceptosPagoCatalog);
+router.post('/conceptos-pago', auth([ROLES.DIRECTOR, ROLES.CONTROL_ESCOLAR]), requireTemporalAccessForControlEscolar('catalogo_pagos'), adminController.createConceptoPagoCatalog);
+router.put('/conceptos-pago/:id_concepto_pago', auth([ROLES.DIRECTOR, ROLES.CONTROL_ESCOLAR]), requireTemporalAccessForControlEscolar('catalogo_pagos'), adminController.updateConceptoPagoCatalog);
+router.delete('/conceptos-pago/:id_concepto_pago', auth([ROLES.DIRECTOR, ROLES.CONTROL_ESCOLAR]), requireTemporalAccessForControlEscolar('catalogo_pagos'), adminController.deleteConceptoPagoCatalog);
 
 module.exports = router;

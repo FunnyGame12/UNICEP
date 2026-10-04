@@ -293,6 +293,7 @@ export default function DirectorPage() {
   const [conceptoSearch, setConceptoSearch] = useState('');
   const [conceptoSort, setConceptoSort] = useState('az');
   const [editingConceptoId, setEditingConceptoId] = useState(null);
+  const [delegacionHoras, setDelegacionHoras] = useState('1');
 
   const [pagos, setPagos] = useState([]);
   const [pagosAlumnoOverride, setPagosAlumnoOverride] = useState([]);
@@ -840,6 +841,32 @@ export default function DirectorPage() {
         <section className="director-section director-action-card">
           <h3>Catálogo jerárquico de folios de pago</h3>
           <p>Administra conceptos base y subramas con reglas de descuento/penalización y trazabilidad de folio inmutable.</p>
+          <article className="director-action-card" style={{ marginBottom: '1rem' }}>
+            <h4>Delegar Acceso a Catálogo de Pagos</h4>
+            <p>Habilita temporalmente a Control Escolar para crear/editar conceptos del catálogo.</p>
+            <div className="director-folio-input-row" style={{ marginTop: '0.5rem' }}>
+              <select value={delegacionHoras} onChange={(event) => setDelegacionHoras(event.target.value)}>
+                <option value="1">1 Hora</option>
+                <option value="4">4 Horas</option>
+                <option value="24">24 Horas</option>
+              </select>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={actionLoading}
+                onClick={() => ejecutar(
+                  () => api.post('/admin/permisos-temporales', {
+                    modulo: 'catalogo_pagos',
+                    rol: 'control_escolar',
+                    horasVigencia: Number(delegacionHoras),
+                  }),
+                  'Acceso temporal habilitado para Control Escolar.',
+                )}
+              >
+                Habilitar para Control Escolar
+              </button>
+            </div>
+          </article>
           <div className="director-conceptos-layout">
             <form className="form-grid" onSubmit={folioPagoForm.handleSubmit((values) => ejecutar(
               () => (editingConceptoId

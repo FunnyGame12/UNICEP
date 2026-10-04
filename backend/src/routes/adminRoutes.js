@@ -3,6 +3,7 @@ const auth = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/permissions');
 const { ADMIN_ROLES, PERMISSIONS, ROLES } = require('../constants/rbac');
 const adminController = require('../controllers/adminController');
+const permisoTemporalController = require('../controllers/permisoTemporalController');
 
 const router = express.Router();
 const directorOnly = auth([ROLES.DIRECTOR]);
@@ -31,6 +32,7 @@ router.patch('/usuarios/:id_usuario/cuenta', requirePermission(PERMISSIONS.ADMIN
 router.post('/materias', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_MATERIAS_CREATE), adminController.crearMateria);
 router.post('/docente-grupos', coordinacionOrDirector, requirePermission(PERMISSIONS.ADMIN_DOCENTE_GRUPOS_CREATE), adminController.asignarDocenteAGrupo);
 router.post('/biblioteca', requirePermission(PERMISSIONS.ADMIN_DASHBOARD_READ), adminController.guardarBibliotecaConfig);
+router.post('/permisos-temporales', directorOnly, requirePermission(PERMISSIONS.DIRECTOR_SUPERVISION_READ), permisoTemporalController.otorgarPermisoTemporal);
 
 router.get('/reportes/financieros', requirePermission(PERMISSIONS.ADMIN_REPORTES_FINANCIEROS_READ), adminController.reporteFinanciero);
 router.get('/respaldo', requirePermission(PERMISSIONS.ADMIN_RESPALDO_READ), adminController.respaldoMetadatos);
