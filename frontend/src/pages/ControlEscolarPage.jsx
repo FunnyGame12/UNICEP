@@ -1642,42 +1642,52 @@ export default function ControlEscolarPage() {
 
               <div className="ce-plantilla-detalles-list">
                 {plantillaDetalles.map((detalle, index) => (
-                  <div className="ce-plantilla-detalle-row" key={`detalle-${index + 1}`}>
-                    <select
-                      className="ce-control-field"
-                      value={detalle.concepto_id}
-                      onChange={(event) => actualizarDetallePlantilla(index, 'concepto_id', event.target.value)}
-                    >
-                      <option value="" disabled hidden>Concepto</option>
-                      {conceptos.map((concepto) => (
-                        <option key={concepto.id_concepto_pago} value={String(concepto.id_concepto_pago)}>{concepto.nombre}</option>
-                      ))}
-                    </select>
-                    <input
-                      className="ce-control-field ce-control-field-short"
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      placeholder="Monto"
-                      value={detalle.monto_sugerido}
-                      onChange={(event) => actualizarDetallePlantilla(index, 'monto_sugerido', event.target.value)}
-                    />
-                    <input
-                      className="ce-control-field ce-control-field-short"
-                      type="number"
-                      min="1"
-                      max="31"
-                      placeholder="Día venc."
-                      value={detalle.dia_vencimiento}
-                      onChange={(event) => actualizarDetallePlantilla(index, 'dia_vencimiento', event.target.value)}
-                    />
-                    <input
-                      className="ce-control-field"
-                      type="date"
-                      value={detalle.fecha_exacta}
-                      onChange={(event) => actualizarDetallePlantilla(index, 'fecha_exacta', event.target.value)}
-                    />
-                    <button type="button" className="btn-secondary ce-btn-remove-concepto" onClick={() => eliminarDetallePlantilla(index)} disabled={plantillaDetalles.length === 1}>Quitar</button>
+                  <div className="ce-plantilla-detalle-row concepto-card" key={`detalle-${index + 1}`}>
+                    <div className="campo-concepto">
+                      <select
+                        className="ce-control-field"
+                        value={detalle.concepto_id}
+                        onChange={(event) => actualizarDetallePlantilla(index, 'concepto_id', event.target.value)}
+                      >
+                        <option value="" disabled hidden>Concepto</option>
+                        {conceptos.map((concepto) => (
+                          <option key={concepto.id_concepto_pago} value={String(concepto.id_concepto_pago)}>{concepto.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="campo-monto">
+                      <input
+                        className="ce-control-field ce-control-field-short"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Monto"
+                        value={detalle.monto_sugerido}
+                        onChange={(event) => actualizarDetallePlantilla(index, 'monto_sugerido', event.target.value)}
+                      />
+                    </div>
+                    <div className="campo-dia">
+                      <input
+                        className="ce-control-field ce-control-field-short"
+                        type="number"
+                        min="1"
+                        max="31"
+                        placeholder="Día venc."
+                        value={detalle.dia_vencimiento}
+                        onChange={(event) => actualizarDetallePlantilla(index, 'dia_vencimiento', event.target.value)}
+                      />
+                    </div>
+                    <div className="campo-fecha">
+                      <input
+                        className="ce-control-field"
+                        type="date"
+                        value={detalle.fecha_exacta}
+                        onChange={(event) => actualizarDetallePlantilla(index, 'fecha_exacta', event.target.value)}
+                      />
+                    </div>
+                    <div className="btn-quitar-container">
+                      <button type="button" className="btn-secondary ce-btn-remove-concepto" onClick={() => eliminarDetallePlantilla(index)} disabled={plantillaDetalles.length === 1}>Quitar</button>
+                    </div>
                   </div>
                 ))}
               </div>

@@ -668,14 +668,41 @@
 }
 
 .ce-plantilla-detalle-row {
+  display: block;
+}
+
+.concepto-card {
   display: grid;
-  gap: 1rem;
-  grid-template-columns: minmax(140px, 2fr) minmax(90px, 1fr) minmax(90px, 1fr) minmax(140px, 2fr) auto;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 12px;
+  background-color: #1f2937;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #374151;
+  margin-bottom: 15px;
   align-items: center;
-  padding: 0.6rem;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.campo-concepto {
+  grid-column: 1 / span 2;
+}
+
+.campo-monto {
+  grid-column: 3;
+}
+
+.campo-dia {
+  grid-column: 1;
+}
+
+.campo-fecha {
+  grid-column: 2;
+}
+
+.btn-quitar-container {
+  grid-column: 3;
+  display: flex;
+  align-items: flex-end;
 }
 
 .ce-plantillas-form .ce-control-field {
@@ -753,8 +780,16 @@
     grid-template-columns: 1fr;
   }
 
-  .ce-plantilla-detalle-row {
+  .concepto-card {
     grid-template-columns: 1fr;
+  }
+
+  .campo-concepto,
+  .campo-monto,
+  .campo-dia,
+  .campo-fecha,
+  .btn-quitar-container {
+    grid-column: 1;
   }
 }
 
