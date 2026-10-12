@@ -23,6 +23,7 @@ const {
   AuditoriaEvento,
 } = require('../../models');
 const { registrarEventoAuditoria } = require('../services/auditService');
+const { crearCarpetaAlumno, renombrarCarpetaDrive, buildAlumnoDriveFolderName } = require('../services/driveService');
 
 const SECURE_FOLIO_PREFIX_BY_ROLE = {
   director: 'DIR',
@@ -94,6 +95,47 @@ function esUrlValida(value) {
 
 function normalizeGroupCode(value) {
   return String(value || '').trim().toUpperCase();
+}
+
+async function resolveGrupoPrincipalAlumno(idAlumno) {
+  const row = await AlumnoGrupo.findOne({
+    where: { id_alumno: idAlumno },
+    attributes: ['grupo', 'fecha_alta', 'id_alumno_grupo'],
+    order: [['fecha_alta', 'DESC'], ['id_alumno_grupo', 'DESC']],
+  });
+
+  return normalizeGroupCode(row?.grupo) || null;
+}
+
+async function sincronizarCarpetaDriveAcademicaAlumno(idAlumno) {
+  const perfil = await AlumnoPerfil.findByPk(idAlumno, {
+    include: [{
+      model: Usuario,
+      as: 'usuario',
+      attributes: ['id_usuario', 'folio_matricula'],
+    }],
+  });
+
+  if (!perfil) return;
+
+  const grupo = await resolveGrupoPrincipalAlumno(idAlumno);
+  const folderName = buildAlumnoDriveFolderName({
+    carrera: perfil.carrera,
+    grupo,
+    cuatrimestre: perfil.bimestre_actual,
+  });
+
+  if (!perfil.drive_folder_id) {
+    const created = await crearCarpetaAlumno(folderName);
+    perfil.drive_folder_id = created.folderId;
+    perfil.drive_folder_url = created.folderUrl;
+    await perfil.save();
+    return;
+  }
+
+  const renamed = await renombrarCarpetaDrive(perfil.drive_folder_id, folderName);
+  perfil.drive_folder_url = renamed.folderUrl;
+  await perfil.save();
 }
 
 function parseIdArray(values) {
@@ -1545,6 +1587,12 @@ async function asignarDocenteAGrupo(req, res) {
     },
   });
 
+  try {
+    await sincronizarCarpetaDriveAcademicaAlumno(idAlumno);
+  } catch (driveError) {
+    console.error('No se pudo sincronizar carpeta Drive del alumno tras asignacion de grupo:', driveError.message);
+  }
+
   return res.status(existente ? 200 : 201).json(registro);
 }
 
@@ -1695,6 +1743,16 @@ async function respaldoMetadatos(req, res) {
     idEntidad: filename,
     detalle: payload.metadata,
   });
+
+  try {
+    const idsAfectados = [...new Set(alumnosFinales.map((id) => Number(id)).filter((id) => Number.isInteger(id) && id > 0))];
+    for (const alumnoId of idsAfectados) {
+      // eslint-disable-next-line no-await-in-loop
+      await sincronizarCarpetaDriveAcademicaAlumno(alumnoId);
+    }
+  } catch (driveError) {
+    console.error('No se pudo sincronizar carpetas Drive tras sincronizacion de grupo:', driveError.message);
+  }
 
   return res.json({
     archivo: {

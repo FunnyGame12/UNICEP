@@ -21,6 +21,24 @@ function normalizeText(value) {
   return String(value || '').trim();
 }
 
+function normalizeFolderSegment(value, fallback = 'SIN_DATO') {
+  const raw = normalizeText(value)
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  return raw || fallback;
+}
+
+function buildAlumnoDriveFolderName({ carrera, grupo, cuatrimestre } = {}) {
+  const carreraPart = normalizeFolderSegment(carrera, 'PENDIENTE_CARRERA');
+  const grupoPart = normalizeFolderSegment(grupo, 'PENDIENTE_GRUPO');
+  const cuatrimestrePart = normalizeFolderSegment(cuatrimestre, 'PENDIENTE_CUATRIMESTRE');
+  return `${carreraPart}-${grupoPart}-${cuatrimestrePart}`;
+}
+
 function buildDriveFolderUrl(folderId) {
   const id = normalizeText(folderId);
   return id ? `${DRIVE_FOLDER_URL_PREFIX}${id}` : null;
@@ -69,6 +87,29 @@ async function crearCarpetaAlumno(nombreCarpeta, carpetaPadreId) {
     folderId: response.data.id,
     folderUrl: response.data.webViewLink || buildDriveFolderUrl(response.data.id),
     folderName: response.data.name,
+  };
+}
+
+async function renombrarCarpetaDrive(folderId, nuevoNombre) {
+  const id = normalizeText(folderId);
+  const name = normalizeText(nuevoNombre);
+  if (!id || !name) {
+    const error = new Error('folderId y nuevoNombre son obligatorios para renombrar carpeta en Drive.');
+    error.code = 'DRIVE_RENAME_INPUT_INVALID';
+    throw error;
+  }
+
+  const response = await drive.files.update({
+    fileId: id,
+    requestBody: { name },
+    fields: 'id,name,webViewLink',
+    supportsAllDrives: true,
+  });
+
+  return {
+    folderId: response.data.id,
+    folderName: response.data.name,
+    folderUrl: response.data.webViewLink || buildDriveFolderUrl(response.data.id),
   };
 }
 
@@ -121,8 +162,10 @@ const subirArchivoDrive = subirDocumentoAlumno;
 
 module.exports = {
   crearCarpetaAlumno,
+  renombrarCarpetaDrive,
   subirDocumentoAlumno,
   subirArchivoDrive,
+  buildAlumnoDriveFolderName,
   extractDriveFolderId,
   buildDriveFolderUrl,
 };

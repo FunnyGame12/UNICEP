@@ -25,6 +25,7 @@ const {
   subirArchivoDrive,
   extractDriveFolderId,
   buildDriveFolderUrl,
+  buildAlumnoDriveFolderName,
 } = require('../services/driveService');
 
 const TRAMITE_STATUS_PERMITIDOS = new Set([
@@ -127,6 +128,16 @@ function normalizePlantillaDetalles(detalles) {
       fecha_exacta: toDateOnly(item?.fecha_exacta) || null,
     }))
     .filter((item) => Number.isInteger(item.concepto_id) && Number.isFinite(item.monto_sugerido) && item.monto_sugerido > 0);
+}
+
+async function resolveGrupoPrincipalAlumno(idAlumno) {
+  const row = await AlumnoGrupo.findOne({
+    where: { id_alumno: idAlumno },
+    attributes: ['grupo', 'fecha_alta', 'id_alumno_grupo'],
+    order: [['fecha_alta', 'DESC'], ['id_alumno_grupo', 'DESC']],
+  });
+
+  return normalizeGrupo(row?.grupo) || null;
 }
 
 function normalizeDestinoClonado(destino) {
@@ -1560,7 +1571,12 @@ async function subirArchivoPortafolio(req, res) {
 
   let folderId = normalizeText(alumno.drive_folder_id);
   if (!folderId) {
-    const folderName = `${alumno.usuario?.folio_matricula || `ALU-${alumno.id_alumno}`} - ${alumno.usuario?.nombre_completo || `Alumno ${alumno.id_alumno}`}`;
+    const grupoPrincipal = await resolveGrupoPrincipalAlumno(alumno.id_alumno);
+    const folderName = buildAlumnoDriveFolderName({
+      carrera: alumno.carrera,
+      grupo: grupoPrincipal,
+      cuatrimestre: alumno.bimestre_actual,
+    });
     const createdFolder = await crearCarpetaAlumno(folderName);
     folderId = createdFolder.folderId;
     alumno.drive_folder_id = createdFolder.folderId;

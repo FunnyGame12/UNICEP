@@ -34,7 +34,7 @@ const {
 const { generarWorkbookBoleta } = require('../services/boletaService');
 const { registrarEventoAuditoria } = require('../services/auditService');
 const { TRAMITES_ESCOLARES, TRAMITES_ESCOLARES_LABELS } = require('../constants/tramites');
-const { crearCarpetaAlumno, subirArchivoDrive } = require('../services/driveService');
+const { crearCarpetaAlumno, subirArchivoDrive, buildAlumnoDriveFolderName } = require('../services/driveService');
 
 const DOCUMENTOS_REQUERIDOS = [
   { clave: 'curp', nombre: 'CURP', detalle: 'Identificacion oficial' },
@@ -106,6 +106,16 @@ function resolveDriveUploadError(error) {
     status: 502,
     message: 'No se pudo guardar el documento en Google Drive. Intenta nuevamente en unos minutos.',
   };
+}
+
+async function resolveGrupoPrincipalAlumno(idAlumno) {
+  const row = await AlumnoGrupo.findOne({
+    where: { id_alumno: idAlumno },
+    attributes: ['grupo', 'fecha_alta', 'id_alumno_grupo'],
+    order: [['fecha_alta', 'DESC'], ['id_alumno_grupo', 'DESC']],
+  });
+
+  return String(row?.grupo || '').trim().toUpperCase() || null;
 }
 
 function normalizeText(value) {
@@ -384,6 +394,20 @@ async function estadoAcceso(req, res) {
   }
 
   const { estado } = validacion;
+  const grupoPrincipal = await resolveGrupoPrincipalAlumno(validacion.idAlumno);
+
+  const faltantes = [];
+  if (!normalizeText(estado.perfil.carrera)) faltantes.push('carrera');
+  if (!Number.isInteger(Number(estado.perfil.bimestre_actual)) || Number(estado.perfil.bimestre_actual) < 1) faltantes.push('cuatrimestre');
+  if (!grupoPrincipal) faltantes.push('grupo');
+
+  const onboarding = {
+    configuracion_completa: faltantes.length === 0,
+    faltantes,
+    mensaje: faltantes.length === 0
+      ? 'Perfil academico completo.'
+      : 'Tu perfil academico esta en proceso de configuracion. Control Escolar asignara carrera, grupo y cuatrimestre para habilitar toda tu experiencia.',
+  };
 
   return res.json({
     id_alumno: validacion.idAlumno,
@@ -397,8 +421,10 @@ async function estadoAcceso(req, res) {
       folio_matricula: estado.usuario.folio_matricula,
       carrera: estado.perfil.carrera,
       bimestre_actual: estado.perfil.bimestre_actual,
+      grupo: grupoPrincipal,
       drive_folder_url: estado.perfil.drive_folder_url || null,
     },
+    onboarding,
   });
 }
 
@@ -1469,7 +1495,12 @@ async function subirDocumentoPortafolio(req, res) {
   try {
     let folderId = normalizeText(validacion.estado?.perfil?.drive_folder_id) || null;
     if (!folderId) {
-      const folderName = `${validacion.estado?.usuario?.folio_matricula || `ALU-${validacion.idAlumno}`} - ${validacion.estado?.usuario?.nombre_completo || `Alumno ${validacion.idAlumno}`}`;
+      const grupoPrincipal = await resolveGrupoPrincipalAlumno(validacion.idAlumno);
+      const folderName = buildAlumnoDriveFolderName({
+        carrera: validacion.estado?.perfil?.carrera,
+        grupo: grupoPrincipal,
+        cuatrimestre: validacion.estado?.perfil?.bimestre_actual,
+      });
       const createdFolder = await crearCarpetaAlumno(folderName);
       folderId = createdFolder.folderId;
 
