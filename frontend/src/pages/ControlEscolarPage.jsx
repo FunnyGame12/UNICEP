@@ -275,7 +275,9 @@ export default function ControlEscolarPage() {
   const [plantillaNombre, setPlantillaNombre] = useState('');
   const [plantillaCarrera, setPlantillaCarrera] = useState('');
   const [plantillaCuatrimestre, setPlantillaCuatrimestre] = useState('1');
-  const [plantillaGrupoObjetivo, setPlantillaGrupoObjetivo] = useState('');
+  const [plantillaGruposObjetivo, setPlantillaGruposObjetivo] = useState([]);
+  const [gruposPlantillaDisponibles, setGruposPlantillaDisponibles] = useState([]);
+  const [gruposPorCarreraCache, setGruposPorCarreraCache] = useState({});
   const [plantillaDetalles, setPlantillaDetalles] = useState([
     {
       concepto_id: '',
@@ -286,7 +288,7 @@ export default function ControlEscolarPage() {
   const [coberturaPlantillas, setCoberturaPlantillas] = useState({ resumen: null, items: [] });
   const [coberturaLoading, setCoberturaLoading] = useState(false);
   const [clonacionOrigenId, setClonacionOrigenId] = useState('');
-  const [clonacionDestinos, setClonacionDestinos] = useState([{ carrera: '', cuatrimestre: '1', grupo_objetivo: '' }]);
+  const [clonacionDestinos, setClonacionDestinos] = useState([{ carrera: '', cuatrimestre: '1', grupos_objetivo: [] }]);
   const [clonacionBusy, setClonacionBusy] = useState(false);
 
   const cobroForm = useForm({
@@ -475,7 +477,7 @@ export default function ControlEscolarPage() {
     setPlantillaNombre('');
     setPlantillaCarrera(carrerasPlantillas[0] || '');
     setPlantillaCuatrimestre('1');
-    setPlantillaGrupoObjetivo('');
+    setPlantillaGruposObjetivo([]);
     setPlantillaDetalles([
       {
         concepto_id: '',
@@ -517,6 +519,17 @@ export default function ControlEscolarPage() {
     setListaCarreras(data.carreras || []);
   }
 
+  async function cargarGruposPorCarrera(carrera) {
+    const key = String(carrera || '').trim();
+    if (!key) return [];
+    if (gruposPorCarreraCache[key]) return gruposPorCarreraCache[key];
+
+    const data = await cargarCatalogosRecursos({ carreraParam: key });
+    const grupos = data.grupos || [];
+    setGruposPorCarreraCache((prev) => ({ ...prev, [key]: grupos }));
+    return grupos;
+  }
+
   function agregarDetallePlantilla() {
     setPlantillaDetalles((prev) => ([
       ...prev,
@@ -544,7 +557,7 @@ export default function ControlEscolarPage() {
     setPlantillaNombre(plantilla.nombre_plan || '');
     setPlantillaCarrera(plantilla.carrera || '');
     setPlantillaCuatrimestre(String(plantilla.cuatrimestre || 1));
-    setPlantillaGrupoObjetivo(plantilla.grupo_objetivo || '');
+    setPlantillaGruposObjetivo(plantilla.grupo_objetivo ? [plantilla.grupo_objetivo] : []);
     setPlantillaDetalles((plantilla.detalles || []).map((detalle) => ({
       concepto_id: String(detalle.concepto_id || ''),
       monto_sugerido: String(detalle.monto_sugerido || ''),
@@ -572,20 +585,37 @@ export default function ControlEscolarPage() {
 
     try {
       setSending(true);
-      const payload = {
+      const payloadBase = {
         nombre_plan: plantillaNombre.trim(),
         carrera: plantillaCarrera.trim(),
         cuatrimestre: Number(plantillaCuatrimestre),
-        grupo_objetivo: plantillaGrupoObjetivo.trim().toUpperCase() || null,
         detalles,
       };
 
+      const gruposSeleccionados = [...new Set((plantillaGruposObjetivo || [])
+        .map((item) => String(item || '').trim().toUpperCase())
+        .filter(Boolean))];
+
       if (plantillaIdEditing) {
-        await api.put(`/control-escolar/pagos/plantillas/${plantillaIdEditing}`, payload);
+        if (gruposSeleccionados.length > 1) {
+          setError('Para editar una plantilla selecciona solo un grupo. Para varios grupos usa clonar configuración.');
+          return;
+        }
+
+        await api.put(`/control-escolar/pagos/plantillas/${plantillaIdEditing}`, {
+          ...payloadBase,
+          grupo_objetivo: gruposSeleccionados[0] || null,
+        });
         setMessage('Plantilla actualizada correctamente.');
       } else {
-        await api.post('/control-escolar/pagos/plantillas', payload);
-        setMessage('Plantilla creada correctamente.');
+        const targets = gruposSeleccionados.length > 0 ? gruposSeleccionados : [null];
+
+        await Promise.all(targets.map((grupoObjetivo) => api.post('/control-escolar/pagos/plantillas', {
+          ...payloadBase,
+          nombre_plan: grupoObjetivo ? `${payloadBase.nombre_plan} · ${grupoObjetivo}` : payloadBase.nombre_plan,
+          grupo_objetivo: grupoObjetivo,
+        })));
+        setMessage(`Plantillas creadas: ${targets.length}.`);
       }
 
   await Promise.all([cargarPlantillasPago(), cargarCoberturaPlantillas()]);
@@ -598,11 +628,17 @@ export default function ControlEscolarPage() {
   }
 
   function agregarDestinoClonacion() {
-    setClonacionDestinos((prev) => ([...prev, { carrera: '', cuatrimestre: '1', grupo_objetivo: '' }]));
+    setClonacionDestinos((prev) => ([...prev, { carrera: '', cuatrimestre: '1', grupos_objetivo: [] }]));
   }
 
   function actualizarDestinoClonacion(index, field, value) {
-    setClonacionDestinos((prev) => prev.map((item, idx) => (idx === index ? { ...item, [field]: value } : item)));
+    setClonacionDestinos((prev) => prev.map((item, idx) => {
+      if (idx !== index) return item;
+      if (field === 'carrera') {
+        return { ...item, carrera: value, grupos_objetivo: [] };
+      }
+      return { ...item, [field]: value };
+    }));
   }
 
   function eliminarDestinoClonacion(index) {
@@ -618,9 +654,13 @@ export default function ControlEscolarPage() {
       {
         carrera: item.carrera || '',
         cuatrimestre: String(item.cuatrimestre || 1),
-        grupo_objetivo: item.grupo && item.grupo !== 'GENERAL' ? item.grupo : '',
+        grupos_objetivo: item.grupo && item.grupo !== 'GENERAL' ? [item.grupo] : [],
       },
     ]));
+  }
+
+  function actualizarGruposDestino(index, values) {
+    setClonacionDestinos((prev) => prev.map((item, idx) => (idx === index ? { ...item, grupos_objetivo: values } : item)));
   }
 
   async function clonarConfiguracionPlantilla() {
@@ -630,12 +670,21 @@ export default function ControlEscolarPage() {
     }
 
     const destinos = clonacionDestinos
-      .map((item) => ({
-        carrera: item.carrera.trim(),
-        cuatrimestre: Number(item.cuatrimestre),
-        grupo_objetivo: item.grupo_objetivo?.trim().toUpperCase() || null,
-      }))
-      .filter((item) => item.carrera && Number.isInteger(item.cuatrimestre) && item.cuatrimestre > 0);
+      .flatMap((item) => {
+        const carrera = item.carrera.trim();
+        const cuatrimestre = Number(item.cuatrimestre);
+        if (!carrera || !Number.isInteger(cuatrimestre) || cuatrimestre <= 0) return [];
+
+        const grupos = [...new Set((item.grupos_objetivo || [])
+          .map((grupo) => String(grupo || '').trim().toUpperCase())
+          .filter(Boolean))];
+
+        if (grupos.length === 0) {
+          return [{ carrera, cuatrimestre, grupo_objetivo: null }];
+        }
+
+        return grupos.map((grupo_objetivo) => ({ carrera, cuatrimestre, grupo_objetivo }));
+      });
 
     if (destinos.length === 0) {
       setError('Agrega al menos un destino válido para clonar.');
@@ -651,7 +700,7 @@ export default function ControlEscolarPage() {
         destinos,
       });
       setMessage(`Configuraciones clonadas: ${response?.data?.total_clonadas || 0}.`);
-      setClonacionDestinos([{ carrera: '', cuatrimestre: '1', grupo_objetivo: '' }]);
+      setClonacionDestinos([{ carrera: '', cuatrimestre: '1', grupos_objetivo: [] }]);
       await Promise.all([cargarPlantillasPago(), cargarCoberturaPlantillas()]);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo clonar la configuración.');
@@ -952,6 +1001,20 @@ export default function ControlEscolarPage() {
       setPlantillaCarrera(carrerasPlantillas[0]);
     }
   }, [carrerasPlantillas, plantillaCarrera]);
+
+  useEffect(() => {
+    if (!plantillaCarrera) {
+      setGruposPlantillaDisponibles([]);
+      setPlantillaGruposObjetivo([]);
+      return;
+    }
+
+    (async () => {
+      const grupos = await cargarGruposPorCarrera(plantillaCarrera);
+      setGruposPlantillaDisponibles(grupos);
+      setPlantillaGruposObjetivo((prev) => prev.filter((grupo) => grupos.some((item) => item.value === grupo)));
+    })();
+  }, [plantillaCarrera]);
 
   useEffect(() => {
     cargarCarrerasCatalogo();
@@ -1643,14 +1706,21 @@ export default function ControlEscolarPage() {
                 ))}
               </select>
 
-              <label htmlFor="ce-plantilla-grupo">Grupo objetivo (opcional)</label>
-              <input
-                className="ce-control-field"
+              <label htmlFor="ce-plantilla-grupo">Grupos objetivo (opcional, múltiple)</label>
+              <select
+                className="ce-control-field ce-control-field-multi"
                 id="ce-plantilla-grupo"
-                value={plantillaGrupoObjetivo}
-                onChange={(event) => setPlantillaGrupoObjetivo(event.target.value.toUpperCase())}
-                placeholder="Ejemplo: A / B / C (vacío = toda la carrera)"
-              />
+                multiple
+                value={plantillaGruposObjetivo}
+                onChange={(event) => {
+                  const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+                  setPlantillaGruposObjetivo(values);
+                }}
+              >
+                {(gruposPlantillaDisponibles || []).map((grupo) => (
+                  <option key={`grupo-plantilla-${grupo.value}`} value={grupo.value}>{grupo.label}</option>
+                ))}
+              </select>
 
               <div className="ce-plantilla-detalles-head">
                 <h4>Conceptos de cobro</h4>
@@ -1792,7 +1862,22 @@ export default function ControlEscolarPage() {
                       <option key={`dest-cuatri-${item}`} value={item}>{`Cuatrimestre ${item}`}</option>
                     ))}
                   </select>
-                  <input className="ce-control-field" value={destino.grupo_objetivo} onChange={(event) => actualizarDestinoClonacion(index, 'grupo_objetivo', event.target.value.toUpperCase())} placeholder="Grupo opcional (A/B/C)" />
+                  <select
+                    className="ce-control-field ce-control-field-multi"
+                    multiple
+                    value={destino.grupos_objetivo || []}
+                    onFocus={async () => {
+                      if (destino.carrera) await cargarGruposPorCarrera(destino.carrera);
+                    }}
+                    onChange={(event) => {
+                      const values = Array.from(event.target.selectedOptions).map((option) => option.value);
+                      actualizarGruposDestino(index, values);
+                    }}
+                  >
+                    {((gruposPorCarreraCache[destino.carrera] || [])).map((grupo) => (
+                      <option key={`dest-grupo-${destino.carrera}-${grupo.value}`} value={grupo.value}>{grupo.label}</option>
+                    ))}
+                  </select>
                   <button type="button" className="btn-secondary ce-btn-remove-concepto" onClick={() => eliminarDestinoClonacion(index)} disabled={clonacionDestinos.length === 1}>Quitar</button>
                 </div>
               ))}
