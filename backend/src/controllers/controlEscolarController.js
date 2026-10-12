@@ -129,6 +129,15 @@ function normalizePlantillaDetalles(detalles) {
     .filter((item) => Number.isInteger(item.concepto_id) && Number.isFinite(item.monto_sugerido) && item.monto_sugerido > 0);
 }
 
+function normalizeDestinoClonado(destino) {
+  return {
+    carrera: normalizeText(destino?.carrera),
+    cuatrimestre: toNumber(destino?.cuatrimestre),
+    grupo_objetivo: normalizeGrupo(destino?.grupo_objetivo),
+    nombre_plan: normalizeText(destino?.nombre_plan),
+  };
+}
+
 
 async function comprobantesPendientes(_req, res) {
   const comprobantes = await TramiteSolicitud.findAll({
@@ -231,6 +240,7 @@ async function listarPlantillasPago(_req, res) {
       nombre_plan: plantilla.nombre_plan,
       carrera: plantilla.carrera,
       cuatrimestre: plantilla.cuatrimestre,
+      grupo_objetivo: plantilla.grupo_objetivo || null,
       detalles: (plantilla.detalles || []).map((detalle) => ({
         id: detalle.id,
         concepto_id: detalle.concepto_id,
@@ -249,6 +259,7 @@ async function crearPlantillaPago(req, res) {
   const nombrePlan = normalizeText(req.body.nombre_plan);
   const carrera = normalizeText(req.body.carrera);
   const cuatrimestre = toNumber(req.body.cuatrimestre);
+  const grupoObjetivo = normalizeGrupo(req.body.grupo_objetivo);
   const detalles = normalizePlantillaDetalles(req.body.detalles);
 
   if (!nombrePlan || nombrePlan.length < 3) {
@@ -286,6 +297,7 @@ async function crearPlantillaPago(req, res) {
       nombre_plan: nombrePlan,
       carrera,
       cuatrimestre,
+      grupo_objetivo: grupoObjetivo,
     }, { transaction });
 
     await PlantillaDetalle.bulkCreate(
@@ -318,6 +330,7 @@ async function actualizarPlantillaPago(req, res) {
   const nombrePlan = normalizeText(req.body.nombre_plan);
   const carrera = normalizeText(req.body.carrera);
   const cuatrimestre = toNumber(req.body.cuatrimestre);
+  const grupoObjetivo = normalizeGrupo(req.body.grupo_objetivo);
   const detalles = normalizePlantillaDetalles(req.body.detalles);
 
   if (!nombrePlan || !carrera || !Number.isInteger(cuatrimestre) || cuatrimestre < 1) {
@@ -336,6 +349,7 @@ async function actualizarPlantillaPago(req, res) {
     plantilla.nombre_plan = nombrePlan;
     plantilla.carrera = carrera;
     plantilla.cuatrimestre = cuatrimestre;
+    plantilla.grupo_objetivo = grupoObjetivo;
     await plantilla.save({ transaction });
 
     await PlantillaDetalle.destroy({
@@ -355,6 +369,174 @@ async function actualizarPlantillaPago(req, res) {
   });
 
   return res.json({ id: plantillaId, actualizado: true });
+}
+
+async function obtenerCoberturaPlantillas(_req, res) {
+  const [perfiles, gruposRows, plantillas] = await Promise.all([
+    AlumnoPerfil.findAll({
+      where: { estado_academico: 'activo' },
+      attributes: ['id_alumno', 'carrera', 'bimestre_actual'],
+      raw: true,
+      limit: 10000,
+    }),
+    AlumnoGrupo.findAll({
+      attributes: ['id_alumno', [sequelize.fn('UPPER', sequelize.col('grupo')), 'grupo']],
+      raw: true,
+      limit: 10000,
+    }),
+    PlantillaPlan.findAll({
+      attributes: ['id', 'nombre_plan', 'carrera', 'cuatrimestre', 'grupo_objetivo', 'updated_at'],
+      order: [['updated_at', 'DESC']],
+      limit: 2000,
+    }),
+  ]);
+
+  const gruposByAlumno = new Map();
+  gruposRows.forEach((row) => {
+    const alumnoId = Number(row.id_alumno);
+    const grupo = normalizeGrupo(row.grupo);
+    if (!Number.isInteger(alumnoId) || !grupo) return;
+    if (!gruposByAlumno.has(alumnoId)) gruposByAlumno.set(alumnoId, new Set());
+    gruposByAlumno.get(alumnoId).add(grupo);
+  });
+
+  const comboMap = new Map();
+  perfiles.forEach((perfil) => {
+    const carrera = normalizeText(perfil.carrera);
+    const cuatrimestre = Number(perfil.bimestre_actual);
+    const alumnoId = Number(perfil.id_alumno);
+    if (!carrera || !Number.isInteger(cuatrimestre) || cuatrimestre < 1) return;
+
+    const grupos = gruposByAlumno.get(alumnoId);
+    const targetGrupos = grupos && grupos.size > 0 ? [...grupos] : ['GENERAL'];
+
+    targetGrupos.forEach((grupo) => {
+      const key = `${carrera}::${cuatrimestre}::${grupo}`;
+      const current = comboMap.get(key) || {
+        carrera,
+        cuatrimestre,
+        grupo,
+        alumnos_activos: 0,
+      };
+      current.alumnos_activos += 1;
+      comboMap.set(key, current);
+    });
+  });
+
+  const combos = [...comboMap.values()].sort((a, b) => {
+    const byCarrera = a.carrera.localeCompare(b.carrera, 'es', { sensitivity: 'base' });
+    if (byCarrera !== 0) return byCarrera;
+    if (a.cuatrimestre !== b.cuatrimestre) return a.cuatrimestre - b.cuatrimestre;
+    return a.grupo.localeCompare(b.grupo, 'es', { sensitivity: 'base' });
+  });
+
+  const plantillaMap = new Map();
+  plantillas.forEach((plantilla) => {
+    const key = `${plantilla.carrera}::${plantilla.cuatrimestre}::${plantilla.grupo_objetivo || 'GENERAL'}`;
+    if (!plantillaMap.has(key)) plantillaMap.set(key, plantilla);
+  });
+
+  const items = combos.map((combo) => {
+    const exactKey = `${combo.carrera}::${combo.cuatrimestre}::${combo.grupo}`;
+    const genericKey = `${combo.carrera}::${combo.cuatrimestre}::GENERAL`;
+    const plantilla = plantillaMap.get(exactKey) || plantillaMap.get(genericKey) || null;
+
+    return {
+      carrera: combo.carrera,
+      cuatrimestre: combo.cuatrimestre,
+      grupo: combo.grupo,
+      alumnos_activos: combo.alumnos_activos,
+      configurado: Boolean(plantilla),
+      plantilla_id: plantilla?.id || null,
+      plantilla_nombre: plantilla?.nombre_plan || null,
+      plantilla_actualizada: plantilla?.updated_at || null,
+      alcance: plantilla?.grupo_objetivo ? 'grupo' : (plantilla ? 'carrera' : null),
+    };
+  });
+
+  const total = items.length;
+  const configurados = items.filter((item) => item.configurado).length;
+
+  return res.json({
+    resumen: {
+      total_combinaciones: total,
+      configuradas: configurados,
+      pendientes: total - configurados,
+    },
+    items,
+  });
+}
+
+async function clonarPlantillaPago(req, res) {
+  const plantillaOrigenId = toNumber(req.body.plantilla_origen_id);
+  const destinosInput = Array.isArray(req.body.destinos) ? req.body.destinos : [];
+
+  if (!Number.isInteger(plantillaOrigenId)) {
+    return res.status(400).json({ message: 'plantilla_origen_id invalido.' });
+  }
+  if (destinosInput.length === 0) {
+    return res.status(400).json({ message: 'Debes enviar al menos un destino.' });
+  }
+
+  const plantillaOrigen = await PlantillaPlan.findByPk(plantillaOrigenId, {
+    include: [{ model: PlantillaDetalle, as: 'detalles' }],
+  });
+  if (!plantillaOrigen) {
+    return res.status(404).json({ message: 'Plantilla origen no encontrada.' });
+  }
+
+  const destinos = destinosInput
+    .map(normalizeDestinoClonado)
+    .filter((item) => item.carrera && Number.isInteger(item.cuatrimestre) && item.cuatrimestre > 0);
+
+  if (destinos.length === 0) {
+    return res.status(400).json({ message: 'No hay destinos validos para clonar.' });
+  }
+
+  if (!Array.isArray(plantillaOrigen.detalles) || plantillaOrigen.detalles.length === 0) {
+    return res.status(400).json({ message: 'La plantilla origen no contiene detalles para clonar.' });
+  }
+
+  const created = await sequelize.transaction(async (transaction) => {
+    const items = [];
+
+    for (const destino of destinos) {
+      const nombrePlan = destino.nombre_plan
+        || `${plantillaOrigen.nombre_plan} · ${destino.carrera} C${destino.cuatrimestre}${destino.grupo_objetivo ? ` ${destino.grupo_objetivo}` : ''}`;
+
+      const nuevaPlantilla = await PlantillaPlan.create({
+        nombre_plan: nombrePlan,
+        carrera: destino.carrera,
+        cuatrimestre: destino.cuatrimestre,
+        grupo_objetivo: destino.grupo_objetivo,
+      }, { transaction });
+
+      await PlantillaDetalle.bulkCreate(
+        plantillaOrigen.detalles.map((detalle) => ({
+          plantilla_id: nuevaPlantilla.id,
+          concepto_id: detalle.concepto_id,
+          monto_sugerido: detalle.monto_sugerido,
+          fecha_exacta: detalle.fecha_exacta,
+        })),
+        { transaction },
+      );
+
+      items.push({
+        id: nuevaPlantilla.id,
+        nombre_plan: nuevaPlantilla.nombre_plan,
+        carrera: nuevaPlantilla.carrera,
+        cuatrimestre: nuevaPlantilla.cuatrimestre,
+        grupo_objetivo: nuevaPlantilla.grupo_objetivo || null,
+      });
+    }
+
+    return items;
+  });
+
+  return res.status(201).json({
+    total_clonadas: created.length,
+    items: created,
+  });
 }
 
 async function previsualizarCargosMasivos(req, res) {
@@ -405,6 +587,7 @@ async function previsualizarCargosMasivos(req, res) {
       nombre_plan: plantilla.nombre_plan,
       carrera: plantilla.carrera,
       cuatrimestre: plantilla.cuatrimestre,
+      grupo_objetivo: plantilla.grupo_objetivo || null,
     },
     conceptos,
     alumnos: alumnos.map((alumno) => ({
@@ -1638,6 +1821,8 @@ module.exports = {
   listarPlantillasPago,
   crearPlantillaPago,
   actualizarPlantillaPago,
+  obtenerCoberturaPlantillas,
+  clonarPlantillaPago,
   previsualizarCargosMasivos,
   confirmarCargosMasivos,
   catalogosExtraordinario,

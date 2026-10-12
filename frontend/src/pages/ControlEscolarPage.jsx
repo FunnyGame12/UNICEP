@@ -275,6 +275,7 @@ export default function ControlEscolarPage() {
   const [plantillaNombre, setPlantillaNombre] = useState('');
   const [plantillaCarrera, setPlantillaCarrera] = useState('');
   const [plantillaCuatrimestre, setPlantillaCuatrimestre] = useState('1');
+  const [plantillaGrupoObjetivo, setPlantillaGrupoObjetivo] = useState('');
   const [plantillaDetalles, setPlantillaDetalles] = useState([
     {
       concepto_id: '',
@@ -286,6 +287,11 @@ export default function ControlEscolarPage() {
   const [previewCargos, setPreviewCargos] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [confirmandoCargos, setConfirmandoCargos] = useState(false);
+  const [coberturaPlantillas, setCoberturaPlantillas] = useState({ resumen: null, items: [] });
+  const [coberturaLoading, setCoberturaLoading] = useState(false);
+  const [clonacionOrigenId, setClonacionOrigenId] = useState('');
+  const [clonacionDestinos, setClonacionDestinos] = useState([{ carrera: '', cuatrimestre: '1', grupo_objetivo: '' }]);
+  const [clonacionBusy, setClonacionBusy] = useState(false);
 
   const cobroForm = useForm({
     resolver: zodResolver(cobroCajaSchema),
@@ -473,6 +479,7 @@ export default function ControlEscolarPage() {
     setPlantillaNombre('');
     setPlantillaCarrera(carrerasPlantillas[0] || '');
     setPlantillaCuatrimestre('1');
+    setPlantillaGrupoObjetivo('');
     setPlantillaDetalles([
       {
         concepto_id: '',
@@ -491,6 +498,21 @@ export default function ControlEscolarPage() {
       setPlantillasPago([]);
     } finally {
       setPlantillasLoading(false);
+    }
+  }
+
+  async function cargarCoberturaPlantillas() {
+    setCoberturaLoading(true);
+    try {
+      const response = await api.get('/control-escolar/pagos/plantillas/cobertura');
+      setCoberturaPlantillas({
+        resumen: response?.data?.resumen || null,
+        items: response?.data?.items || [],
+      });
+    } catch (_error) {
+      setCoberturaPlantillas({ resumen: null, items: [] });
+    } finally {
+      setCoberturaLoading(false);
     }
   }
 
@@ -526,6 +548,7 @@ export default function ControlEscolarPage() {
     setPlantillaNombre(plantilla.nombre_plan || '');
     setPlantillaCarrera(plantilla.carrera || '');
     setPlantillaCuatrimestre(String(plantilla.cuatrimestre || 1));
+    setPlantillaGrupoObjetivo(plantilla.grupo_objetivo || '');
     setPlantillaDetalles((plantilla.detalles || []).map((detalle) => ({
       concepto_id: String(detalle.concepto_id || ''),
       monto_sugerido: String(detalle.monto_sugerido || ''),
@@ -557,6 +580,7 @@ export default function ControlEscolarPage() {
         nombre_plan: plantillaNombre.trim(),
         carrera: plantillaCarrera.trim(),
         cuatrimestre: Number(plantillaCuatrimestre),
+        grupo_objetivo: plantillaGrupoObjetivo.trim().toUpperCase() || null,
         detalles,
       };
 
@@ -568,7 +592,7 @@ export default function ControlEscolarPage() {
         setMessage('Plantilla creada correctamente.');
       }
 
-      await cargarPlantillasPago();
+  await Promise.all([cargarPlantillasPago(), cargarCoberturaPlantillas()]);
       resetPlantillaForm();
     } catch (requestError) {
       setError(requestError?.response?.data?.message || 'No se pudo guardar la plantilla de pago.');
@@ -596,6 +620,69 @@ export default function ControlEscolarPage() {
       setError(requestError?.response?.data?.message || 'No se pudo previsualizar la asignación masiva.');
     } finally {
       setPreviewLoading(false);
+    }
+  }
+
+  function agregarDestinoClonacion() {
+    setClonacionDestinos((prev) => ([...prev, { carrera: '', cuatrimestre: '1', grupo_objetivo: '' }]));
+  }
+
+  function actualizarDestinoClonacion(index, field, value) {
+    setClonacionDestinos((prev) => prev.map((item, idx) => (idx === index ? { ...item, [field]: value } : item)));
+  }
+
+  function eliminarDestinoClonacion(index) {
+    setClonacionDestinos((prev) => {
+      if (prev.length === 1) return prev;
+      return prev.filter((_item, idx) => idx !== index);
+    });
+  }
+
+  function prellenarDestinoDesdePendiente(item) {
+    setClonacionDestinos((prev) => ([
+      ...prev,
+      {
+        carrera: item.carrera || '',
+        cuatrimestre: String(item.cuatrimestre || 1),
+        grupo_objetivo: item.grupo && item.grupo !== 'GENERAL' ? item.grupo : '',
+      },
+    ]));
+  }
+
+  async function clonarConfiguracionPlantilla() {
+    if (!clonacionOrigenId) {
+      setError('Selecciona una plantilla origen para clonar.');
+      return;
+    }
+
+    const destinos = clonacionDestinos
+      .map((item) => ({
+        carrera: item.carrera.trim(),
+        cuatrimestre: Number(item.cuatrimestre),
+        grupo_objetivo: item.grupo_objetivo?.trim().toUpperCase() || null,
+      }))
+      .filter((item) => item.carrera && Number.isInteger(item.cuatrimestre) && item.cuatrimestre > 0);
+
+    if (destinos.length === 0) {
+      setError('Agrega al menos un destino válido para clonar.');
+      return;
+    }
+
+    setClonacionBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await api.post('/control-escolar/pagos/plantillas/clonar', {
+        plantilla_origen_id: Number(clonacionOrigenId),
+        destinos,
+      });
+      setMessage(`Configuraciones clonadas: ${response?.data?.total_clonadas || 0}.`);
+      setClonacionDestinos([{ carrera: '', cuatrimestre: '1', grupo_objetivo: '' }]);
+      await Promise.all([cargarPlantillasPago(), cargarCoberturaPlantillas()]);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || 'No se pudo clonar la configuración.');
+    } finally {
+      setClonacionBusy(false);
     }
   }
 
@@ -947,7 +1034,7 @@ export default function ControlEscolarPage() {
   useEffect(() => {
     if (activeTab !== 'planes_pago') return;
     (async () => {
-      await Promise.all([cargarPlantillasPago(), cargarCarrerasCatalogo()]);
+      await Promise.all([cargarPlantillasPago(), cargarCarrerasCatalogo(), cargarCoberturaPlantillas()]);
     })();
   }, [activeTab]);
 
@@ -1630,6 +1717,15 @@ export default function ControlEscolarPage() {
                 ))}
               </select>
 
+              <label htmlFor="ce-plantilla-grupo">Grupo objetivo (opcional)</label>
+              <input
+                className="ce-control-field"
+                id="ce-plantilla-grupo"
+                value={plantillaGrupoObjetivo}
+                onChange={(event) => setPlantillaGrupoObjetivo(event.target.value.toUpperCase())}
+                placeholder="Ejemplo: A / B / C (vacío = toda la carrera)"
+              />
+
               <div className="ce-plantilla-detalles-head">
                 <h4>Conceptos de cobro</h4>
                 <button type="button" className="btn-secondary ce-btn-add-concepto" onClick={agregarDetallePlantilla}>+ Agregar concepto</button>
@@ -1689,10 +1785,93 @@ export default function ControlEscolarPage() {
               {plantillasPago.map((plantilla) => (
                 <button key={plantilla.id} type="button" className="ce-list-item" onClick={() => editarPlantilla(plantilla)}>
                   <strong>{plantilla.nombre_plan}</strong>
-                  <span>{`${plantilla.carrera} · Cuatrimestre ${plantilla.cuatrimestre}`}</span>
+                  <span>{`${plantilla.carrera} · Cuatrimestre ${plantilla.cuatrimestre}${plantilla.grupo_objetivo ? ` · Grupo ${plantilla.grupo_objetivo}` : ''}`}</span>
                   <span>{`${(plantilla.detalles || []).length} conceptos`}</span>
                 </button>
               ))}
+            </div>
+          </article>
+
+          <article className="ce-card" style={{ gridColumn: '1 / -1' }}>
+            <h3>Estado de Configuración y Reutilización</h3>
+            {coberturaPlantillas?.resumen ? (
+              <div className="ce-actions-row ce-cobertura-resumen">
+                <p className="ce-selected-badge">Total combinaciones: {coberturaPlantillas.resumen.total_combinaciones}</p>
+                <p className="ce-selected-badge">Configuradas: {coberturaPlantillas.resumen.configuradas}</p>
+                <p className="ce-selected-badge">Pendientes: {coberturaPlantillas.resumen.pendientes}</p>
+              </div>
+            ) : null}
+
+            <div className="table-wrap ce-table-wrap">
+              {coberturaLoading ? <p>Cargando cobertura...</p> : null}
+              {!coberturaLoading && (coberturaPlantillas.items || []).length === 0 ? <p>Sin combinaciones detectadas.</p> : null}
+              {!coberturaLoading && (coberturaPlantillas.items || []).length > 0 ? (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Carrera</th>
+                      <th>Cuatrimestre</th>
+                      <th>Grupo</th>
+                      <th>Alumnos activos</th>
+                      <th>Estatus</th>
+                      <th>Plantilla aplicada</th>
+                      <th>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {coberturaPlantillas.items.map((item, index) => (
+                      <tr key={`${item.carrera}-${item.cuatrimestre}-${item.grupo}-${index + 1}`}>
+                        <td>{item.carrera}</td>
+                        <td>{item.cuatrimestre}</td>
+                        <td>{item.grupo}</td>
+                        <td>{item.alumnos_activos}</td>
+                        <td>{item.configurado ? 'Configurado' : 'Pendiente'}</td>
+                        <td>{item.plantilla_nombre || 'Sin plantilla'}</td>
+                        <td>
+                          {!item.configurado ? (
+                            <button type="button" className="btn-secondary" onClick={() => prellenarDestinoDesdePendiente(item)}>Agregar a destinos</button>
+                          ) : '---'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+            </div>
+
+            <h4 className="ce-plantilla-list-title">Clonar configuración de una plantilla a otras carreras/grupos</h4>
+            <div className="ce-filters">
+              <select value={clonacionOrigenId} onChange={(event) => setClonacionOrigenId(event.target.value)}>
+                <option value="" disabled hidden>Selecciona plantilla origen</option>
+                {plantillasPago.map((plantilla) => (
+                  <option key={`origen-${plantilla.id}`} value={String(plantilla.id)}>{`${plantilla.nombre_plan} · ${plantilla.carrera} C${plantilla.cuatrimestre}${plantilla.grupo_objetivo ? ` G${plantilla.grupo_objetivo}` : ''}`}</option>
+                ))}
+              </select>
+              <button type="button" className="btn-secondary" onClick={agregarDestinoClonacion}>+ Agregar destino</button>
+            </div>
+
+            <div className="ce-plantilla-detalles-list">
+              {clonacionDestinos.map((destino, index) => (
+                <div className="ce-clonacion-destino-row" key={`destino-${index + 1}`}>
+                  <select className="ce-control-field" value={destino.carrera} onChange={(event) => actualizarDestinoClonacion(index, 'carrera', event.target.value)}>
+                    <option value="" disabled hidden>Carrera destino</option>
+                    {carrerasPlantillas.map((carrera) => (
+                      <option key={`dest-carrera-${carrera}`} value={carrera}>{carrera}</option>
+                    ))}
+                  </select>
+                  <select className="ce-control-field" value={destino.cuatrimestre} onChange={(event) => actualizarDestinoClonacion(index, 'cuatrimestre', event.target.value)}>
+                    {CUATRIMESTRE_OPTIONS.map((item) => (
+                      <option key={`dest-cuatri-${item}`} value={item}>{`Cuatrimestre ${item}`}</option>
+                    ))}
+                  </select>
+                  <input className="ce-control-field" value={destino.grupo_objetivo} onChange={(event) => actualizarDestinoClonacion(index, 'grupo_objetivo', event.target.value.toUpperCase())} placeholder="Grupo opcional (A/B/C)" />
+                  <button type="button" className="btn-secondary ce-btn-remove-concepto" onClick={() => eliminarDestinoClonacion(index)} disabled={clonacionDestinos.length === 1}>Quitar</button>
+                </div>
+              ))}
+            </div>
+
+            <div className="ce-actions-row ce-plantilla-actions-row">
+              <button type="button" className="btn-primary ce-btn-submit-plantilla" onClick={clonarConfiguracionPlantilla} disabled={clonacionBusy}>{clonacionBusy ? 'Clonando...' : 'Guardar ajustes reutilizables'}</button>
             </div>
           </article>
 

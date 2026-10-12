@@ -21,8 +21,10 @@ router.get('/comprobantes-pendientes', controlEscolarController.comprobantesPend
 router.post('/pagos/generar-cuatrimestrales', controlEscolarController.generarPagosCuatrimestrales);
 router.post('/pagos/adicional', controlEscolarController.crearPagoAdicional);
 router.get('/pagos/plantillas', controlEscolarController.listarPlantillasPago);
+router.get('/pagos/plantillas/cobertura', controlEscolarController.obtenerCoberturaPlantillas);
 router.post('/pagos/plantillas', controlEscolarController.crearPlantillaPago);
 router.put('/pagos/plantillas/:plantillaId', controlEscolarController.actualizarPlantillaPago);
+router.post('/pagos/plantillas/clonar', controlEscolarController.clonarPlantillaPago);
 router.post('/pagos/previsualizar-masivo', controlEscolarController.previsualizarCargosMasivos);
 router.post('/pagos/confirmar-cargos', controlEscolarController.confirmarCargosMasivos);
 router.post('/registrar-cobro-caja', controlEscolarController.registrarCobroCaja);

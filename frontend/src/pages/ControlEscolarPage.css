@@ -746,6 +746,18 @@
   border-color: #2563eb;
 }
 
+.ce-cobertura-resumen {
+  flex-wrap: wrap;
+  margin-bottom: 0.8rem;
+}
+
+.ce-clonacion-destino-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+}
+
 .ce-spreadsheet-wrap {
   margin-top: 0.8rem;
   overflow: auto;
@@ -778,6 +790,10 @@
   }
 
   .concepto-card {
+    grid-template-columns: 1fr;
+  }
+
+  .ce-clonacion-destino-row {
     grid-template-columns: 1fr;
   }
 
