@@ -283,10 +283,6 @@ export default function ControlEscolarPage() {
       fecha_vencimiento: '',
     },
   ]);
-  const [previewPlantillaId, setPreviewPlantillaId] = useState('');
-  const [previewCargos, setPreviewCargos] = useState(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [confirmandoCargos, setConfirmandoCargos] = useState(false);
   const [coberturaPlantillas, setCoberturaPlantillas] = useState({ resumen: null, items: [] });
   const [coberturaLoading, setCoberturaLoading] = useState(false);
   const [clonacionOrigenId, setClonacionOrigenId] = useState('');
@@ -601,28 +597,6 @@ export default function ControlEscolarPage() {
     }
   }
 
-  async function previsualizarAsignacionMasiva() {
-    if (!previewPlantillaId) {
-      setError('Selecciona una plantilla para previsualizar cargos.');
-      return;
-    }
-
-    setPreviewLoading(true);
-    setError('');
-    setMessage('');
-    try {
-      const response = await api.post('/control-escolar/pagos/previsualizar-masivo', {
-        plantilla_id: Number(previewPlantillaId),
-      });
-      setPreviewCargos(response?.data || null);
-    } catch (requestError) {
-      setPreviewCargos(null);
-      setError(requestError?.response?.data?.message || 'No se pudo previsualizar la asignación masiva.');
-    } finally {
-      setPreviewLoading(false);
-    }
-  }
-
   function agregarDestinoClonacion() {
     setClonacionDestinos((prev) => ([...prev, { carrera: '', cuatrimestre: '1', grupo_objetivo: '' }]));
   }
@@ -683,54 +657,6 @@ export default function ControlEscolarPage() {
       setError(requestError?.response?.data?.message || 'No se pudo clonar la configuración.');
     } finally {
       setClonacionBusy(false);
-    }
-  }
-
-  function actualizarCeldaCargo(alumnoId, conceptoId, field, value) {
-    setPreviewCargos((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        alumnos: (prev.alumnos || []).map((alumno) => {
-          if (alumno.alumno_id !== alumnoId) return alumno;
-          return {
-            ...alumno,
-            cargos: (alumno.cargos || []).map((cargo) => {
-              if (cargo.concepto_id !== conceptoId) return cargo;
-              return { ...cargo, [field]: value };
-            }),
-          };
-        }),
-      };
-    });
-  }
-
-  async function confirmarAsignacionMasiva() {
-    if (!previewCargos?.alumnos?.length) {
-      setError('No hay cargos previsualizados para confirmar.');
-      return;
-    }
-
-    const payload = previewCargos.alumnos.flatMap((alumno) => (alumno.cargos || []).map((cargo) => ({
-      alumno_id: alumno.alumno_id,
-      concepto_id: cargo.concepto_id,
-      plantilla_id: previewCargos?.plantilla?.id || null,
-      monto_final: Number(cargo.monto_final),
-      fecha_vencimiento: cargo.fecha_vencimiento,
-      estado: 'pendiente',
-    })));
-
-    setConfirmandoCargos(true);
-    setError('');
-    setMessage('');
-    try {
-      const response = await api.post('/control-escolar/pagos/confirmar-cargos', { cargos: payload });
-      setMessage(`Cargos creados: ${response?.data?.total_creados || 0}.`);
-      setPreviewCargos(null);
-    } catch (requestError) {
-      setError(requestError?.response?.data?.message || 'No se pudieron confirmar los cargos.');
-    } finally {
-      setConfirmandoCargos(false);
     }
   }
 
@@ -1809,6 +1735,7 @@ export default function ControlEscolarPage() {
                 <table>
                   <thead>
                     <tr>
+                      <th>Referencia</th>
                       <th>Carrera</th>
                       <th>Cuatrimestre</th>
                       <th>Grupo</th>
@@ -1821,6 +1748,7 @@ export default function ControlEscolarPage() {
                   <tbody>
                     {coberturaPlantillas.items.map((item, index) => (
                       <tr key={`${item.carrera}-${item.cuatrimestre}-${item.grupo}-${index + 1}`}>
+                        <td>{`${item.carrera} - C${item.cuatrimestre} - ${item.grupo}`}</td>
                         <td>{item.carrera}</td>
                         <td>{item.cuatrimestre}</td>
                         <td>{item.grupo}</td>
@@ -1873,74 +1801,6 @@ export default function ControlEscolarPage() {
             <div className="ce-actions-row ce-plantilla-actions-row">
               <button type="button" className="btn-primary ce-btn-submit-plantilla" onClick={clonarConfiguracionPlantilla} disabled={clonacionBusy}>{clonacionBusy ? 'Clonando...' : 'Guardar ajustes reutilizables'}</button>
             </div>
-          </article>
-
-          <article className="ce-card">
-            <h3>Asignación Masiva (Previsualización Editable)</h3>
-            <div className="ce-filters">
-              <select value={previewPlantillaId} onChange={(event) => setPreviewPlantillaId(event.target.value)}>
-                <option value="" disabled hidden>Selecciona una plantilla</option>
-                {plantillasPago.map((plantilla) => (
-                  <option key={plantilla.id} value={String(plantilla.id)}>{`${plantilla.nombre_plan} · ${plantilla.carrera} C${plantilla.cuatrimestre}`}</option>
-                ))}
-              </select>
-              <button type="button" className="btn-secondary" onClick={previsualizarAsignacionMasiva} disabled={previewLoading}>{previewLoading ? 'Cargando...' : 'Previsualizar alumnos y cargos'}</button>
-            </div>
-
-            {previewCargos?.alumnos?.length ? (
-              <>
-                <p className="ce-selected-badge">{`${previewCargos.plantilla?.nombre_plan} · ${previewCargos.alumnos.length} alumnos`}</p>
-                <div className="table-wrap ce-table-wrap ce-spreadsheet-wrap">
-                  <table className="ce-spreadsheet-table">
-                    <thead>
-                      <tr>
-                        <th>Alumno</th>
-                        {(previewCargos.conceptos || []).map((concepto) => (
-                          <th key={`head-${concepto.concepto_id}`}>{concepto.concepto_nombre}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(previewCargos.alumnos || []).map((alumno) => (
-                        <tr key={`alumno-${alumno.alumno_id}`}>
-                          <td>
-                            <strong>{alumno.nombre_completo}</strong>
-                            <p>{alumno.folio_matricula || 'SIN-FOLIO'}</p>
-                          </td>
-                          {(previewCargos.conceptos || []).map((concepto) => {
-                            const cargo = (alumno.cargos || []).find((item) => item.concepto_id === concepto.concepto_id);
-                            return (
-                              <td key={`cell-${alumno.alumno_id}-${concepto.concepto_id}`}>
-                                <input
-                                  className="ce-cell-input"
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={cargo?.monto_final ?? ''}
-                                  onChange={(event) => actualizarCeldaCargo(alumno.alumno_id, concepto.concepto_id, 'monto_final', event.target.value)}
-                                />
-                                <input
-                                  className="ce-cell-input ce-cell-date"
-                                  type="date"
-                                  value={cargo?.fecha_vencimiento || ''}
-                                  onChange={(event) => actualizarCeldaCargo(alumno.alumno_id, concepto.concepto_id, 'fecha_vencimiento', event.target.value)}
-                                />
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="ce-actions-row">
-                  <button type="button" className="btn-primary" onClick={confirmarAsignacionMasiva} disabled={confirmandoCargos}>{confirmandoCargos ? 'Confirmando...' : 'Confirmar cargos masivos'}</button>
-                </div>
-              </>
-            ) : (
-              <p>Selecciona una plantilla y genera la previsualización para editar montos y vencimientos.</p>
-            )}
           </article>
         </div>
       ) : null}
