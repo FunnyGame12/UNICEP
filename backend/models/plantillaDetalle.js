@@ -22,10 +22,6 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: false,
       },
-      dia_vencimiento: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-      },
       fecha_exacta: {
         type: DataTypes.DATEONLY,
         allowNull: true,

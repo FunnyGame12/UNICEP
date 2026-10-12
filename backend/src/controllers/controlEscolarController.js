@@ -113,34 +113,8 @@ function resolveMontoConcepto(concepto, montoOverride) {
   return NaN;
 }
 
-function resolveFechaVencimientoPlantilla(diaVencimiento, fechaExacta) {
-  const fechaDirecta = toDateOnly(fechaExacta);
-  if (fechaDirecta) return fechaDirecta;
-
-  const dia = Number(diaVencimiento);
-  if (!Number.isInteger(dia) || dia < 1 || dia > 31) {
-    return null;
-  }
-
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const lastDayCurrent = new Date(year, month + 1, 0).getDate();
-  const dayCurrent = Math.min(dia, lastDayCurrent);
-
-  let dueDate = new Date(year, month, dayCurrent);
-  dueDate.setHours(0, 0, 0, 0);
-
-  const today = new Date(year, month, now.getDate());
-  today.setHours(0, 0, 0, 0);
-  if (dueDate < today) {
-    const nextMonthDate = new Date(year, month + 1, 1);
-    const lastDayNext = new Date(nextMonthDate.getFullYear(), nextMonthDate.getMonth() + 1, 0).getDate();
-    dueDate = new Date(nextMonthDate.getFullYear(), nextMonthDate.getMonth(), Math.min(dia, lastDayNext));
-    dueDate.setHours(0, 0, 0, 0);
-  }
-
-  return dueDate.toISOString().slice(0, 10);
+function resolveFechaVencimientoPlantilla(fechaExacta) {
+  return toDateOnly(fechaExacta);
 }
 
 function normalizePlantillaDetalles(detalles) {
@@ -150,9 +124,6 @@ function normalizePlantillaDetalles(detalles) {
     .map((item) => ({
       concepto_id: toNumber(item?.concepto_id),
       monto_sugerido: Number(item?.monto_sugerido),
-      dia_vencimiento: item?.dia_vencimiento === '' || item?.dia_vencimiento === null || item?.dia_vencimiento === undefined
-        ? null
-        : toNumber(item?.dia_vencimiento),
       fecha_exacta: toDateOnly(item?.fecha_exacta) || null,
     }))
     .filter((item) => Number.isInteger(item.concepto_id) && Number.isFinite(item.monto_sugerido) && item.monto_sugerido > 0);
@@ -266,7 +237,6 @@ async function listarPlantillasPago(_req, res) {
         concepto_nombre: detalle.concepto?.nombre || null,
         concepto_folio: detalle.concepto?.folio_interno || null,
         monto_sugerido: Number(detalle.monto_sugerido),
-        dia_vencimiento: detalle.dia_vencimiento,
         fecha_exacta: detalle.fecha_exacta,
       })),
       created_at: plantilla.created_at,
@@ -306,12 +276,9 @@ async function crearPlantillaPago(req, res) {
     return res.status(400).json({ message: 'Al menos un concepto no existe o esta inactivo.' });
   }
 
-  const hasInvalidDates = detalles.some((item) => {
-    const hasDia = Number.isInteger(item.dia_vencimiento) && item.dia_vencimiento >= 1 && item.dia_vencimiento <= 31;
-    return !hasDia && !item.fecha_exacta;
-  });
+  const hasInvalidDates = detalles.some((item) => !item.fecha_exacta);
   if (hasInvalidDates) {
-    return res.status(400).json({ message: 'Cada detalle requiere dia_vencimiento (1-31) o fecha_exacta.' });
+    return res.status(400).json({ message: 'Cada detalle requiere una fecha_exacta valida.' });
   }
 
   const created = await sequelize.transaction(async (transaction) => {
@@ -326,7 +293,6 @@ async function crearPlantillaPago(req, res) {
         plantilla_id: plantilla.id,
         concepto_id: item.concepto_id,
         monto_sugerido: item.monto_sugerido,
-        dia_vencimiento: item.dia_vencimiento,
         fecha_exacta: item.fecha_exacta,
       })),
       { transaction },
@@ -361,12 +327,9 @@ async function actualizarPlantillaPago(req, res) {
     return res.status(400).json({ message: 'Debes capturar al menos un concepto en la plantilla.' });
   }
 
-  const hasInvalidDates = detalles.some((item) => {
-    const hasDia = Number.isInteger(item.dia_vencimiento) && item.dia_vencimiento >= 1 && item.dia_vencimiento <= 31;
-    return !hasDia && !item.fecha_exacta;
-  });
+  const hasInvalidDates = detalles.some((item) => !item.fecha_exacta);
   if (hasInvalidDates) {
-    return res.status(400).json({ message: 'Cada detalle requiere dia_vencimiento (1-31) o fecha_exacta.' });
+    return res.status(400).json({ message: 'Cada detalle requiere una fecha_exacta valida.' });
   }
 
   await sequelize.transaction(async (transaction) => {
@@ -385,7 +348,6 @@ async function actualizarPlantillaPago(req, res) {
         plantilla_id: plantillaId,
         concepto_id: item.concepto_id,
         monto_sugerido: item.monto_sugerido,
-        dia_vencimiento: item.dia_vencimiento,
         fecha_exacta: item.fecha_exacta,
       })),
       { transaction },
@@ -433,9 +395,8 @@ async function previsualizarCargosMasivos(req, res) {
     concepto_nombre: detalle.concepto?.nombre || `Concepto ${detalle.concepto_id}`,
     concepto_folio: detalle.concepto?.folio_interno || null,
     monto_sugerido: Number(detalle.monto_sugerido),
-    dia_vencimiento: detalle.dia_vencimiento,
     fecha_exacta: detalle.fecha_exacta,
-    fecha_vencimiento: resolveFechaVencimientoPlantilla(detalle.dia_vencimiento, detalle.fecha_exacta),
+    fecha_vencimiento: resolveFechaVencimientoPlantilla(detalle.fecha_exacta),
   }));
 
   return res.json({
