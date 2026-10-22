@@ -121,6 +121,9 @@ function App() {
       <main>
         <Outlet />
       </main>
+      <footer className="site-footer">
+        <Link to="/privacidad">Aviso de privacidad</Link>
+      </footer>
     </div>
   );
 }

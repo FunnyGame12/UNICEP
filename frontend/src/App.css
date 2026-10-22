@@ -40,6 +40,22 @@ video {
   min-height: 100vh;
 }
 
+.site-footer {
+  padding: 1.25rem 1rem 2rem;
+  text-align: center;
+}
+
+.site-footer a {
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-underline-offset: 0.2em;
+}
+
+.site-footer a:hover,
+.site-footer a:focus-visible {
+  color: var(--text);
+}
+
 .topbar {
   display: flex;
   justify-content: space-between;

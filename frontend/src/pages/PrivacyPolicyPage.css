@@ -1,0 +1,112 @@
+.privacy-policy {
+  width: min(100% - 2rem, 900px);
+  margin: 2rem auto 4rem;
+  padding: clamp(1.25rem, 4vw, 3rem);
+  color: #eef2ff;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 24px;
+  box-shadow: 0 22px 60px rgba(6, 10, 26, 0.2);
+  line-height: 1.75;
+}
+
+.privacy-policy-header {
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.privacy-policy-eyebrow {
+  margin: 0 0 0.4rem;
+  color: #91b8ff;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.privacy-policy h1,
+.privacy-policy h2 {
+  color: #fff;
+  line-height: 1.25;
+}
+
+.privacy-policy h1 {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 3.1rem);
+}
+
+.privacy-policy h2 {
+  margin: 0 0 0.7rem;
+  font-size: clamp(1.2rem, 3vw, 1.5rem);
+}
+
+.privacy-policy p {
+  color: rgba(238, 242, 255, 0.82);
+}
+
+.privacy-policy-header > p:last-child {
+  max-width: 70ch;
+  margin-bottom: 0;
+}
+
+.privacy-policy-updated {
+  margin: 0.65rem 0;
+  color: rgba(238, 242, 255, 0.65) !important;
+  font-size: 0.9rem;
+}
+
+.privacy-policy-toc {
+  margin: 1.5rem 0 2rem;
+  padding: 1.2rem 1.4rem;
+  background: rgba(8, 16, 43, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+}
+
+.privacy-policy-toc ol {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 1.4rem;
+  margin: 0.65rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.privacy-policy a {
+  color: #9ec5ff;
+  text-underline-offset: 0.2em;
+}
+
+.privacy-policy-sections {
+  display: grid;
+  gap: 1.8rem;
+}
+
+.privacy-policy-sections section {
+  scroll-margin-top: 6rem;
+}
+
+.privacy-policy-sections p {
+  margin: 0.55rem 0;
+}
+
+.privacy-policy-contact {
+  margin-top: 2rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.privacy-policy-contact p {
+  margin: 0.4rem 0;
+}
+
+@media (max-width: 600px) {
+  .privacy-policy {
+    width: min(100% - 1rem, 900px);
+    margin-top: 0.5rem;
+    border-radius: 18px;
+  }
+
+  .privacy-policy-toc ol {
+    grid-template-columns: 1fr;
+  }
+}

@@ -9,6 +9,7 @@ import ControlEscolarPage from './pages/ControlEscolarPage';
 import CoordinacionAcademicaPage from './pages/CoordinacionAcademicaPage';
 import LoginPage from './pages/LoginPage';
 import RegistroFolioPage from './pages/RegistroFolioPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 const router = createBrowserRouter([
@@ -20,6 +21,7 @@ const router = createBrowserRouter([
       { path: 'inicio', element: <HomePage /> },
       { path: 'login', element: <LoginPage /> },
       { path: 'registro-folio', element: <RegistroFolioPage /> },
+      { path: 'privacidad', element: <PrivacyPolicyPage /> },
       {
         path: 'director',
         element: (
