@@ -34,7 +34,7 @@ const {
 const { generarWorkbookBoleta } = require('../services/boletaService');
 const { registrarEventoAuditoria } = require('../services/auditService');
 const { TRAMITES_ESCOLARES, TRAMITES_ESCOLARES_LABELS } = require('../constants/tramites');
-const { crearCarpetaAlumno, subirArchivoDrive, buildAlumnoDriveFolderName } = require('../services/driveService');
+const { asegurarCarpetaDriveAlumno, subirArchivoDrive } = require('../services/driveService');
 
 const DOCUMENTOS_REQUERIDOS = [
   { clave: 'curp', nombre: 'CURP', detalle: 'Identificacion oficial' },
@@ -74,6 +74,25 @@ function resolveDriveUploadError(error) {
   const rawCode = error?.code;
   const code = Number(rawCode);
 
+  if (rawCode === 'DRIVE_STUDENT_GROUP_REQUIRED'
+    || rawCode === 'DRIVE_STUDENT_GROUP_AMBIGUOUS'
+    || rawCode === 'DRIVE_STUDENT_CAREER_REQUIRED'
+    || rawCode === 'DRIVE_STUDENT_TERM_INVALID'
+    || rawCode === 'DRIVE_STUDENT_IDENTITY_REQUIRED') {
+    return { status: 409, message: error.message };
+  }
+
+  if (rawCode === 'DRIVE_STUDENT_NOT_FOUND') {
+    return { status: 404, message: error.message };
+  }
+
+  if (rawCode === 'DRIVE_ROOT_FOLDER_REQUIRED' || rawCode === 'DRIVE_ROOT_FOLDER_INVALID') {
+    return {
+      status: 503,
+      message: 'La carpeta raíz EXPEDIENTES_UNICEP no está configurada correctamente en Google Drive.',
+    };
+  }
+
   if (rawCode === 'DRIVE_NOT_CONFIGURED') {
     return {
       status: 503,
@@ -91,7 +110,7 @@ function resolveDriveUploadError(error) {
   if (code === 401 || code === 403) {
     return {
       status: 502,
-      message: 'Google Drive rechazo la operacion. Verifica permisos de la Service Account sobre la carpeta institucional.',
+      message: 'Google Drive rechazó la operación. Verifica los permisos de la cuenta OAuth sobre la carpeta institucional.',
     };
   }
 
@@ -1493,25 +1512,8 @@ async function subirDocumentoPortafolio(req, res) {
   }
 
   try {
-    let folderId = normalizeText(validacion.estado?.perfil?.drive_folder_id) || null;
-    if (!folderId) {
-      const grupoPrincipal = await resolveGrupoPrincipalAlumno(validacion.idAlumno);
-      const folderName = buildAlumnoDriveFolderName({
-        carrera: validacion.estado?.perfil?.carrera,
-        grupo: grupoPrincipal,
-        cuatrimestre: validacion.estado?.perfil?.bimestre_actual,
-      });
-      const createdFolder = await crearCarpetaAlumno(folderName);
-      folderId = createdFolder.folderId;
-
-      await AlumnoPerfil.update(
-        {
-          drive_folder_id: createdFolder.folderId,
-          drive_folder_url: createdFolder.folderUrl,
-        },
-        { where: { id_alumno: validacion.idAlumno } },
-      );
-    }
+    const folder = await asegurarCarpetaDriveAlumno(validacion.idAlumno);
+    const folderId = folder.folderId;
 
     const uploadResult = await subirArchivoDrive(req.file, folderId);
     const archivoUrl = uploadResult.webViewLink || uploadResult.webContentLink;

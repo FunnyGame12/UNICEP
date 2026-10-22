@@ -11,7 +11,7 @@
     "seed:demo": "sequelize-cli db:seed:all",
     "seed:undo": "sequelize-cli db:seed:undo:all",
     "test:e2e:admin-grupos": "node scripts/e2e-admin-alumno-grupos.js",
-    "test": "echo \"Sin pruebas configuradas\""
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",

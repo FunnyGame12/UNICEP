@@ -33,10 +33,6 @@ const cobroCajaSchema = z.object({
   }
 });
 
-const driveFolderSchema = z.object({
-  drive_folder_url: z.string().trim().url('Ingresa una URL valida.').or(z.literal('')),
-});
-
 const rechazoComprobanteSchema = z.object({
   motivo: z.string().trim().min(8, 'La justificación debe tener al menos 8 caracteres.'),
 });
@@ -306,11 +302,6 @@ export default function ControlEscolarPage() {
     },
   });
 
-  const driveFolderForm = useForm({
-    resolver: zodResolver(driveFolderSchema),
-    defaultValues: { drive_folder_url: '' },
-  });
-
   const alumnoActualWatch = cobroForm.watch('alumno_id');
   const conceptoActualWatch = cobroForm.watch('concepto_folio_id');
 
@@ -436,10 +427,6 @@ export default function ControlEscolarPage() {
       notas_entrega: selectedTramite.respuesta || '',
     });
   }, [selectedTramite, tramiteForm]);
-
-  useEffect(() => {
-    driveFolderForm.reset({ drive_folder_url: portafolioData?.alumno?.drive_folder_url || '' });
-  }, [portafolioData, driveFolderForm]);
 
   const alumnosFiltered = useMemo(() => {
     const q = searchAlumno.trim().toLowerCase();
@@ -765,7 +752,7 @@ export default function ControlEscolarPage() {
     }
   }
 
-  async function guardarDriveFolder(values) {
+  async function organizarDriveFolder() {
     if (!selectedPortafolioAlumnoId) return;
 
     setSending(true);
@@ -773,13 +760,11 @@ export default function ControlEscolarPage() {
     setMessage('');
 
     try {
-      await api.put(`/control-escolar/alumnos/${selectedPortafolioAlumnoId}/drive-folder`, {
-        drive_folder_url: values.drive_folder_url.trim(),
-      });
-      setMessage('Carpeta de Google Drive actualizada correctamente.');
+      await api.put(`/control-escolar/alumnos/${selectedPortafolioAlumnoId}/drive-folder`);
+      setMessage('Expediente organizado en Google Drive.');
       await abrirPortafolioAlumno(selectedPortafolioAlumnoId);
     } catch (requestError) {
-      setError(requestError?.response?.data?.message || 'No se pudo actualizar la carpeta de Drive.');
+      setError(requestError?.response?.data?.message || 'No se pudo organizar la carpeta de Drive.');
     } finally {
       setSending(false);
     }
@@ -2133,33 +2118,15 @@ export default function ControlEscolarPage() {
                 <p><strong>Alumno:</strong> {portafolioData.alumno?.nombre_completo || 'No disponible'}</p>
                 <p><strong>Folio:</strong> {portafolioData.alumno?.folio_matricula || 'SIN-FOLIO'}</p>
 
-                <form className="form-grid" onSubmit={driveFolderForm.handleSubmit(guardarDriveFolder)}>
-                  <label htmlFor="ce-drive-folder">URL de carpeta de Google Drive</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      className="w-full"
-                      id="ce-drive-folder"
-                      type="url"
-                      placeholder="https://drive.google.com/drive/folders/..."
-                      {...driveFolderForm.register('drive_folder_url')}
-                    />
-                    {portafolioData.alumno?.drive_folder_url ? (
-                      <a
-                        href={portafolioData.alumno.drive_folder_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2 whitespace-nowrap"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                        Abrir
-                      </a>
-                    ) : null}
-                  </div>
-                  {driveFolderForm.formState.errors.drive_folder_url ? <small>{driveFolderForm.formState.errors.drive_folder_url.message}</small> : null}
-                  <button type="submit" className="btn-secondary" disabled={sending}>Guardar carpeta de Drive</button>
-                </form>
+                <p>
+                  <strong>Carpeta de Drive:</strong>{' '}
+                  {portafolioData.alumno?.drive_folder_url
+                    ? <a href={portafolioData.alumno.drive_folder_url} target="_blank" rel="noopener noreferrer">Abrir expediente</a>
+                    : 'Aún no creada'}
+                </p>
+                <button type="button" className="btn-secondary" disabled={sending} onClick={organizarDriveFolder}>
+                  Organizar expediente en Google Drive
+                </button>
 
                 <div className="ce-preview">
                   <label htmlFor="ce-portafolio-tipo">Tipo de documento</label>

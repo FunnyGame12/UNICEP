@@ -27,24 +27,25 @@ npm run migrate
 npm run dev
 ```
 
-### Integracion Google Drive (Service Account)
+### Integración Google Drive
 
-1. Instalar dependencias en backend:
+El backend usa OAuth2 de Google Drive. Configura estas variables en `backend/.env`:
 
 ```bash
-cd backend
-npm install googleapis multer
-```
-
-2. Colocar el archivo de Service Account en `backend/credentials.json`.
-3. Configurar variables en `backend/.env`:
-
-```env
-GOOGLE_DRIVE_CREDENTIALS_PATH=credentials.json
+GOOGLE_DRIVE_CLIENT_ID=
+GOOGLE_DRIVE_CLIENT_SECRET=
+GOOGLE_DRIVE_REFRESH_TOKEN=
 GOOGLE_DRIVE_ALUMNOS_ROOT_FOLDER_ID=<ID_CARPETA_MAESTRA_UNICEP>
 ```
 
-4. Compartir la carpeta maestra de Drive con el correo de la Service Account con permisos de editor.
+La cuenta OAuth debe tener permisos de editor sobre la carpeta maestra indicada.
+Dentro de ella, el backend verifica o crea automáticamente
+`EXPEDIENTES_UNICEP/[carrera]/Cuatrimestre N/Grupo X/[folio - nombre]`.
+La carrera, el cuatrimestre, el grupo, el folio y el nombre se consultan desde
+la base de datos. Si hay varios grupos, se elige el que concentra más
+inscripciones; ante un empate o si falta información académica, la operación
+falla explícitamente. El ID y la URL de la carpeta del alumno se guardan en su
+perfil y las cargas del alumno y Control Escolar utilizan esa carpeta.
 
 API base:
 - `GET /api/v1/health`

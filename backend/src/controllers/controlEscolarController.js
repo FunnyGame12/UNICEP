@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const fs = require('fs/promises');
 const {
   sequelize,
   AlumnoPerfil,
@@ -21,11 +22,8 @@ const {
 const { generarWorkbookBoleta } = require('../services/boletaService');
 const { TRAMITES_ESCOLARES } = require('../constants/tramites');
 const {
-  crearCarpetaAlumno,
+  asegurarCarpetaDriveAlumno,
   subirArchivoDrive,
-  extractDriveFolderId,
-  buildDriveFolderUrl,
-  buildAlumnoDriveFolderName,
 } = require('../services/driveService');
 
 const TRAMITE_STATUS_PERMITIDOS = new Set([
@@ -68,6 +66,56 @@ function normalizeText(value) {
 function normalizeGrupo(value) {
   const text = String(value || '').trim().toUpperCase();
   return text || null;
+}
+
+function resolveDriveFolderError(error) {
+  if (error?.code === 'DRIVE_STUDENT_NOT_FOUND') {
+    return { status: 404, message: error.message };
+  }
+
+  if ([
+    'DRIVE_STUDENT_GROUP_REQUIRED',
+    'DRIVE_STUDENT_GROUP_AMBIGUOUS',
+    'DRIVE_STUDENT_CAREER_REQUIRED',
+    'DRIVE_STUDENT_TERM_INVALID',
+    'DRIVE_STUDENT_IDENTITY_REQUIRED',
+  ].includes(error?.code)) {
+    return { status: 409, message: error.message };
+  }
+
+  if ([
+    'DRIVE_ROOT_FOLDER_REQUIRED',
+    'DRIVE_ROOT_FOLDER_INVALID',
+    'DRIVE_NOT_CONFIGURED',
+  ].includes(error?.code)) {
+    return {
+      status: 503,
+      message: 'La carpeta raíz EXPEDIENTES_UNICEP no está configurada correctamente en Google Drive.',
+    };
+  }
+
+  if ([401, 403].includes(Number(error?.code))) {
+    return {
+      status: 502,
+      message: 'Google Drive rechazó la operación. Verifica los permisos de la cuenta OAuth sobre la carpeta institucional.',
+    };
+  }
+
+  return {
+    status: 502,
+    message: 'No se pudo organizar el expediente en Google Drive.',
+  };
+}
+
+async function cleanupDriveUploadTemp(file) {
+  if (!file?.path) return;
+  try {
+    await fs.unlink(file.path);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.error('No se pudo limpiar el archivo temporal de Drive:', error.message);
+    }
+  }
 }
 
 function resolveLikeOperator() {
@@ -128,16 +176,6 @@ function normalizePlantillaDetalles(detalles) {
       fecha_exacta: toDateOnly(item?.fecha_exacta) || null,
     }))
     .filter((item) => Number.isInteger(item.concepto_id) && Number.isFinite(item.monto_sugerido) && item.monto_sugerido > 0);
-}
-
-async function resolveGrupoPrincipalAlumno(idAlumno) {
-  const row = await AlumnoGrupo.findOne({
-    where: { id_alumno: idAlumno },
-    attributes: ['grupo', 'fecha_alta', 'id_alumno_grupo'],
-    order: [['fecha_alta', 'DESC'], ['id_alumno_grupo', 'DESC']],
-  });
-
-  return normalizeGrupo(row?.grupo) || null;
 }
 
 function normalizeDestinoClonado(destino) {
@@ -1517,36 +1555,24 @@ async function actualizarDriveFolder(req, res) {
     return res.status(400).json({ message: 'alumnoId invalido.' });
   }
 
-  const driveFolderUrlInput = normalizeText(req.body.drive_folder_url);
-  const driveFolderIdInput = normalizeText(req.body.drive_folder_id);
-
-  if (driveFolderUrlInput && !esUrlValida(driveFolderUrlInput)) {
-    return res.status(400).json({ message: 'drive_folder_url debe ser una URL valida.' });
+  try {
+    const folder = await asegurarCarpetaDriveAlumno(idAlumno);
+    return res.json({
+      id_alumno: idAlumno,
+      drive_folder_id: folder.folderId,
+      drive_folder_url: folder.folderUrl,
+    });
+  } catch (error) {
+    const handled = resolveDriveFolderError(error);
+    console.error('Error al organizar carpeta de expediente en Drive:', error.message);
+    return res.status(handled.status).json({ message: handled.message });
   }
-
-  const extractedFromUrl = extractDriveFolderId(driveFolderUrlInput);
-  const folderId = driveFolderIdInput || extractedFromUrl || null;
-  const folderUrl = driveFolderUrlInput || (folderId ? buildDriveFolderUrl(folderId) : null);
-
-  const alumno = await AlumnoPerfil.findByPk(idAlumno);
-  if (!alumno) {
-    return res.status(404).json({ message: 'Alumno no encontrado.' });
-  }
-
-  alumno.drive_folder_id = folderId;
-  alumno.drive_folder_url = folderUrl;
-  await alumno.save();
-
-  return res.json({
-    id_alumno: alumno.id_alumno,
-    drive_folder_id: alumno.drive_folder_id,
-    drive_folder_url: alumno.drive_folder_url,
-  });
 }
 
 async function subirArchivoPortafolio(req, res) {
   const idAlumno = toNumber(req.params.alumnoId);
   if (!Number.isInteger(idAlumno)) {
+    await cleanupDriveUploadTemp(req.file);
     return res.status(400).json({ message: 'alumnoId invalido.' });
   }
   if (!req.file) {
@@ -1555,6 +1581,7 @@ async function subirArchivoPortafolio(req, res) {
 
   const tipoDocumento = String(req.body.tipo_documento || 'otro').trim().toLowerCase();
   if (!TIPOS_DOCUMENTO_EXPEDIENTE.has(tipoDocumento)) {
+    await cleanupDriveUploadTemp(req.file);
     return res.status(400).json({ message: 'tipo_documento invalido.' });
   }
 
@@ -1566,25 +1593,23 @@ async function subirArchivoPortafolio(req, res) {
     }],
   });
   if (!alumno) {
+    await cleanupDriveUploadTemp(req.file);
     return res.status(404).json({ message: 'Alumno no encontrado.' });
   }
 
-  let folderId = normalizeText(alumno.drive_folder_id);
-  if (!folderId) {
-    const grupoPrincipal = await resolveGrupoPrincipalAlumno(alumno.id_alumno);
-    const folderName = buildAlumnoDriveFolderName({
-      carrera: alumno.carrera,
-      grupo: grupoPrincipal,
-      cuatrimestre: alumno.bimestre_actual,
-    });
-    const createdFolder = await crearCarpetaAlumno(folderName);
-    folderId = createdFolder.folderId;
-    alumno.drive_folder_id = createdFolder.folderId;
-    alumno.drive_folder_url = createdFolder.folderUrl;
-    await alumno.save();
+  let folder;
+  let uploadResult;
+  try {
+    folder = await asegurarCarpetaDriveAlumno(alumno.id_alumno);
+    uploadResult = await subirArchivoDrive(req.file, folder.folderId);
+  } catch (error) {
+    await cleanupDriveUploadTemp(req.file);
+    const handled = resolveDriveFolderError(error);
+    console.error('Error al subir archivo de expediente a Drive:', error.message);
+    return res.status(handled.status).json({ message: handled.message });
   }
 
-  const uploadResult = await subirArchivoDrive(req.file, folderId);
+  const folderId = folder.folderId;
   const archivoUrl = uploadResult.webViewLink || uploadResult.webContentLink;
   if (!archivoUrl) {
     return res.status(502).json({ message: 'Drive no devolvio una URL publica del archivo.' });

@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { google } = require('googleapis');
+const { AlumnoGrupo, AlumnoPerfil, PlanEstudio, Usuario } = require('../../models');
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_DRIVE_CLIENT_ID,
@@ -16,6 +17,9 @@ oauth2Client.setCredentials({
 
 const drive = google.drive({ version: 'v3', auth: oauth2Client });
 const DRIVE_FOLDER_URL_PREFIX = 'https://drive.google.com/drive/folders/';
+const DRIVE_FOLDER_MIME_TYPE = 'application/vnd.google-apps.folder';
+const EXPEDIENTES_ROOT_NAME = 'EXPEDIENTES_UNICEP';
+const folderCreationLocks = new Map();
 
 function normalizeText(value) {
   return String(value || '').trim();
@@ -37,6 +41,180 @@ function buildAlumnoDriveFolderName({ carrera, grupo, cuatrimestre } = {}) {
   const grupoPart = normalizeFolderSegment(grupo, 'PENDIENTE_GRUPO');
   const cuatrimestrePart = normalizeFolderSegment(cuatrimestre, 'PENDIENTE_CUATRIMESTRE');
   return `${carreraPart}-${grupoPart}-${cuatrimestrePart}`;
+}
+
+function normalizeDriveFolderName(value) {
+  return normalizeText(value)
+    .replace(/[\/\\<>:"|?*\u0000-\u001f]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function resolveGrupoPrincipal(grupos) {
+  const counts = new Map();
+  grupos.forEach(({ grupo }) => {
+    const name = normalizeText(grupo);
+    if (!name) return;
+    const key = name.toLocaleUpperCase('es-MX');
+    const current = counts.get(key);
+    counts.set(key, { name: current?.name || name, count: (current?.count || 0) + 1 });
+  });
+
+  const ranked = [...counts.values()].sort((left, right) => right.count - left.count);
+  if (ranked.length === 0) {
+    const error = new Error('El alumno no tiene un grupo académico asignado.');
+    error.code = 'DRIVE_STUDENT_GROUP_REQUIRED';
+    throw error;
+  }
+  if (ranked.length > 1 && ranked[0].count === ranked[1].count) {
+    const error = new Error('No se pudo determinar un grupo principal: hay un empate en sus inscripciones.');
+    error.code = 'DRIVE_STUDENT_GROUP_AMBIGUOUS';
+    throw error;
+  }
+  return ranked[0].name;
+}
+
+function escapeDriveQueryValue(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+async function buscarOCrearCarpetaDrive(nombre, carpetaPadreId) {
+  const folderName = normalizeDriveFolderName(nombre);
+  const parentId = normalizeText(carpetaPadreId);
+  if (!folderName || !parentId) {
+    const error = new Error('El nombre y la carpeta padre son obligatorios para organizar el expediente.');
+    error.code = 'DRIVE_FOLDER_INPUT_INVALID';
+    throw error;
+  }
+
+  const lockKey = `${parentId}\u0000${folderName}`;
+  const existing = folderCreationLocks.get(lockKey);
+  if (existing) return existing;
+
+  const operation = (async () => {
+    const escapedName = escapeDriveQueryValue(folderName);
+    const escapedParent = escapeDriveQueryValue(parentId);
+    const found = await drive.files.list({
+      q: `name = '${escapedName}' and mimeType = '${DRIVE_FOLDER_MIME_TYPE}' and '${escapedParent}' in parents and trashed = false`,
+      spaces: 'drive',
+      pageSize: 100,
+      orderBy: 'createdTime',
+      fields: 'files(id,name,webViewLink)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    const existingFolder = found.data.files?.[0];
+    if (existingFolder) return existingFolder;
+
+    const created = await drive.files.create({
+      requestBody: {
+        name: folderName,
+        mimeType: DRIVE_FOLDER_MIME_TYPE,
+        parents: [parentId],
+      },
+      fields: 'id,name,webViewLink',
+      supportsAllDrives: true,
+    });
+    return created.data;
+  })();
+
+  folderCreationLocks.set(lockKey, operation);
+  try {
+    return await operation;
+  } finally {
+    if (folderCreationLocks.get(lockKey) === operation) {
+      folderCreationLocks.delete(lockKey);
+    }
+  }
+}
+
+async function asegurarCarpetaDriveAlumno(alumnoId) {
+  const alumno = await AlumnoPerfil.findByPk(alumnoId, {
+    include: [{
+      model: Usuario,
+      as: 'usuario',
+      attributes: ['id_usuario', 'folio_matricula', 'nombre_completo'],
+    }],
+  });
+  if (!alumno) {
+    const error = new Error('Alumno no encontrado.');
+    error.code = 'DRIVE_STUDENT_NOT_FOUND';
+    throw error;
+  }
+
+  const rootParentId = normalizeText(process.env.GOOGLE_DRIVE_ALUMNOS_ROOT_FOLDER_ID);
+  if (!rootParentId) {
+    const error = new Error('No está configurada la carpeta raíz de Google Drive.');
+    error.code = 'DRIVE_ROOT_FOLDER_REQUIRED';
+    throw error;
+  }
+
+  const [rootMetadata, plan, grupos] = await Promise.all([
+    drive.files.get({
+      fileId: rootParentId,
+      fields: 'id,name,mimeType',
+      supportsAllDrives: true,
+    }),
+    PlanEstudio.findByPk(alumno.id_plan_estudio, { attributes: ['carrera'] }),
+    AlumnoGrupo.findAll({
+      where: { id_alumno: alumno.id_alumno },
+      attributes: ['grupo'],
+      raw: true,
+    }),
+  ]);
+
+  if (rootMetadata.data.mimeType !== DRIVE_FOLDER_MIME_TYPE) {
+    const error = new Error('GOOGLE_DRIVE_ALUMNOS_ROOT_FOLDER_ID debe apuntar a una carpeta de Drive.');
+    error.code = 'DRIVE_ROOT_FOLDER_INVALID';
+    throw error;
+  }
+
+  const career = normalizeDriveFolderName(alumno.carrera || plan?.carrera);
+  if (!career) {
+    const error = new Error('El perfil académico del alumno no tiene una carrera definida.');
+    error.code = 'DRIVE_STUDENT_CAREER_REQUIRED';
+    throw error;
+  }
+
+  const termNumber = Number(alumno.bimestre_actual);
+  if (!Number.isInteger(termNumber) || termNumber < 1) {
+    const error = new Error('El perfil académico del alumno no tiene un cuatrimestre válido.');
+    error.code = 'DRIVE_STUDENT_TERM_INVALID';
+    throw error;
+  }
+
+  const folio = normalizeDriveFolderName(alumno.usuario?.folio_matricula);
+  const fullName = normalizeDriveFolderName(alumno.usuario?.nombre_completo);
+  if (!folio && !fullName) {
+    const error = new Error('El alumno no tiene folio ni nombre para identificar su carpeta.');
+    error.code = 'DRIVE_STUDENT_IDENTITY_REQUIRED';
+    throw error;
+  }
+
+  const root = rootMetadata.data.name === EXPEDIENTES_ROOT_NAME
+    ? rootMetadata.data
+    : await buscarOCrearCarpetaDrive(EXPEDIENTES_ROOT_NAME, rootParentId);
+  const careerFolder = await buscarOCrearCarpetaDrive(career, root.id);
+  const termFolder = await buscarOCrearCarpetaDrive(`Cuatrimestre ${termNumber}`, careerFolder.id);
+  const group = resolveGrupoPrincipal(grupos);
+  const groupFolder = await buscarOCrearCarpetaDrive(
+    /^grupo\b/i.test(group) ? group : `Grupo ${group}`,
+    termFolder.id,
+  );
+  const studentFolder = await buscarOCrearCarpetaDrive(
+    [folio, fullName].filter(Boolean).join(' - '),
+    groupFolder.id,
+  );
+
+  alumno.drive_folder_id = studentFolder.id;
+  alumno.drive_folder_url = studentFolder.webViewLink || buildDriveFolderUrl(studentFolder.id);
+  await alumno.save();
+
+  return {
+    folderId: alumno.drive_folder_id,
+    folderUrl: alumno.drive_folder_url,
+    folderName: studentFolder.name,
+  };
 }
 
 function buildDriveFolderUrl(folderId) {
@@ -166,6 +344,8 @@ module.exports = {
   subirDocumentoAlumno,
   subirArchivoDrive,
   buildAlumnoDriveFolderName,
+  asegurarCarpetaDriveAlumno,
+  resolveGrupoPrincipal,
   extractDriveFolderId,
   buildDriveFolderUrl,
 };

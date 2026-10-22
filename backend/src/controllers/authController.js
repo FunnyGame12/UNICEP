@@ -6,12 +6,11 @@ const {
   sequelize,
   Usuario,
   AlumnoPerfil,
-  AlumnoGrupo,
   DocentePerfil,
   PlanEstudio,
 } = require('../../models');
 const { resolveUserAuthorization } = require('../services/rbacService');
-const { crearCarpetaAlumno, buildAlumnoDriveFolderName } = require('../services/driveService');
+const { asegurarCarpetaDriveAlumno } = require('../services/driveService');
 
 let usuariosColumnsCache = null;
 
@@ -48,16 +47,6 @@ function normalizeLegacyRole(role) {
   if (raw === 'coordinacion_escolar') return 'coordinacion_academica';
   if (raw === 'administrativo') return 'control_escolar';
   return raw || 'alumno';
-}
-
-async function resolveGrupoPrincipalAlumno(idAlumno) {
-  const row = await AlumnoGrupo.findOne({
-    where: { id_alumno: idAlumno },
-    attributes: ['grupo', 'fecha_alta', 'id_alumno_grupo'],
-    order: [['fecha_alta', 'DESC'], ['id_alumno_grupo', 'DESC']],
-  });
-
-  return String(row?.grupo || '').trim().toUpperCase() || null;
 }
 
 async function login(req, res) {
@@ -249,16 +238,7 @@ async function registroConFolio(req, res) {
 
         if (!perfilAlumno.drive_folder_id) {
           try {
-            const grupoPrincipal = await resolveGrupoPrincipalAlumno(user.id_usuario);
-            const folderName = buildAlumnoDriveFolderName({
-              carrera: perfilAlumno.carrera,
-              grupo: grupoPrincipal,
-              cuatrimestre: perfilAlumno.bimestre_actual,
-            });
-            const { folderId, folderUrl } = await crearCarpetaAlumno(folderName);
-            perfilAlumno.drive_folder_id = folderId;
-            perfilAlumno.drive_folder_url = folderUrl;
-            await perfilAlumno.save();
+            await asegurarCarpetaDriveAlumno(user.id_usuario);
           } catch (driveError) {
             console.error('No se pudo crear carpeta de Drive para el alumno:', driveError.message);
           }
