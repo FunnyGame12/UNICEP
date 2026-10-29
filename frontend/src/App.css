@@ -56,6 +56,31 @@ video {
   color: var(--text);
 }
 
+.privacy-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 1.25rem 0 0;
+  padding: 0.8rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 140, 255, 0.32);
+  background: rgba(79, 140, 255, 0.12);
+  box-shadow: 0 10px 28px rgba(79, 140, 255, 0.1);
+}
+
+.privacy-banner span {
+  color: var(--muted-strong);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.privacy-banner a {
+  color: #dfeeff;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
 .topbar {
   display: flex;
   justify-content: space-between;

@@ -215,37 +215,50 @@
           de usuarios de Google.
         </p>
         <p>
-          Para esta función, el backend de la plataforma utiliza la API de Google Drive para
-          consultar los metadatos necesarios de carpetas, comprobar si las carpetas de
-          expediente ya existen, crear carpetas, actualizar el nombre de una carpeta cuando
-          corresponde y cargar los documentos enviados por usuarios autorizados. La
-          aplicación no accede a Gmail, Contactos ni Calendario de Google.
+          <strong>Permisos y acceso:</strong> la aplicación utiliza la API de Google Drive
+          para listar carpetas, verificar si una carpeta ya existe, crear carpetas nuevas,
+          renombrar rutas o carpetas cuando corresponde, subir documentos y guardar la ruta
+          del expediente del estudiante. Estas acciones se realizan únicamente con la cuenta
+          institucional autorizada para este servicio. La aplicación no accede a Gmail,
+          Contactos ni Calendario de Google, ni a los datos personales de la cuenta de
+          Google del usuario final.
         </p>
         <p>
           <strong>Datos tratados en esta integración:</strong> identificadores, nombres,
           tipo y relación de carpetas; identificadores y enlaces de Drive; metadatos del
-          archivo (como nombre y tipo); y el contenido de cada archivo enviado al expediente.
-          Para organizar la ruta se combinan esos datos con los datos académicos necesarios
-          del perfil del alumno: carrera, cuatrimestre, grupo, folio o matrícula y nombre.
+          archivo (como nombre, tipo y fecha de carga); y el contenido del archivo que se
+          envía al expediente. Para organizar la ruta se combinan esos datos con los datos
+          académicos del perfil del alumno: carrera, cuatrimestre, grupo, folio o matrícula
+          y nombre.
         </p>
         <p>
           <strong>Uso y almacenamiento:</strong> estos datos se usan exclusivamente para
           crear la estructura institucional EXPEDIENTES_UNICEP, ubicar cada carpeta por
           carrera, cuatrimestre, grupo y alumno, guardar el documento y mostrar su ubicación
-          a usuarios autorizados. La base de datos escolar conserva el identificador y el
+          a usuarios autorizados. La base de datos del sistema conserva el identificador y el
           enlace de la carpeta del alumno y, según el trámite, el enlace o identificador del
-          archivo. El contenido del documento queda almacenado en el Drive institucional
-          configurado para el servicio.
+          archivo. El contenido del documento se guarda en la carpeta asignada dentro de
+          Google Drive institucional.
         </p>
         <p>
           <strong>Acceso y comunicación:</strong> la aplicación comunica a Google Drive las
           solicitudes necesarias para realizar las operaciones anteriores. Google almacena
-          y procesa los datos como proveedor del servicio de Drive, de acuerdo con sus
+          y procesa esos datos como proveedor del servicio de Drive, de acuerdo con sus
           términos y políticas. En UNICEP, el expediente se pone a disposición únicamente
           del personal que tenga permisos institucionales para las funciones escolares
           correspondientes; el acceso efectivo también depende de la configuración de
           permisos de la carpeta en Drive. No compartimos los datos de Drive con terceros
           para publicidad propia.
+        </p>
+        <p>
+          <strong>Uso de datos de usuario de Google:</strong> los datos de Google se utilizan
+          exclusivamente para los fines académicos y administrativos de la plataforma, en
+          particular para gestionar expedientes, conservar su historial digital y permitir
+          que el personal autorizado acceda a los documentos de cada estudiante. No se usan
+          para publicidad, para perfiles comportamentales, ni para entrenar modelos de
+          inteligencia artificial ni aprendizaje automático. La finalidad de este acceso se
+          limita a la operación del expediente digital institucional y a la seguridad y
+          trazabilidad de los documentos.
         </p>
         <p>
           Los datos de Google se usan solo para proporcionar o mejorar la función visible

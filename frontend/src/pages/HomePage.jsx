@@ -256,6 +256,11 @@ export default function HomePage() {
               Conocer Más
             </a>
           </div>
+
+          <div className="privacy-banner">
+            <span>Protegemos tus datos personales.</span>
+            <Link to="/privacidad/">Aviso de privacidad</Link>
+          </div>
         </div>
       </section>
 
