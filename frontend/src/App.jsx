@@ -122,7 +122,7 @@ function App() {
         <Outlet />
       </main>
       <footer className="site-footer">
-        <Link to="/privacidad">Aviso de privacidad</Link>
+        <a href="/privacidad/">Aviso de privacidad</a>
       </footer>
     </div>
   );

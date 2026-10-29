@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import App from './App';
 import HomePage from './pages/HomePage';
 import AlumnoPage from './pages/AlumnoPage';
@@ -9,7 +9,6 @@ import ControlEscolarPage from './pages/ControlEscolarPage';
 import CoordinacionAcademicaPage from './pages/CoordinacionAcademicaPage';
 import LoginPage from './pages/LoginPage';
 import RegistroFolioPage from './pages/RegistroFolioPage';
-import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 const router = createBrowserRouter([
@@ -21,7 +20,7 @@ const router = createBrowserRouter([
       { path: 'inicio', element: <HomePage /> },
       { path: 'login', element: <LoginPage /> },
       { path: 'registro-folio', element: <RegistroFolioPage /> },
-      { path: 'privacidad', element: <PrivacyPolicyPage /> },
+      { path: 'privacidad', element: <Navigate to="/privacidad/" replace /> },
       {
         path: 'director',
         element: (
